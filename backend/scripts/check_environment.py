@@ -2,18 +2,27 @@ from __future__ import annotations
 
 import argparse
 from importlib import metadata
+from pathlib import Path
 import shutil
 import subprocess
 import sys
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_VENV_DIR = REPO_ROOT / ".venv"
+PROJECT_VENV_PYTHON = (
+    PROJECT_VENV_DIR / "Scripts" / "python.exe"
+    if sys.platform.startswith("win")
+    else PROJECT_VENV_DIR / "bin" / "python"
+)
 NPM_BIN = "npm.cmd" if sys.platform.startswith("win") else "npm"
 
 COMMANDS = [
     ("git", ["git", "--version"], None),
     ("node", ["node", "-v"], "20"),
     ("npm", [NPM_BIN, "-v"], None),
-    ("python", [sys.executable, "--version"], "3.11"),
+    ("python", [sys.executable, "--version"], "3.13"),
+    ("uv", ["uv", "--version"], None),
     ("docker", ["docker", "--version"], None),
     ("docker compose", ["docker", "compose", "version"], None),
     ("cmake", ["cmake", "--version"], None),
@@ -49,6 +58,13 @@ def _status(ok: bool) -> str:
     return "OK" if ok else "WARN"
 
 
+def _uses_project_venv() -> bool:
+    try:
+        return PROJECT_VENV_PYTHON.exists() and Path(sys.executable).resolve() == PROJECT_VENV_PYTHON.resolve()
+    except OSError:
+        return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check the MVP environment baseline.")
     parser.add_argument(
@@ -60,6 +76,15 @@ def main() -> int:
 
     failures = 0
 
+    print("== Python context ==")
+    print(f"Current interpreter : {sys.executable}")
+    print(f"Project venv path   : {PROJECT_VENV_PYTHON}")
+    print(f"Using project .venv : {'yes' if _uses_project_venv() else 'no'}")
+    if PROJECT_VENV_PYTHON.exists() and not _uses_project_venv():
+        print("WARN: A project .venv exists, but this script is not running inside it.")
+        print("      Recommended command: uv run python backend/scripts/check_environment.py")
+
+    print()
     print("== Command checks ==")
     for label, command, recommended_prefix in COMMANDS:
         binary = command[0]
@@ -96,7 +121,8 @@ def main() -> int:
     print("Notes:")
     print("- version-description.txt stores the local machine/version checklist.")
     print("- Use .env.template as the runtime template, and copy it to .env when needed.")
-    print("- If Python 3.13 causes compatibility issues, add a Python 3.11 virtual environment.")
+    print("- Python 3.13 is the default project interpreter for the .venv workflow.")
+    print("- If compatibility issues appear later, switch the interpreter version and rerun uv sync.")
 
     if args.strict and failures:
         return 1

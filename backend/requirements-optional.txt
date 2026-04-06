@@ -1,2 +1,6 @@
+# Optional compatibility requirements
+# Generated from pyproject.toml by backend/scripts/export_requirements.py
+# Do not edit manually.
+
 tushare>=1.4,<2.0
 scrapy>=2.11,<3.0

@@ -56,7 +56,7 @@ data/
 ### 1. 环境检查
 
 ```powershell
-python backend/scripts/check_environment.py
+uv run python backend/scripts/check_environment.py
 ```
 
 ### 2. Olist 数据集校验
@@ -64,25 +64,25 @@ python backend/scripts/check_environment.py
 手动下载 Kaggle 数据集到 `data/raw/ecommerce/olist` 后执行：
 
 ```powershell
-python backend/scripts/inspect_olist_dataset.py --dataset-dir data/raw/ecommerce/olist
+uv run python backend/scripts/inspect_olist_dataset.py --dataset-dir data/raw/ecommerce/olist
 ```
 
 ### 3. 电商模拟数据
 
 ```powershell
-python backend/scripts/generate_ecommerce_synthetic.py --order-count 100000
+uv run python backend/scripts/generate_ecommerce_synthetic.py --order-count 100000
 ```
 
 ### 4. A 股日线抓取
 
 ```powershell
-python backend/scripts/fetch_stock_akshare.py --symbols 000001 600519 300750
+uv run python backend/scripts/fetch_stock_akshare.py --symbols 000001 600519 300750
 ```
 
 ### 5. 演示爬虫
 
 ```powershell
-python backend/scripts/crawl_demo_ecommerce.py --category computers --max-pages 3
+uv run python backend/scripts/crawl_demo_ecommerce.py --category computers --max-pages 3
 ```
 
 ## Manifest 设计
