@@ -1,12 +1,18 @@
 pre-tasks/
+data/
 
 
 
 ToDoList
+version-description.txt
 require.md
 tasks.md
 数据库 + 算法模块协同工作说明.md
 
 
 
-.env
+.env*
+version-description.txt
+backend/.tmp-tests/
+__pycache__/
+*.pyc
