@@ -1,3 +1,11 @@
+# 作用:
+# - 这是项目环境检查脚本，用来验证当前解释器、项目 .venv、系统命令和核心 Python 依赖
+#   是否满足当前 MVP 数据接入流程的运行前提。
+# 关联文件:
+# - 不直接导入业务模块，但会检查 stock.py、demo_crawler.py、ecommerce_synthetic.py 等
+#   所依赖的核心包是否安装完成。
+# - 通常作为运行 backend/scripts 下其他脚本之前的第一步检查工具。
+#
 from __future__ import annotations
 
 import argparse

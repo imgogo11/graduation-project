@@ -1,3 +1,12 @@
+# 作用:
+# - 这是演示型电商爬虫模块，负责访问 Web Scraper 测试站点，提取商品列表信息，
+#   并把抓取结果写成 CSV 与 manifest。
+# 关联文件:
+# - 被 backend/scripts/crawl_demo_ecommerce.py 导入并作为实际业务实现调用。
+# - 依赖 backend/app/data_sources/contracts.py 提供的 DatasetArtifact、ImportManifest、
+#   SourceType、now_utc_iso 和 write_manifest。
+# - 依赖 beautifulsoup4 与 requests 完成 HTML 解析和网络请求。
+#
 from __future__ import annotations
 
 from collections import deque

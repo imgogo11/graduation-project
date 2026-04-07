@@ -1,3 +1,11 @@
+# 作用:
+# - 这是依赖导出脚本，用来把根目录 pyproject.toml 中的依赖重新写回
+#   backend/requirements.txt 和 backend/requirements-optional.txt。
+# 关联文件:
+# - 读取项目根目录的 pyproject.toml。
+# - 写出 backend/requirements.txt 与 backend/requirements-optional.txt 这两个兼容层文件。
+# - 当前没有被其他 Python 文件导入，主要作为手动执行的工具脚本使用。
+#
 from __future__ import annotations
 
 from pathlib import Path

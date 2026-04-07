@@ -1,3 +1,11 @@
+# 作用:
+# - 这是数据契约层的单元测试文件，用来验证 manifest 对象能否被正确序列化并写入 JSON 文件。
+# 关联文件:
+# - 直接导入 backend/app/data_sources/contracts.py 中的 DatasetArtifact、ImportManifest、
+#   SourceType、now_utc_iso 和 write_manifest。
+# - 间接保障 backend/app/data_sources/olist.py、stock.py、ecommerce_synthetic.py、
+#   demo_crawler.py 写出的 manifest 格式保持一致。
+#
 from __future__ import annotations
 
 from pathlib import Path

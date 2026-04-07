@@ -1,3 +1,11 @@
+# 作用:
+# - 这是股票数据源处理模块，负责调用 AkShare 获取 A 股日线数据、
+#   标准化字段名，并把结果写成 CSV 和 manifest。
+# 关联文件:
+# - 被 backend/scripts/fetch_stock_akshare.py 导入并作为实际业务实现调用。
+# - 依赖 backend/app/data_sources/contracts.py 提供的 DatasetArtifact、ImportManifest、
+#   SourceType、now_utc_iso 和 write_manifest。
+#
 from __future__ import annotations
 
 from pathlib import Path

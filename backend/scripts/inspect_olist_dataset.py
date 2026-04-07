@@ -1,3 +1,10 @@
+# 作用:
+# - 这是 Olist 数据集校验脚本的命令行入口，负责接收参数并调用底层校验逻辑。
+# 关联文件:
+# - 直接导入 backend/scripts/_bootstrap.py，用来准备 backend 的导入路径。
+# - 直接调用 backend/app/data_sources/olist.py 中的 inspect_olist_dataset 接口。
+# - 作为用户手动校验 Olist CSV 数据集的入口脚本。
+#
 from __future__ import annotations
 
 import argparse

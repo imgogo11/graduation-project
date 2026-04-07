@@ -1,3 +1,10 @@
+# 作用:
+# - 这是合成电商数据模块的单元测试文件，用来验证生成出的多张表之间引用关系是否一致，
+#   以及写盘后关键 CSV 和 manifest 是否成功创建。
+# 关联文件:
+# - 直接导入 backend/app/data_sources/ecommerce_synthetic.py 中的 generate_bundle 和 write_bundle。
+# - 主要验证 backend/scripts/generate_ecommerce_synthetic.py 背后的核心业务逻辑是否正常。
+#
 from __future__ import annotations
 
 from pathlib import Path

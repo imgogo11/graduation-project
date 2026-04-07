@@ -1,3 +1,11 @@
+# 作用:
+# - 这是 A 股日线抓取脚本的命令行入口，负责解析股票代码、日期区间和复权参数，
+#   并触发 AkShare 数据抓取与结果写盘。
+# 关联文件:
+# - 直接导入 backend/scripts/_bootstrap.py，用来准备 backend 的导入路径。
+# - 直接调用 backend/app/data_sources/stock.py 中的 fetch_daily_histories 和 write_daily_histories。
+# - 生成的 CSV 和 manifest 由 backend/app/data_sources/contracts.py 的契约结构约束。
+#
 from __future__ import annotations
 
 import argparse

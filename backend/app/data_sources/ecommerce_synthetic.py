@@ -1,3 +1,12 @@
+# 作用:
+# - 这是合成电商数据生成模块，负责构造 customers、orders、order_items、products、
+#   payments、reviews、user_events 等多张模拟数据表，并将其写成 CSV 与 manifest。
+# 关联文件:
+# - 被 backend/scripts/generate_ecommerce_synthetic.py 导入并作为实际业务实现调用。
+# - 被 backend/tests/test_ecommerce_synthetic.py 导入，用于验证生成结果与写盘结果。
+# - 依赖 backend/app/data_sources/contracts.py 提供的 DatasetArtifact、ImportManifest、
+#   SourceType、now_utc_iso 和 write_manifest。
+#
 from __future__ import annotations
 
 from datetime import datetime, timedelta

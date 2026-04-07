@@ -1,3 +1,11 @@
+# 作用:
+# - 这是演示型电商爬虫的命令行入口，负责解析分类、分页和输出路径等参数，
+#   并触发示例站点商品列表抓取。
+# 关联文件:
+# - 直接导入 backend/scripts/_bootstrap.py，用来准备 backend 的导入路径。
+# - 直接调用 backend/app/data_sources/demo_crawler.py 中的 DEMO_SITE_URL 和 crawl_demo_site。
+# - 生成的 CSV 和 manifest 由 backend/app/data_sources/contracts.py 的契约结构约束。
+#
 from __future__ import annotations
 
 import argparse

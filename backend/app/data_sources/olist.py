@@ -1,3 +1,12 @@
+# 作用:
+# - 这是 Olist 数据集校验模块，负责检查手动下载到本地的 Kaggle Olist CSV 文件
+#   是否齐全、字段是否符合预期，并生成对应的 manifest。
+# 关联文件:
+# - 被 backend/scripts/inspect_olist_dataset.py 导入并作为实际业务实现调用。
+# - 依赖 backend/app/data_sources/contracts.py 提供的 DatasetArtifact、ImportManifest、
+#   SourceType、now_utc_iso 和 write_manifest。
+# - 这里只做本地校验与说明文件生成，不负责下载 Olist 数据集。
+#
 from __future__ import annotations
 
 from pathlib import Path

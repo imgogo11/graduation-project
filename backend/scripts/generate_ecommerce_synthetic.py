@@ -1,3 +1,10 @@
+# 作用:
+# - 这是合成电商数据生成脚本的命令行入口，负责解析参数并触发多表模拟数据的生成与写盘。
+# 关联文件:
+# - 直接导入 backend/scripts/_bootstrap.py，用来准备 backend 的导入路径。
+# - 直接调用 backend/app/data_sources/ecommerce_synthetic.py 中的 generate_bundle 和 write_bundle。
+# - 对应的核心逻辑由 backend/tests/test_ecommerce_synthetic.py 进行验证。
+#
 from __future__ import annotations
 
 import argparse

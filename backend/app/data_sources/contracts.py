@@ -1,3 +1,12 @@
+# 作用:
+# - 这是数据源层的公共契约模块，统一定义来源类型、数据产物描述、
+#   manifest 结构以及 manifest 写盘函数。
+# 关联文件:
+# - 被 backend/app/data_sources/olist.py、stock.py、ecommerce_synthetic.py、
+#   demo_crawler.py 共同依赖。
+# - 被 backend/app/data_sources/__init__.py 重新导出。
+# - 被 backend/tests/test_contracts.py 直接导入并测试。
+#
 from __future__ import annotations
 
 from dataclasses import dataclass, field
