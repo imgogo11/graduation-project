@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: graduation-project-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-graduation_project}
+      POSTGRES_USER: ${POSTGRES_USER:-graduation}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-graduation}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - graduation_project_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-graduation} -d ${POSTGRES_DB:-graduation_project}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  graduation_project_postgres:
+

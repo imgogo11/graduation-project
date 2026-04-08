@@ -11,3 +11,7 @@ beautifulsoup4>=4.12,<5.0
 akshare>=1.18,<2.0
 pybind11>=3.0,<4.0
 python-dotenv>=1.0,<2.0
+alembic>=1.16,<2.0
+psycopg[binary]>=3.2,<4.0
+uvicorn>=0.34,<1.0
+httpx>=0.28,<1.0

@@ -73,6 +73,46 @@
    uv run python backend/scripts/crawl_demo_ecommerce.py --category computers --max-pages 3
    ```
 
+## 数据库优先后端工作流
+
+在基础数据准备完成后，可以按下面顺序进入 PostgreSQL + FastAPI 的最小主链路：
+
+1. 启动 PostgreSQL：
+
+   ```powershell
+   docker compose -f deploy/docker-compose.yml up -d postgres
+   ```
+
+2. 执行数据库迁移：
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m alembic -c backend/alembic.ini upgrade head
+   ```
+
+3. 导入当前已准备好的数据：
+
+   ```powershell
+   .\.venv\Scripts\python.exe backend/scripts/import_data.py stock
+   .\.venv\Scripts\python.exe backend/scripts/import_data.py olist
+   .\.venv\Scripts\python.exe backend/scripts/import_data.py synthetic
+   ```
+
+4. 启动最小 FastAPI 后端：
+
+   ```powershell
+   .\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --reload
+   ```
+
+5. 访问最小接口：
+   - `GET /api/health`
+   - `POST /api/imports/stocks/akshare`
+   - `POST /api/imports/ecommerce/olist`
+   - `POST /api/imports/ecommerce/synthetic`
+   - `GET /api/imports/runs`
+   - `GET /api/stocks/daily-prices`
+   - `GET /api/commerce/orders`
+   - `GET /api/commerce/products`
+
 ## 关键文档
 
 - `docs/python-environment.md`
