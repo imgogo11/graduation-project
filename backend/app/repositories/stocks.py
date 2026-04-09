@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -57,3 +58,20 @@ class StockRepository:
         if end_date:
             stmt = stmt.where(StockDailyPrice.trade_date <= end_date)
         return list(session.scalars(stmt))
+
+    @staticmethod
+    def list_amount_series(
+        session: Session,
+        *,
+        symbol: str,
+        adjust: str = "qfq",
+    ) -> list[tuple[date, Decimal]]:
+        stmt = (
+            select(StockDailyPrice.trade_date, StockDailyPrice.amount)
+            .where(StockDailyPrice.symbol == symbol)
+            .where(StockDailyPrice.adjust == adjust)
+            .where(StockDailyPrice.amount.is_not(None))
+            .order_by(StockDailyPrice.trade_date.asc())
+        )
+        rows = session.execute(stmt).all()
+        return [(trade_date, amount) for trade_date, amount in rows]
