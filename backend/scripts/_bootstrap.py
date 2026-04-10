@@ -1,11 +1,3 @@
-# 作用:
-# - 这是脚本层的公共引导文件，用来把 backend 目录加入 sys.path，
-#   让命令行脚本可以稳定导入 app 包下的模块。
-# 关联文件:
-# - 被 backend/scripts/inspect_olist_dataset.py、generate_ecommerce_synthetic.py、
-#   fetch_stock_akshare.py、crawl_demo_ecommerce.py 导入使用。
-# - 为这些脚本提供 ensure_backend_on_path 接口。
-#
 from __future__ import annotations
 
 from pathlib import Path

@@ -6,6 +6,7 @@
 #
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -14,24 +15,42 @@ from sqlalchemy.orm import Session
 from app.models import ImportArtifactRecord, ImportManifestRecord, ImportRun, utc_now
 
 
+CURRENT_IMPORT_SOURCE_TYPE = "upload"
+CURRENT_IMPORT_SOURCE_NAME = "user.upload"
+
+
+def _current_import_filter(stmt):
+    return stmt.where(ImportRun.source_type == CURRENT_IMPORT_SOURCE_TYPE).where(
+        ImportRun.source_name == CURRENT_IMPORT_SOURCE_NAME
+    )
+
+
 class ImportRunRepository:
     @staticmethod
     def create_run(
         session: Session,
         *,
+        owner_user_id: int | None,
         dataset_name: str,
+        asset_class: str | None,
         source_type: str,
         source_name: str,
         source_uri: str | None,
-        metadata_json: dict[str, Any],
+        original_file_name: str | None,
+        file_format: str | None,
+        metadata_json: dict[str, Any] | None = None,
     ) -> ImportRun:
         run = ImportRun(
+            owner_user_id=owner_user_id,
             dataset_name=dataset_name,
+            asset_class=asset_class,
             source_type=source_type,
             source_name=source_name,
             source_uri=source_uri,
+            original_file_name=original_file_name,
+            file_format=file_format,
             status="running",
-            metadata_json=metadata_json,
+            metadata_json=metadata_json or {},
         )
         session.add(run)
         session.commit()
@@ -104,6 +123,59 @@ class ImportRunRepository:
         return run
 
     @staticmethod
-    def list_runs(session: Session, *, limit: int = 20) -> list[ImportRun]:
-        stmt = select(ImportRun).order_by(desc(ImportRun.id)).limit(limit)
+    def get_run(session: Session, run_id: int) -> ImportRun | None:
+        return session.get(ImportRun, run_id)
+
+    @staticmethod
+    def get_visible_run(
+        session: Session,
+        *,
+        run_id: int,
+        owner_user_id: int | None = None,
+        include_deleted: bool = False,
+    ) -> ImportRun | None:
+        stmt = _current_import_filter(select(ImportRun).where(ImportRun.id == run_id))
+        if owner_user_id is not None:
+            stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
+        if not include_deleted:
+            stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        return session.scalar(stmt)
+
+    @staticmethod
+    def list_runs(
+        session: Session,
+        *,
+        owner_user_id: int | None = None,
+        include_deleted: bool = False,
+        limit: int = 20,
+    ) -> list[ImportRun]:
+        stmt = _current_import_filter(select(ImportRun))
+        if owner_user_id is not None:
+            stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
+        if not include_deleted:
+            stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        stmt = stmt.order_by(desc(ImportRun.id)).limit(limit)
         return list(session.scalars(stmt))
+
+    @staticmethod
+    def list_all_visible_runs(
+        session: Session,
+        *,
+        owner_user_id: int | None = None,
+        include_deleted: bool = False,
+    ) -> list[ImportRun]:
+        stmt = _current_import_filter(select(ImportRun))
+        if owner_user_id is not None:
+            stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
+        if not include_deleted:
+            stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        stmt = stmt.order_by(desc(ImportRun.started_at), desc(ImportRun.id))
+        return list(session.scalars(stmt))
+
+    @staticmethod
+    def soft_delete(session: Session, run: ImportRun) -> ImportRun:
+        run.deleted_at = utc_now()
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        return run

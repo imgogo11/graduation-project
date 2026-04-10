@@ -1,7 +1,7 @@
 [project]
 name = "graduation-project"
 version = "0.1.0"
-description = "Data ingestion and analysis workspace for the graduation project."
+description = "Unified trading data management system for user-uploaded CSV/XLSX datasets."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -9,21 +9,14 @@ dependencies = [
     "sqlalchemy>=2.0,<3.0",
     "pydantic>=2.8,<3.0",
     "pandas>=2.2,<3.0",
-    "requests>=2.32,<3.0",
-    "beautifulsoup4>=4.12,<5.0",
-    "akshare>=1.18,<2.0",
+    "python-multipart>=0.0.9,<1.0",
+    "openpyxl>=3.1,<4.0",
     "pybind11>=3.0,<4.0",
     "python-dotenv>=1.0,<2.0",
     "alembic>=1.16,<2.0",
     "psycopg[binary]>=3.2,<4.0",
     "uvicorn>=0.34,<1.0",
     "httpx>=0.28,<1.0",
-]
-
-[project.optional-dependencies]
-data-sources = [
-    "tushare>=1.4,<2.0",
-    "scrapy>=2.11,<3.0",
 ]
 
 [tool.uv]

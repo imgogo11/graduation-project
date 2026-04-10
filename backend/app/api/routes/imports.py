@@ -1,74 +1,97 @@
-# 作用:
-# - 这是数据导入路由模块，用来暴露股票、Olist、合成电商三条入库入口以及导入记录查询接口。
-# 关联文件:
-# - 被 backend/app/api/router.py 统一挂载到 `/api/imports/*`。
-# - 直接依赖 backend/app/services/imports.py 负责实际导入逻辑。
-# - 使用 backend/app/schemas/api.py 中的 ImportRequest 和 ImportRunRead 作为请求/响应模型。
-#
 from __future__ import annotations
 
-from pathlib import Path
-
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
+from app.api.deps import get_current_user
 from app.core.database import get_db_session
+from app.models import User
 from app.repositories.imports import ImportRunRepository
-from app.schemas.api import ImportRequest, ImportRunRead
-from app.services.imports import ImportExecutionError, ImportService
+from app.schemas.trading import DeleteImportRunResponse, ImportRunRead, ImportStatsRead
+from app.services.imports import ImportExecutionError, ImportService, ImportValidationError
 
 
 router = APIRouter()
 service = ImportService()
 
 
-def _resolve_manifest(path_value: str | None, default_path: Path) -> Path:
-    if path_value:
-        return Path(path_value).expanduser().resolve()
-    return default_path.resolve()
+def _resolve_owner_scope(current_user: User, owner_user_id: int | None) -> int | None:
+    if current_user.role == "admin":
+        return owner_user_id
+    return current_user.id
+
+
+def _get_visible_run_or_404(session: Session, *, run_id: int, current_user: User):
+    owner_scope = None if current_user.role == "admin" else current_user.id
+    run = ImportRunRepository.get_visible_run(session, run_id=run_id, owner_user_id=owner_scope)
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import run not found")
+    return run
 
 
 @router.get("/runs", response_model=list[ImportRunRead])
-def list_import_runs(limit: int = 20, session: Session = Depends(get_db_session)) -> list[ImportRunRead]:
-    runs = ImportRunRepository.list_runs(session, limit=limit)
-    return [ImportRunRead.model_validate(item) for item in runs]
+def list_import_runs(
+    limit: int = 20,
+    owner_user_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> list[ImportRunRead]:
+    return service.list_runs(
+        session,
+        owner_user_id=_resolve_owner_scope(current_user, owner_user_id),
+        limit=limit,
+    )
 
 
-@router.post("/stocks/akshare", response_model=ImportRunRead)
-def import_stock_manifest(payload: ImportRequest, session: Session = Depends(get_db_session)) -> ImportRunRead:
-    settings = get_settings()
+@router.get("/stats", response_model=ImportStatsRead)
+def get_import_stats(
+    owner_user_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ImportStatsRead:
+    return service.build_stats(session, owner_user_id=_resolve_owner_scope(current_user, owner_user_id))
+
+
+@router.post("/trading", response_model=ImportRunRead)
+async def import_trading_file(
+    dataset_name: str = Form(...),
+    asset_class: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ImportRunRead:
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file name is required")
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+
     try:
-        run = service.import_stock_manifest(session, _resolve_manifest(payload.manifest_path, settings.default_stock_manifest))
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ImportExecutionError as exc:
-        raise HTTPException(status_code=500, detail=f"Import run {exc.run_id} failed: {exc}") from exc
-    return ImportRunRead.model_validate(run)
-
-
-@router.post("/ecommerce/olist", response_model=ImportRunRead)
-def import_olist_manifest(payload: ImportRequest, session: Session = Depends(get_db_session)) -> ImportRunRead:
-    settings = get_settings()
-    try:
-        run = service.import_olist_manifest(session, _resolve_manifest(payload.manifest_path, settings.default_olist_manifest))
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ImportExecutionError as exc:
-        raise HTTPException(status_code=500, detail=f"Import run {exc.run_id} failed: {exc}") from exc
-    return ImportRunRead.model_validate(run)
-
-
-@router.post("/ecommerce/synthetic", response_model=ImportRunRead)
-def import_synthetic_manifest(payload: ImportRequest, session: Session = Depends(get_db_session)) -> ImportRunRead:
-    settings = get_settings()
-    try:
-        run = service.import_synthetic_manifest(
+        run = service.import_uploaded_file(
             session,
-            _resolve_manifest(payload.manifest_path, settings.default_synthetic_manifest),
+            owner=current_user,
+            dataset_name=dataset_name,
+            asset_class=asset_class,
+            original_file_name=file.filename,
+            file_bytes=file_bytes,
         )
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ImportValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ImportExecutionError as exc:
-        raise HTTPException(status_code=500, detail=f"Import run {exc.run_id} failed: {exc}") from exc
-    return ImportRunRead.model_validate(run)
+        if isinstance(exc.__cause__, ImportValidationError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc.__cause__)) from exc
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    return service.serialize_run(session, run)
+
+
+@router.delete("/runs/{run_id}", response_model=DeleteImportRunResponse)
+def delete_import_run(
+    run_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> DeleteImportRunResponse:
+    run = _get_visible_run_or_404(session, run_id=run_id, current_user=current_user)
+    service.delete_run(session, run=run)
+    return DeleteImportRunResponse(id=run_id, status="deleted")

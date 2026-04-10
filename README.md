@@ -1,127 +1,137 @@
-# Graduation Project
+# Unified Trading Data Management System
 
-当前仓库已经整理为“全仓库一个 Python 虚拟环境”的工作方式，默认使用根目录 `.venv/`、`uv` 和 `pyproject.toml` 管理 Python 依赖。
+This project now keeps a single business path:
 
-## 当前已落地
+- real user registration and login
+- user-scoped trading data uploads through `CSV` and `XLSX`
+- permanent import history with soft delete
+- admin visibility across all users
+- unified trading analysis for both stock and commodity datasets
 
-- Python 项目级依赖入口：`pyproject.toml`
-- Python 版本入口：`.python-version`，默认 `3.13`
-- 虚拟环境约定：根目录 `.venv/`
-- `backend/requirements*.txt` 兼容层
-- 环境基线文档与安装建议
-- 数据源策略文档
-- 运行配置模板：`.env.template`
-- A 股日线抓取脚本（AkShare）
-- Olist 数据集校验脚本
-- 电商模拟数据生成脚本
-- 演示型电商爬虫脚本（Web Scraper test site）
-- 环境检查脚本
+All legacy stock crawler, e-commerce demo, synthetic dataset, and benchmark import paths have been retired from the active system.
 
-## 推荐顺序
+## Stack
 
-1. 创建项目虚拟环境：
+- Frontend: Vue 3 + TypeScript + Element Plus + ECharts
+- Backend: FastAPI + SQLAlchemy + Alembic + Pandas
+- Database: PostgreSQL
+- Algo engine: C++ + PyBind11
 
-   ```powershell
-   uv venv .venv --python 3.13
-   ```
+## Current data model
 
-2. 安装默认依赖：
+- `users`
+- `import_runs`
+- `import_manifests`
+- `import_artifacts`
+- `trading_records`
 
-   ```powershell
-   uv sync
-   ```
+## Supported upload template
 
-3. 如需扩展数据源依赖：
+```text
+instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
+```
 
-   ```powershell
-   uv sync --extra data-sources
-   ```
+- supported file formats: `.csv`, `.xlsx`
+- asset classes: `stock`, `commodity`
+- asset class is now only a dataset label; both use the same storage and analysis flow
 
-4. 检查当前项目环境：
+## Setup
 
-   ```powershell
-   uv run python backend/scripts/check_environment.py
-   ```
+### 1. Install dependencies
 
-5. 如需同步兼容层 requirements 文件：
+```powershell
+uv venv .venv --python 3.13
+uv sync
+cd frontend
+npm install
+cd ..
+```
 
-   ```powershell
-   uv run python backend/scripts/export_requirements.py
-   ```
+### 2. Prepare environment
 
-6. 校验手动下载的 Olist 数据集：
+```powershell
+Copy-Item .env.template .env
+```
 
-   ```powershell
-   uv run python backend/scripts/inspect_olist_dataset.py --dataset-dir data/raw/ecommerce/olist
-   ```
+Review these variables before running:
 
-7. 生成电商模拟数据：
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `UPLOAD_ROOT`
 
-   ```powershell
-   uv run python backend/scripts/generate_ecommerce_synthetic.py --order-count 100000
-   ```
+### 3. Start PostgreSQL and apply migrations
 
-8. 拉取 A 股日线快照：
+```powershell
+docker compose -f deploy/docker-compose.yml up -d postgres
+.\.venv\Scripts\python.exe -m alembic -c backend/alembic.ini upgrade head
+.\.venv\Scripts\python.exe backend/scripts/init_admin.py
+```
 
-   ```powershell
-   uv run python backend/scripts/fetch_stock_akshare.py --symbols 000001 600519 300750
-   ```
+The latest migration removes legacy business tables and purges pre-unified import history, so only the current upload-based trading flow remains visible in the system.
 
-9. 运行演示爬虫：
+### 4. Start backend and frontend
 
-   ```powershell
-   uv run python backend/scripts/crawl_demo_ecommerce.py --category computers --max-pages 3
-   ```
+Backend:
 
-## 数据库优先后端工作流
+```powershell
+.\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --host 127.0.0.1 --port 8200 --reload
+```
 
-在基础数据准备完成后，可以按下面顺序进入 PostgreSQL + FastAPI 的最小主链路：
+Frontend:
 
-1. 启动 PostgreSQL：
+```powershell
+cd frontend
+npm run dev
+```
 
-   ```powershell
-   docker compose -f deploy/docker-compose.yml up -d postgres
-   ```
+## Main APIs
 
-2. 执行数据库迁移：
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+- `GET /api/health`
+- `GET /api/imports/runs`
+- `GET /api/imports/stats`
+- `POST /api/imports/trading`
+- `DELETE /api/imports/runs/{run_id}`
+- `GET /api/trading/instruments`
+- `GET /api/trading/records`
+- `GET /api/algo/trading/range-max-amount`
 
-   ```powershell
-   .\.venv\Scripts\python.exe -m alembic -c backend/alembic.ini upgrade head
-   ```
+## Useful scripts
 
-3. 导入当前已准备好的数据：
+Initialize the admin account:
 
-   ```powershell
-   .\.venv\Scripts\python.exe backend/scripts/import_data.py stock
-   .\.venv\Scripts\python.exe backend/scripts/import_data.py olist
-   .\.venv\Scripts\python.exe backend/scripts/import_data.py synthetic
-   ```
+```powershell
+.\.venv\Scripts\python.exe backend/scripts/init_admin.py
+```
 
-4. 启动最小 FastAPI 后端：
+Import a local trading file from the command line:
 
-   ```powershell
-   .\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --reload
-   ```
+```powershell
+.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_run --asset-class stock
+```
 
-5. 访问最小接口：
-   - `GET /api/health`
-   - `POST /api/imports/stocks/akshare`
-   - `POST /api/imports/ecommerce/olist`
-   - `POST /api/imports/ecommerce/synthetic`
-   - `GET /api/imports/runs`
-   - `GET /api/stocks/daily-prices`
-   - `GET /api/commerce/orders`
-   - `GET /api/commerce/products`
+Export compatibility requirements:
 
-## 关键文档
+```powershell
+.\.venv\Scripts\python.exe backend/scripts/export_requirements.py
+```
 
-- `docs/python-environment.md`
-- `docs/environment-baseline.md`
-- `docs/data-source-strategy.md`
+## Verification
 
-## 说明
+Backend:
 
-- 根目录 `version-description.txt` 用于保留本机环境检查记录。
-- 真正的项目运行配置模板为 `.env.template`，实际启用时再复制为 `.env`。
-- `backend/requirements.txt` 与 `backend/requirements-optional.txt` 现在是兼容文件，主维护入口已经转到 `pyproject.toml`。
-- `data/` 目录仍然用于原始数据和处理结果落盘，且默认被 Git 忽略。
+```powershell
+.\.venv\Scripts\python.exe backend/tests/test_database_pipeline.py
+.\.venv\Scripts\python.exe backend/tests/test_algo_trading.py
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm run build
+```

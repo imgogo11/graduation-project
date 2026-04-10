@@ -1,11 +1,3 @@
-# 作用:
-# - 这是数据库导入脚本的命令行入口，用来把已准备好的 manifest 批量导入到当前配置的数据库中。
-# - 当前支持 `stock`、`olist`、`synthetic` 三类数据源。
-# 关联文件:
-# - 直接依赖 backend/scripts/_bootstrap.py 准备 backend 导入路径。
-# - 直接调用 backend/app/services/imports.py 中的 ImportService。
-# - 默认 manifest 路径来自 backend/app/core/config.py。
-#
 from __future__ import annotations
 
 import argparse
@@ -17,34 +9,53 @@ ensure_backend_on_path()
 
 from app.core.config import get_settings
 from app.core.database import get_session_factory
+from app.repositories.users import UserRepository
 from app.services.imports import ImportService
 
 
 def main() -> int:
     settings = get_settings()
-    parser = argparse.ArgumentParser(description="Import prepared manifests into the configured database.")
+    parser = argparse.ArgumentParser(description="Import a local trading CSV/XLSX file into the configured database.")
+    parser.add_argument("--file-path", required=True, help="Path to the local trading CSV/XLSX file")
+    parser.add_argument("--dataset-name", required=True, help="Display name for the imported dataset")
     parser.add_argument(
-        "dataset",
-        choices=["stock", "olist", "synthetic"],
-        help="Which prepared dataset manifest to import",
+        "--asset-class",
+        choices=["stock", "commodity"],
+        required=True,
+        help="Logical asset class for the uploaded file",
     )
-    parser.add_argument("--manifest-path", default="", help="Optional manifest path override")
+    parser.add_argument(
+        "--username",
+        default=settings.admin_username,
+        help="Existing username that should own the imported run",
+    )
     args = parser.parse_args()
 
-    manifest_path = Path(args.manifest_path).expanduser().resolve() if args.manifest_path else None
-    service = ImportService()
+    file_path = Path(args.file_path).expanduser().resolve()
+    if not file_path.exists():
+        raise FileNotFoundError(f"Trading file not found: {file_path}")
+
     session = get_session_factory()()
+    service = ImportService()
     try:
-        if args.dataset == "stock":
-            run = service.import_stock_manifest(session, manifest_path or settings.default_stock_manifest)
-        elif args.dataset == "olist":
-            run = service.import_olist_manifest(session, manifest_path or settings.default_olist_manifest)
-        else:
-            run = service.import_synthetic_manifest(session, manifest_path or settings.default_synthetic_manifest)
+        user = UserRepository.get_by_username(session, args.username.strip().lower())
+        if user is None:
+            raise ValueError(f"User not found: {args.username}")
+        run = service.import_uploaded_file(
+            session,
+            owner=user,
+            dataset_name=args.dataset_name,
+            asset_class=args.asset_class,
+            original_file_name=file_path.name,
+            file_bytes=file_path.read_bytes(),
+        )
     finally:
         session.close()
 
-    print(f"Import run {run.id} finished with status={run.status} dataset={run.dataset_name}")
+    print(
+        f"Import run {run.id} finished with status={run.status} "
+        f"dataset={run.dataset_name} owner_user_id={run.owner_user_id}"
+    )
     return 0
 
 

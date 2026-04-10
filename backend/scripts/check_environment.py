@@ -1,11 +1,3 @@
-# 作用:
-# - 这是项目环境检查脚本，用来验证当前解释器、项目 .venv、系统命令和核心 Python 依赖
-#   是否满足当前“数据接入 + 数据库优先后端骨架”阶段的运行前提。
-# 关联文件:
-# - 不直接导入业务模块，但会检查 stock.py、demo_crawler.py、ecommerce_synthetic.py、
-#   import_data.py、alembic 迁移链路所依赖的核心包是否安装完成。
-# - 通常作为运行 backend/scripts 下其他脚本、启动迁移或启动最小 FastAPI 后端之前的第一步检查工具。
-#
 from __future__ import annotations
 
 import argparse
@@ -38,16 +30,18 @@ COMMANDS = [
 
 CORE_PACKAGES = [
     "fastapi",
-    "akshare",
-    "pybind11",
-    "beautifulsoup4",
+    "sqlalchemy",
+    "pydantic",
     "pandas",
-    "requests",
+    "python-multipart",
+    "openpyxl",
+    "pybind11",
+    "python-dotenv",
     "alembic",
     "psycopg",
     "uvicorn",
+    "httpx",
 ]
-OPTIONAL_PACKAGES = ["tushare", "scrapy"]
 
 
 def _run_command(command: list[str]) -> tuple[bool, str]:
@@ -84,7 +78,7 @@ def _uses_project_venv() -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check the MVP environment baseline.")
+    parser = argparse.ArgumentParser(description="Check the local environment for the unified trading system.")
     parser.add_argument(
         "--strict",
         action="store_true",
@@ -130,17 +124,11 @@ def main() -> int:
             failures += 1
 
     print()
-    print("== Optional Python packages ==")
-    for package in OPTIONAL_PACKAGES:
-        ok, version = _package_version(package)
-        print(f"[{_status(ok)}] {package:<16} {version}")
-
-    print()
     print("Notes:")
     print("- version-description.txt stores the local machine/version checklist.")
     print("- Use .env.template as the runtime template, and copy it to .env when needed.")
     print("- Python 3.13 is the default project interpreter for the .venv workflow.")
-    print("- If compatibility issues appear later, switch the interpreter version and rerun uv sync.")
+    print("- The project now keeps only the user-upload trading workflow.")
 
     if args.strict and failures:
         return 1

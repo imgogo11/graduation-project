@@ -1,40 +1,22 @@
-# 作用:
-# - 这是数据导入服务模块，用来编排 manifest 读取、导入记录写入、CSV 解析和 ORM 批量入库流程。
-# - 当前覆盖 AkShare 股票快照、Olist 电商数据、Synthetic 电商数据三条导入链路。
-# 关联文件:
-# - 被 backend/app/api/routes/imports.py 和 backend/scripts/import_data.py 直接调用。
-# - 依赖 backend/app/repositories/imports.py、stocks.py 以及 backend/app/models/ 中的 ORM 实体。
-# - 对应集成测试位于 backend/tests/test_database_pipeline.py。
-#
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-import json
 from pathlib import Path
+import re
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import delete, insert
+from sqlalchemy import insert
 from sqlalchemy.orm import Session
 
-from app.models import (
-    Customer,
-    ImportRun,
-    Order,
-    OrderItem,
-    Payment,
-    Product,
-    ProductPriceHistory,
-    Review,
-    Seller,
-    StockDailyPrice,
-    UserEvent,
-)
+from app.core.config import get_settings
+from app.models import ImportRun, TradingRecord, User, utc_now
 from app.repositories.imports import ImportRunRepository
-from app.repositories.stocks import StockRepository
+from app.repositories.users import UserRepository
+from app.schemas.trading import ImportOwnerSummaryRead, ImportRunRead, ImportStatsRead, ImportMonthlyStatRead
 
 
 class ImportExecutionError(RuntimeError):
@@ -43,99 +25,99 @@ class ImportExecutionError(RuntimeError):
         super().__init__(message)
 
 
+class ImportValidationError(ValueError):
+    """Raised when an uploaded trading file cannot be parsed or validated."""
+
+
+REQUIRED_COLUMNS = [
+    "instrument_code",
+    "instrument_name",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+]
+NUMERIC_COLUMNS = ["open", "high", "low", "close", "volume", "amount"]
+ASSET_CLASSES = {"stock", "commodity"}
+DECIMAL_QUANTUM = Decimal("0.0001")
+
+
 @dataclass(slots=True)
-class ManifestBundle:
-    path: Path
-    payload: dict[str, Any]
-
-    @property
-    def dataset_name(self) -> str:
-        return str(self.payload["dataset_name"])
-
-    @property
-    def source_type(self) -> str:
-        return str(self.payload["source_type"])
-
-    @property
-    def source_name(self) -> str:
-        return str(self.payload["source_name"])
-
-    @property
-    def source_uri(self) -> str | None:
-        value = self.payload.get("source_uri")
-        return str(value) if value else None
-
-    @property
-    def record_count(self) -> int:
-        return int(self.payload.get("record_count", 0))
-
-    @property
-    def created_at(self) -> datetime:
-        return datetime.fromisoformat(str(self.payload["created_at"]))
-
-    @property
-    def columns(self) -> list[str]:
-        return list(self.payload.get("columns", []))
-
-    @property
-    def metadata(self) -> dict[str, Any]:
-        value = self.payload.get("metadata", {})
-        return value if isinstance(value, dict) else {}
-
-    @property
-    def artifacts(self) -> list[dict[str, Any]]:
-        return list(self.payload.get("artifacts", []))
+class NormalizedTradingDataset:
+    rows: list[dict[str, Any]]
+    columns: list[str]
+    row_count: int
 
 
 class ImportService:
-    def import_stock_manifest(self, session: Session, manifest_path: Path) -> ImportRun:
-        manifest = self._load_manifest(manifest_path)
-        return self._execute_import(session, manifest, self._load_stock_dataset)
-
-    def import_olist_manifest(self, session: Session, manifest_path: Path) -> ImportRun:
-        manifest = self._load_manifest(manifest_path)
-        return self._execute_import(session, manifest, self._load_olist_dataset)
-
-    def import_synthetic_manifest(self, session: Session, manifest_path: Path) -> ImportRun:
-        manifest = self._load_manifest(manifest_path)
-        return self._execute_import(session, manifest, self._load_synthetic_dataset)
-
-    def _execute_import(
+    def import_uploaded_file(
         self,
         session: Session,
-        manifest: ManifestBundle,
-        loader: Callable[[Session, ManifestBundle, int], None],
+        *,
+        owner: User,
+        dataset_name: str,
+        asset_class: str,
+        original_file_name: str,
+        file_bytes: bytes,
     ) -> ImportRun:
+        cleaned_dataset_name = dataset_name.strip()
+        if not cleaned_dataset_name:
+            raise ImportValidationError("Dataset name is required")
+
+        normalized_asset_class = asset_class.strip().lower()
+        if normalized_asset_class not in ASSET_CLASSES:
+            raise ImportValidationError("asset_class must be one of: stock, commodity")
+
+        safe_file_name = self._sanitize_file_name(original_file_name)
+        file_format = self._resolve_file_format(safe_file_name)
         run = ImportRunRepository.create_run(
             session,
-            dataset_name=manifest.dataset_name,
-            source_type=manifest.source_type,
-            source_name=manifest.source_name,
-            source_uri=manifest.source_uri,
-            metadata_json={"manifest_path": str(manifest.path), **manifest.metadata},
+            owner_user_id=owner.id,
+            dataset_name=cleaned_dataset_name,
+            asset_class=normalized_asset_class,
+            source_type="upload",
+            source_name="user.upload",
+            source_uri=None,
+            original_file_name=safe_file_name,
+            file_format=file_format,
+            metadata_json={
+                "required_columns": REQUIRED_COLUMNS,
+                "template_version": "trading-v1",
+            },
         )
+
         try:
+            upload_path = self._build_upload_path(owner.id, run.id, safe_file_name)
+            upload_path.parent.mkdir(parents=True, exist_ok=True)
+            upload_path.write_bytes(file_bytes)
+
+            dataset = self._load_and_normalize_dataset(upload_path, file_format)
             manifest_record = ImportRunRepository.add_manifest(
                 session,
                 import_run_id=run.id,
-                manifest_path=str(manifest.path),
-                created_at=manifest.created_at,
-                record_count=manifest.record_count,
-                columns_json=manifest.columns,
-                metadata_json=manifest.metadata,
+                manifest_path=str(upload_path),
+                created_at=utc_now(),
+                record_count=dataset.row_count,
+                columns_json=dataset.columns,
+                metadata_json={
+                    "asset_class": normalized_asset_class,
+                    "file_format": file_format,
+                },
             )
-            for artifact in manifest.artifacts:
-                ImportRunRepository.add_artifact(
-                    session,
-                    import_run_id=run.id,
-                    manifest_id=manifest_record.id,
-                    name=str(artifact["name"]),
-                    path=str(artifact["path"]),
-                    row_count=int(artifact.get("rows", 0)),
-                    columns_json=list(artifact.get("columns", [])),
-                )
-            loader(session, manifest, run.id)
-            ImportRunRepository.mark_completed(session, run, record_count=manifest.record_count)
+            ImportRunRepository.add_artifact(
+                session,
+                import_run_id=run.id,
+                manifest_id=manifest_record.id,
+                name="original_upload",
+                path=str(upload_path),
+                row_count=dataset.row_count,
+                columns_json=dataset.columns,
+            )
+            self._bulk_insert_records(session, run_id=run.id, rows=dataset.rows)
+            ImportRunRepository.mark_completed(session, run, record_count=dataset.row_count)
             session.commit()
             session.refresh(run)
             return run
@@ -144,434 +126,203 @@ class ImportService:
             ImportRunRepository.mark_failed(session, run_id=run.id, error_message=str(exc))
             raise ImportExecutionError(run.id, str(exc)) from exc
 
-    def _load_stock_dataset(self, session: Session, manifest: ManifestBundle, run_id: int) -> None:
-        session.execute(delete(StockDailyPrice).where(StockDailyPrice.source_dataset == manifest.dataset_name))
+    def list_runs(
+        self,
+        session: Session,
+        *,
+        owner_user_id: int | None,
+        limit: int,
+    ) -> list[ImportRunRead]:
+        runs = ImportRunRepository.list_runs(session, owner_user_id=owner_user_id, limit=limit)
+        return self._serialize_runs(session, runs)
 
-        symbol_rows: list[dict[str, str | int | None]] = []
-        price_rows: list[dict[str, Any]] = []
-        for artifact in manifest.artifacts:
-            frame = pd.read_csv(Path(str(artifact["path"])), dtype={"symbol": str, "股票代码": str})
-            if "股票代码" in frame.columns:
-                frame = frame.drop(columns=["股票代码"])
-            if frame.empty:
-                continue
+    def serialize_run(self, session: Session, run: ImportRun) -> ImportRunRead:
+        return self._serialize_runs(session, [run])[0]
 
-            symbol = str(frame.iloc[0]["symbol"])
-            symbol_rows.append(
-                {
-                    "symbol": symbol,
-                    "market": self._infer_stock_market(symbol),
-                    "last_import_run_id": run_id,
-                }
+    def build_stats(
+        self,
+        session: Session,
+        *,
+        owner_user_id: int | None,
+    ) -> ImportStatsRead:
+        runs = ImportRunRepository.list_all_visible_runs(session, owner_user_id=owner_user_id)
+        username_map = self._load_username_map(session, runs)
+        monthly_imports: dict[str, dict[str, int]] = defaultdict(lambda: {"runs": 0, "records": 0})
+        owner_summaries: dict[int, dict[str, int]] = defaultdict(lambda: {"runs": 0, "records": 0})
+
+        completed_runs = 0
+        failed_runs = 0
+        total_records = 0
+        dataset_names: set[str] = set()
+
+        for run in runs:
+            dataset_names.add(run.dataset_name)
+            month_key = run.started_at.strftime("%Y-%m")
+            monthly_imports[month_key]["runs"] += 1
+            monthly_imports[month_key]["records"] += run.record_count or 0
+
+            if run.owner_user_id is not None:
+                owner_summaries[run.owner_user_id]["runs"] += 1
+                owner_summaries[run.owner_user_id]["records"] += run.record_count or 0
+
+            total_records += run.record_count or 0
+            if run.status == "completed":
+                completed_runs += 1
+            elif run.status == "failed":
+                failed_runs += 1
+
+        monthly_points = [
+            ImportMonthlyStatRead(month=month, runs=payload["runs"], records=payload["records"])
+            for month, payload in sorted(monthly_imports.items())
+        ]
+        owner_points = [
+            ImportOwnerSummaryRead(
+                owner_user_id=owner_id,
+                owner_username=username_map.get(owner_id),
+                runs=payload["runs"],
+                records=payload["records"],
             )
-            for raw in frame.to_dict(orient="records"):
-                price_rows.append(
-                    {
-                        "symbol": str(raw["symbol"]),
-                        "trade_date": self._parse_date(raw.get("trade_date")),
-                        "open": self._to_decimal(raw.get("open")) or Decimal("0"),
-                        "close": self._to_decimal(raw.get("close")) or Decimal("0"),
-                        "high": self._to_decimal(raw.get("high")) or Decimal("0"),
-                        "low": self._to_decimal(raw.get("low")) or Decimal("0"),
-                        "volume": self._to_decimal(raw.get("volume")) or Decimal("0"),
-                        "amount": self._to_decimal(raw.get("amount")),
-                        "amplitude": self._to_decimal(raw.get("amplitude")),
-                        "pct_change": self._to_decimal(raw.get("pct_change")),
-                        "change": self._to_decimal(raw.get("change")),
-                        "turnover": self._to_decimal(raw.get("turnover")),
-                        "adjust": str(raw.get("adjust", "none") or "none"),
-                        "source_type": str(raw.get("source_type") or manifest.source_type),
-                        "source_dataset": manifest.dataset_name,
-                        "import_run_id": run_id,
-                    }
-                )
-
-        StockRepository.ensure_symbols(session, symbols=symbol_rows)
-        self._bulk_insert(session, StockDailyPrice, price_rows)
-
-    def _load_olist_dataset(self, session: Session, manifest: ManifestBundle, run_id: int) -> None:
-        self._delete_existing_ecommerce_dataset(session, manifest.dataset_name)
-        artifact_map = {str(item["name"]): Path(str(item["path"])) for item in manifest.artifacts}
-
-        translations: dict[str, str] = {}
-        if "category_translation" in artifact_map:
-            translation_frame = pd.read_csv(artifact_map["category_translation"])
-            translations = {
-                str(row["product_category_name"]): str(row["product_category_name_english"])
-                for row in translation_frame.to_dict(orient="records")
-            }
-
-        customers = pd.read_csv(artifact_map["customers"])
-        sellers = pd.read_csv(artifact_map["sellers"])
-        products = pd.read_csv(artifact_map["products"])
-        orders = pd.read_csv(artifact_map["orders"])
-        order_items = pd.read_csv(artifact_map["order_items"])
-        payments = pd.read_csv(artifact_map["payments"])
-        reviews = pd.read_csv(artifact_map["reviews"])
-
-        customer_rows = [
-            {
-                "customer_id": str(row["customer_id"]),
-                "customer_unique_id": self._to_str(row.get("customer_unique_id")),
-                "customer_name": None,
-                "customer_city": self._to_str(row.get("customer_city")),
-                "customer_state": self._to_str(row.get("customer_state")),
-                "customer_zip_code_prefix": self._to_str(row.get("customer_zip_code_prefix")),
-                "signup_at": None,
-                "source_type": manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in customers.to_dict(orient="records")
+            for owner_id, payload in sorted(owner_summaries.items(), key=lambda item: item[0])
         ]
-        seller_rows = [
-            {
-                "seller_id": str(row["seller_id"]),
-                "seller_name": None,
-                "seller_city": self._to_str(row.get("seller_city")),
-                "seller_state": self._to_str(row.get("seller_state")),
-                "seller_zip_code_prefix": self._to_str(row.get("seller_zip_code_prefix")),
-                "source_type": manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in sellers.to_dict(orient="records")
-        ]
-        product_rows = [
-            {
-                "product_id": str(row["product_id"]),
-                "seller_id": None,
-                "product_name": None,
-                "product_category_name": self._to_str(row.get("product_category_name")),
-                "product_category_name_english": translations.get(str(row.get("product_category_name"))),
-                "base_price": None,
-                "product_name_length": self._to_int(row.get("product_name_lenght")),
-                "product_description_length": self._to_int(row.get("product_description_lenght")),
-                "product_photos_qty": self._to_int(row.get("product_photos_qty")),
-                "product_weight_g": self._to_decimal(row.get("product_weight_g")),
-                "product_length_cm": self._to_decimal(row.get("product_length_cm")),
-                "product_height_cm": self._to_decimal(row.get("product_height_cm")),
-                "product_width_cm": self._to_decimal(row.get("product_width_cm")),
-                "created_at": None,
-                "source_type": manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in products.to_dict(orient="records")
-        ]
-        order_rows = [
-            {
-                "order_id": str(row["order_id"]),
-                "customer_id": self._to_str(row.get("customer_id")),
-                "order_status": self._to_str(row.get("order_status")),
-                "order_purchase_timestamp": self._parse_datetime(row.get("order_purchase_timestamp")),
-                "order_approved_at": self._parse_datetime(row.get("order_approved_at")),
-                "order_delivered_carrier_date": self._parse_datetime(row.get("order_delivered_carrier_date")),
-                "order_delivered_customer_date": self._parse_datetime(row.get("order_delivered_customer_date")),
-                "order_delivered_at": self._parse_datetime(row.get("order_delivered_customer_date")),
-                "order_estimated_delivery_date": self._parse_datetime(row.get("order_estimated_delivery_date")),
-                "total_amount": None,
-                "source_type": manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in orders.to_dict(orient="records")
-        ]
+        return ImportStatsRead(
+            total_runs=len(runs),
+            completed_runs=completed_runs,
+            failed_runs=failed_runs,
+            total_records=total_records,
+            active_datasets=len(dataset_names),
+            monthly_imports=monthly_points,
+            owner_summaries=owner_points if owner_user_id is None else [],
+        )
 
-        order_item_rows: list[dict[str, Any]] = []
-        for row in order_items.to_dict(orient="records"):
-            item_index = self._to_int(row.get("order_item_id"))
-            unit_price = self._to_decimal(row.get("price"))
-            freight_value = self._to_decimal(row.get("freight_value"))
-            order_item_rows.append(
-                {
-                    "order_item_id": f"{row['order_id']}-{item_index or 0:02d}",
-                    "order_id": str(row["order_id"]),
-                    "product_id": self._to_str(row.get("product_id")),
-                    "seller_id": self._to_str(row.get("seller_id")),
-                    "source_item_index": item_index,
-                    "shipping_limit_date": self._parse_datetime(row.get("shipping_limit_date")),
-                    "quantity": 1,
-                    "unit_price": unit_price,
-                    "freight_value": freight_value,
-                    "line_amount": self._sum_decimals(unit_price, freight_value),
-                    "source_type": manifest.source_type,
-                    "source_dataset": manifest.dataset_name,
-                    "import_run_id": run_id,
-                }
+    def delete_run(self, session: Session, *, run: ImportRun) -> ImportRun:
+        return ImportRunRepository.soft_delete(session, run)
+
+    def _serialize_runs(self, session: Session, runs: list[ImportRun]) -> list[ImportRunRead]:
+        username_map = self._load_username_map(session, runs)
+        return [
+            ImportRunRead(
+                id=run.id,
+                owner_user_id=run.owner_user_id,
+                owner_username=username_map.get(run.owner_user_id),
+                dataset_name=run.dataset_name,
+                asset_class=run.asset_class,
+                source_type=run.source_type,
+                source_name=run.source_name,
+                original_file_name=run.original_file_name,
+                file_format=run.file_format,
+                status=run.status,
+                started_at=run.started_at,
+                completed_at=run.completed_at,
+                record_count=run.record_count,
+                error_message=run.error_message,
+                deleted_at=run.deleted_at,
             )
+            for run in runs
+        ]
 
-        payment_rows: list[dict[str, Any]] = []
-        for row in payments.to_dict(orient="records"):
-            sequence = self._to_int(row.get("payment_sequential")) or 0
-            payment_rows.append(
-                {
-                    "payment_id": f"{row['order_id']}-{sequence:02d}",
-                    "order_id": str(row["order_id"]),
-                    "payment_sequential": sequence,
-                    "payment_type": self._to_str(row.get("payment_type")),
-                    "payment_installments": self._to_int(row.get("payment_installments")),
-                    "payment_value": self._to_decimal(row.get("payment_value")),
-                    "source_type": manifest.source_type,
-                    "source_dataset": manifest.dataset_name,
-                    "import_run_id": run_id,
-                }
+    def _load_username_map(self, session: Session, runs: list[ImportRun]) -> dict[int, str]:
+        owner_ids = sorted({run.owner_user_id for run in runs if run.owner_user_id is not None})
+        result: dict[int, str] = {}
+        for owner_id in owner_ids:
+            user = UserRepository.get_by_id(session, owner_id)
+            if user is not None:
+                result[user.id] = user.username
+        return result
+
+    def _load_and_normalize_dataset(self, path: Path, file_format: str) -> NormalizedTradingDataset:
+        if file_format == "csv":
+            frame = pd.read_csv(path)
+        else:
+            frame = pd.read_excel(path, engine="openpyxl")
+
+        if frame.empty:
+            raise ImportValidationError("Uploaded file does not contain any rows")
+
+        canonical_columns: dict[str, str] = {}
+        rename_map: dict[str, str] = {}
+        for column in frame.columns:
+            normalized = str(column).strip().lower()
+            if normalized in REQUIRED_COLUMNS and normalized not in canonical_columns:
+                canonical_columns[normalized] = str(column)
+                rename_map[str(column)] = normalized
+
+        missing_columns = [column for column in REQUIRED_COLUMNS if column not in canonical_columns]
+        if missing_columns:
+            raise ImportValidationError(f"Missing required columns: {', '.join(missing_columns)}")
+
+        normalized = frame.rename(columns=rename_map)[REQUIRED_COLUMNS].copy()
+        normalized["instrument_code"] = normalized["instrument_code"].map(self._normalize_text)
+        normalized["instrument_name"] = normalized["instrument_name"].map(self._normalize_nullable_text)
+
+        if normalized["instrument_code"].isna().any():
+            raise ImportValidationError("instrument_code contains empty values")
+
+        parsed_dates = pd.to_datetime(normalized["trade_date"], errors="coerce")
+        if parsed_dates.isna().any():
+            raise ImportValidationError("trade_date contains invalid values")
+        normalized["trade_date"] = parsed_dates.dt.date
+
+        for column in NUMERIC_COLUMNS:
+            parsed = pd.to_numeric(normalized[column], errors="coerce")
+            if parsed.isna().any():
+                raise ImportValidationError(f"{column} contains invalid numeric values")
+            normalized[column] = parsed
+
+        duplicate_mask = normalized.duplicated(subset=["instrument_code", "trade_date"], keep=False)
+        if duplicate_mask.any():
+            duplicates = normalized.loc[duplicate_mask, ["instrument_code", "trade_date"]].drop_duplicates()
+            preview = ", ".join(
+                f"{row.instrument_code}@{row.trade_date.isoformat()}" for row in duplicates.head(3).itertuples()
             )
+            raise ImportValidationError(f"Duplicate instrument_code/trade_date rows found: {preview}")
 
-        review_rows = [
+        normalized = normalized.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+        rows = [
             {
-                "review_id": self._to_str(row.get("review_id")),
-                "order_id": str(row["order_id"]),
-                "review_score": self._to_int(row.get("review_score")),
-                "review_comment_title": self._to_str(row.get("review_comment_title")),
-                "review_comment_message": self._to_str(row.get("review_comment_message")),
-                "review_creation_date": self._parse_datetime(row.get("review_creation_date")),
-                "review_answer_timestamp": self._parse_datetime(row.get("review_answer_timestamp")),
-                "source_type": manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
+                "instrument_code": str(row["instrument_code"]),
+                "instrument_name": row["instrument_name"],
+                "trade_date": row["trade_date"],
+                "open": self._to_decimal(row["open"]),
+                "high": self._to_decimal(row["high"]),
+                "low": self._to_decimal(row["low"]),
+                "close": self._to_decimal(row["close"]),
+                "volume": self._to_decimal(row["volume"]),
+                "amount": self._to_decimal(row["amount"]),
             }
-            for row in reviews.to_dict(orient="records")
+            for row in normalized.to_dict(orient="records")
         ]
+        return NormalizedTradingDataset(rows=rows, columns=REQUIRED_COLUMNS, row_count=len(rows))
 
-        self._bulk_insert(session, Seller, seller_rows)
-        self._bulk_insert(session, Customer, customer_rows)
-        self._bulk_insert(session, Product, product_rows)
-        self._bulk_insert(session, Order, order_rows)
-        self._bulk_insert(session, OrderItem, order_item_rows)
-        self._bulk_insert(session, Payment, payment_rows)
-        self._bulk_insert(session, Review, review_rows)
-        self._update_order_totals(session, dataset_name=manifest.dataset_name)
-
-    def _load_synthetic_dataset(self, session: Session, manifest: ManifestBundle, run_id: int) -> None:
-        self._delete_existing_ecommerce_dataset(session, manifest.dataset_name)
-        artifact_map = {str(item["name"]): Path(str(item["path"])) for item in manifest.artifacts}
-
-        customers = pd.read_csv(artifact_map["customers"])
-        sellers = pd.read_csv(artifact_map["sellers"])
-        products = pd.read_csv(artifact_map["products"])
-        price_history = pd.read_csv(artifact_map["product_price_history"])
-        orders = pd.read_csv(artifact_map["orders"])
-        order_items = pd.read_csv(artifact_map["order_items"])
-        payments = pd.read_csv(artifact_map["payments"])
-        reviews = pd.read_csv(artifact_map["reviews"])
-        user_events = pd.read_csv(artifact_map["user_events"])
-
-        customer_rows = [
-            {
-                "customer_id": str(row["customer_id"]),
-                "customer_unique_id": None,
-                "customer_name": self._to_str(row.get("customer_name")),
-                "customer_city": self._to_str(row.get("customer_city")),
-                "customer_state": self._to_str(row.get("customer_state")),
-                "customer_zip_code_prefix": None,
-                "signup_at": self._parse_datetime(row.get("signup_at")),
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in customers.to_dict(orient="records")
-        ]
-        seller_rows = [
-            {
-                "seller_id": str(row["seller_id"]),
-                "seller_name": self._to_str(row.get("seller_name")),
-                "seller_city": self._to_str(row.get("seller_city")),
-                "seller_state": self._to_str(row.get("seller_state")),
-                "seller_zip_code_prefix": None,
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in sellers.to_dict(orient="records")
-        ]
-        product_rows = [
-            {
-                "product_id": str(row["product_id"]),
-                "seller_id": self._to_str(row.get("seller_id")),
-                "product_name": self._to_str(row.get("product_name")),
-                "product_category_name": self._to_str(row.get("category")),
-                "product_category_name_english": self._to_str(row.get("category")),
-                "base_price": self._to_decimal(row.get("base_price")),
-                "product_name_length": None,
-                "product_description_length": None,
-                "product_photos_qty": None,
-                "product_weight_g": None,
-                "product_length_cm": None,
-                "product_height_cm": None,
-                "product_width_cm": None,
-                "created_at": self._parse_datetime(row.get("created_at")),
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in products.to_dict(orient="records")
-        ]
-        price_rows = [
-            {
-                "price_event_id": str(row["price_event_id"]),
-                "product_id": str(row["product_id"]),
-                "effective_at": self._parse_datetime(row.get("effective_at")) or datetime.min,
-                "price": self._to_decimal(row.get("price")) or Decimal("0"),
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in price_history.to_dict(orient="records")
-        ]
-        order_rows = [
-            {
-                "order_id": str(row["order_id"]),
-                "customer_id": self._to_str(row.get("customer_id")),
-                "order_status": self._to_str(row.get("order_status")),
-                "order_purchase_timestamp": self._parse_datetime(row.get("order_purchase_timestamp")),
-                "order_approved_at": self._parse_datetime(row.get("order_approved_at")),
-                "order_delivered_carrier_date": None,
-                "order_delivered_customer_date": self._parse_datetime(row.get("order_delivered_at")),
-                "order_delivered_at": self._parse_datetime(row.get("order_delivered_at")),
-                "order_estimated_delivery_date": None,
-                "total_amount": self._to_decimal(row.get("total_amount")),
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in orders.to_dict(orient="records")
-        ]
-        order_item_rows = [
-            {
-                "order_item_id": str(row["order_item_id"]),
-                "order_id": str(row["order_id"]),
-                "product_id": self._to_str(row.get("product_id")),
-                "seller_id": self._to_str(row.get("seller_id")),
-                "source_item_index": None,
-                "shipping_limit_date": None,
-                "quantity": self._to_int(row.get("quantity")),
-                "unit_price": self._to_decimal(row.get("unit_price")),
-                "freight_value": self._to_decimal(row.get("freight_value")),
-                "line_amount": self._to_decimal(row.get("line_amount")),
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in order_items.to_dict(orient="records")
-        ]
-        payment_rows = [
-            {
-                "payment_id": str(row["payment_id"]),
-                "order_id": str(row["order_id"]),
-                "payment_sequential": None,
-                "payment_type": self._to_str(row.get("payment_type")),
-                "payment_installments": self._to_int(row.get("payment_installments")),
-                "payment_value": self._to_decimal(row.get("payment_value")),
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in payments.to_dict(orient="records")
-        ]
-        review_rows = [
-            {
-                "review_id": self._to_str(row.get("review_id")),
-                "order_id": str(row["order_id"]),
-                "review_score": self._to_int(row.get("review_score")),
-                "review_comment_title": self._to_str(row.get("review_comment_title")),
-                "review_comment_message": self._to_str(row.get("review_comment_message")),
-                "review_creation_date": None,
-                "review_answer_timestamp": None,
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in reviews.to_dict(orient="records")
-        ]
-        event_rows = [
-            {
-                "event_id": str(row["event_id"]),
-                "customer_id": self._to_str(row.get("customer_id")),
-                "event_type": str(row["event_type"]),
-                "product_id": self._to_str(row.get("product_id")),
-                "order_id": self._to_str(row.get("order_id")),
-                "occurred_at": self._parse_datetime(row.get("occurred_at")) or datetime.min,
-                "source_type": self._to_str(row.get("source_type")) or manifest.source_type,
-                "source_dataset": manifest.dataset_name,
-                "import_run_id": run_id,
-            }
-            for row in user_events.to_dict(orient="records")
-        ]
-
-        self._bulk_insert(session, Seller, seller_rows)
-        self._bulk_insert(session, Customer, customer_rows)
-        self._bulk_insert(session, Product, product_rows)
-        self._bulk_insert(session, ProductPriceHistory, price_rows)
-        self._bulk_insert(session, Order, order_rows)
-        self._bulk_insert(session, OrderItem, order_item_rows)
-        self._bulk_insert(session, Payment, payment_rows)
-        self._bulk_insert(session, Review, review_rows)
-        self._bulk_insert(session, UserEvent, event_rows)
-
-    def _delete_existing_ecommerce_dataset(self, session: Session, dataset_name: str) -> None:
-        for model in [UserEvent, Review, Payment, OrderItem, ProductPriceHistory, Order, Product, Customer, Seller]:
-            session.execute(delete(model).where(model.source_dataset == dataset_name))
-
-    def _update_order_totals(self, session: Session, *, dataset_name: str) -> None:
-        orders = session.query(Order).filter(Order.source_dataset == dataset_name).all()
-        item_totals: dict[str, Decimal] = {}
-        for row in session.query(OrderItem).filter(OrderItem.source_dataset == dataset_name).all():
-            if row.line_amount is None:
-                continue
-            item_totals[row.order_id] = item_totals.get(row.order_id, Decimal("0")) + Decimal(row.line_amount)
-        for order in orders:
-            order.total_amount = item_totals.get(order.order_id)
-            session.add(order)
-
-    def _bulk_insert(self, session: Session, model: type[Any], rows: list[dict[str, Any]], chunk_size: int = 1000) -> None:
-        if not rows:
-            return
+    def _bulk_insert_records(self, session: Session, *, run_id: int, rows: list[dict[str, Any]], chunk_size: int = 1000) -> None:
         for start in range(0, len(rows), chunk_size):
             chunk = rows[start : start + chunk_size]
-            session.execute(insert(model), chunk)
+            payload = [{"import_run_id": run_id, **row} for row in chunk]
+            session.execute(insert(TradingRecord), payload)
 
-    def _load_manifest(self, manifest_path: Path) -> ManifestBundle:
-        path = manifest_path.resolve()
-        if not path.exists():
-            raise FileNotFoundError(f"Manifest not found: {path}")
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        return ManifestBundle(path=path, payload=payload)
+    def _build_upload_path(self, owner_user_id: int, run_id: int, file_name: str) -> Path:
+        return get_settings().upload_root / "trading" / str(owner_user_id) / str(run_id) / file_name
 
-    def _infer_stock_market(self, symbol: str) -> str:
-        if symbol.startswith("6"):
-            return "SH"
-        return "SZ"
+    def _sanitize_file_name(self, file_name: str) -> str:
+        candidate = Path(file_name or "upload.csv").name
+        sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", candidate).strip("._")
+        return sanitized or "upload.csv"
 
-    def _to_str(self, value: Any) -> str | None:
+    def _resolve_file_format(self, file_name: str) -> str:
+        suffix = Path(file_name).suffix.lower()
+        if suffix == ".csv":
+            return "csv"
+        if suffix == ".xlsx":
+            return "xlsx"
+        raise ImportValidationError("Only .csv and .xlsx files are supported")
+
+    def _normalize_text(self, value: Any) -> str | None:
         if value is None or pd.isna(value):
             return None
         text = str(value).strip()
         return text or None
 
-    def _to_int(self, value: Any) -> int | None:
-        if value is None or pd.isna(value):
-            return None
-        return int(value)
+    def _normalize_nullable_text(self, value: Any) -> str | None:
+        return self._normalize_text(value)
 
-    def _to_decimal(self, value: Any) -> Decimal | None:
-        if value is None or pd.isna(value):
-            return None
-        return Decimal(str(value))
-
-    def _parse_datetime(self, value: Any) -> datetime | None:
-        if value is None or pd.isna(value):
-            return None
-        text = str(value).strip()
-        if not text:
-            return None
-        return pd.to_datetime(text).to_pydatetime()
-
-    def _parse_date(self, value: Any) -> date | None:
-        parsed = self._parse_datetime(value)
-        return parsed.date() if parsed else None
-
-    def _sum_decimals(self, left: Decimal | None, right: Decimal | None) -> Decimal | None:
-        if left is None and right is None:
-            return None
-        return (left or Decimal("0")) + (right or Decimal("0"))
+    def _to_decimal(self, value: Any) -> Decimal:
+        return Decimal(str(value)).quantize(DECIMAL_QUANTUM)

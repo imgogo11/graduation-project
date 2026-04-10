@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from .routes.algo import stocks as algo_stocks
-from .routes import commerce, health, imports, stocks
+from .routes.algo import trading as algo_trading
+from .routes import auth, health, imports, trading
 
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
+api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
-api_router.include_router(stocks.router, prefix="/stocks", tags=["stocks"])
-api_router.include_router(commerce.router, prefix="/commerce", tags=["commerce"])
-api_router.include_router(algo_stocks.router, prefix="/algo/stocks", tags=["algo-stocks"])
+api_router.include_router(trading.router, prefix="/trading", tags=["trading"])
+api_router.include_router(algo_trading.router, prefix="/algo/trading", tags=["algo-trading"])
