@@ -83,7 +83,11 @@ async def import_trading_file(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc.__cause__)) from exc
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
-    return service.serialize_run(session, run)
+    return service.serialize_run(
+        session,
+        run,
+        owner_user_id=_resolve_owner_scope(current_user, None),
+    )
 
 
 @router.delete("/runs/{run_id}", response_model=DeleteImportRunResponse)

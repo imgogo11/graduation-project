@@ -76,3 +76,42 @@ class TradingRepository:
         )
         rows = session.execute(stmt).all()
         return [(trade_date, amount) for trade_date, amount in rows]
+
+    @staticmethod
+    def list_volume_series(
+        session: Session,
+        *,
+        import_run_id: int,
+        instrument_code: str,
+    ) -> list[tuple[date, Decimal]]:
+        stmt = (
+            select(TradingRecord.trade_date, TradingRecord.volume)
+            .where(TradingRecord.import_run_id == import_run_id)
+            .where(TradingRecord.instrument_code == instrument_code)
+            .order_by(TradingRecord.trade_date.asc())
+        )
+        rows = session.execute(stmt).all()
+        return [(trade_date, volume) for trade_date, volume in rows]
+
+    @staticmethod
+    def list_joint_anomaly_rows(
+        session: Session,
+        *,
+        import_run_id: int,
+    ) -> list[tuple[str, str | None, date, Decimal, Decimal]]:
+        stmt = (
+            select(
+                TradingRecord.instrument_code,
+                TradingRecord.instrument_name,
+                TradingRecord.trade_date,
+                TradingRecord.close,
+                TradingRecord.volume,
+            )
+            .where(TradingRecord.import_run_id == import_run_id)
+            .order_by(TradingRecord.trade_date.asc(), TradingRecord.instrument_code.asc())
+        )
+        rows = session.execute(stmt).all()
+        return [
+            (instrument_code, instrument_name, trade_date, close_value, volume_value)
+            for instrument_code, instrument_name, trade_date, close_value, volume_value in rows
+        ]

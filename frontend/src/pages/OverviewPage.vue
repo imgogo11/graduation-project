@@ -260,7 +260,7 @@ onMounted(loadOverview);
       </template>
 
       <el-table v-if="importRuns.length" :data="importRuns" stripe>
-        <el-table-column prop="id" label="Run ID" width="90" />
+        <el-table-column prop="display_id" label="ID" width="90" />
         <el-table-column v-if="auth.isAdmin.value" prop="owner_username" label="Owner" min-width="140" />
         <el-table-column prop="dataset_name" label="Dataset" min-width="180" />
         <el-table-column prop="asset_class" label="Asset" width="110" />
@@ -286,7 +286,7 @@ onMounted(loadOverview);
       <EmptyState
         v-else
         title="还没有读取到导入记录"
-        description="先在统一交易分析页上传一份 CSV 或 XLSX 文件，这里就会开始累积历史导入记录。"
+        description="先在交易分析页面上传一份 CSV 或 XLSX 文件，这里就会开始累积历史导入记录。"
       />
     </PanelCard>
   </div>

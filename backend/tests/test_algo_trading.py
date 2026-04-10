@@ -54,7 +54,7 @@ def build_algo_frame() -> pd.DataFrame:
                 "high": 531.00,
                 "low": 526.00,
                 "close": 529.10,
-                "volume": 12990,
+                "volume": 13120,
                 "amount": 6936544,
             },
             {
@@ -70,6 +70,174 @@ def build_algo_frame() -> pd.DataFrame:
             },
         ]
     )
+
+
+def build_joint_anomaly_frame() -> pd.DataFrame:
+    dates = list(pd.date_range("2026-01-01", periods=30, freq="D"))
+    configs = {
+        "ALPHA": {
+            "name": "Alpha Asset",
+            "base_close": 100.0,
+            "daily_moves": [0.0030, -0.0010, 0.0040, 0.0005, -0.0020],
+            "shock_moves": {24: 0.0850, 27: 0.0600},
+            "volume_base": 1000.0,
+            "volume_step": 15.0,
+            "volume_spikes": {24: 4.2, 27: 3.4},
+        },
+        "BETA": {
+            "name": "Beta Asset",
+            "base_close": 82.0,
+            "daily_moves": [0.0015, 0.0020, -0.0007, 0.0011, -0.0010],
+            "shock_moves": {25: 0.0550},
+            "volume_base": 860.0,
+            "volume_step": 12.0,
+            "volume_spikes": {25: 3.7},
+        },
+        "GAMMA": {
+            "name": "Gamma Asset",
+            "base_close": 61.0,
+            "daily_moves": [-0.0010, 0.0025, 0.0010, -0.0008, 0.0018],
+            "shock_moves": {26: 0.0700},
+            "volume_base": 720.0,
+            "volume_step": 11.0,
+            "volume_spikes": {26: 4.0},
+        },
+    }
+
+    rows: list[dict[str, object]] = []
+    for instrument_code, config in configs.items():
+        previous_close = float(config["base_close"])
+        for index, trade_day in enumerate(dates):
+            if index == 0:
+                close_value = previous_close
+            else:
+                move = config["daily_moves"][index % len(config["daily_moves"])] + config["shock_moves"].get(index, 0.0)
+                close_value = previous_close * (1.0 + move)
+
+            open_value = previous_close if index > 0 else close_value * 0.998
+            high_value = max(open_value, close_value) * 1.01
+            low_value = min(open_value, close_value) * 0.99
+            volume_value = config["volume_base"] + index * config["volume_step"]
+            volume_value *= config["volume_spikes"].get(index, 1.0)
+
+            rows.append(
+                {
+                    "instrument_code": instrument_code,
+                    "instrument_name": str(config["name"]),
+                    "trade_date": trade_day.strftime("%Y-%m-%d"),
+                    "open": round(open_value, 4),
+                    "high": round(high_value, 4),
+                    "low": round(low_value, 4),
+                    "close": round(close_value, 4),
+                    "volume": round(volume_value, 4),
+                    "amount": round(close_value * volume_value, 4),
+                }
+            )
+            previous_close = close_value
+
+    return pd.DataFrame(rows).sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+
+
+def build_expected_joint_anomaly_rows(
+    frame: pd.DataFrame,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    top_n: int = 50,
+    lookback_window: int = 20,
+) -> list[dict[str, object]]:
+    working = frame.copy()
+    working["trade_date"] = pd.to_datetime(working["trade_date"])
+    working["close"] = pd.to_numeric(working["close"])
+    working["volume"] = pd.to_numeric(working["volume"])
+
+    events: list[dict[str, object]] = []
+    for instrument_code, group in working.groupby("instrument_code", sort=True):
+        enriched = group.sort_values("trade_date").reset_index(drop=True).copy()
+        enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
+        enriched["previous_return_std20"] = (
+            enriched["daily_return"]
+            .shift(1)
+            .rolling(window=lookback_window, min_periods=lookback_window)
+            .std(ddof=0)
+        )
+        enriched["previous_volume_mean20"] = (
+            enriched["volume"]
+            .shift(1)
+            .rolling(window=lookback_window, min_periods=lookback_window)
+            .mean()
+        )
+        enriched["return_z20"] = enriched["daily_return"].abs() / enriched["previous_return_std20"]
+        enriched["volume_ratio20"] = enriched["volume"] / enriched["previous_volume_mean20"]
+        valid = enriched[
+            enriched["daily_return"].notna()
+            & enriched["previous_return_std20"].notna()
+            & enriched["previous_volume_mean20"].notna()
+            & (enriched["previous_return_std20"] > 0)
+            & (enriched["previous_volume_mean20"] > 0)
+        ].copy()
+
+        for row in valid.itertuples(index=False):
+            events.append(
+                {
+                    "instrument_code": str(instrument_code),
+                    "instrument_name": str(row.instrument_name) if row.instrument_name else None,
+                    "trade_date": row.trade_date.date().isoformat(),
+                    "daily_return": float(row.daily_return),
+                    "return_z20": float(row.return_z20),
+                    "volume_ratio20": float(row.volume_ratio20),
+                }
+            )
+
+    events.sort(key=lambda item: (item["trade_date"], item["instrument_code"]))
+
+    def classify(percentile: float) -> str | None:
+        if percentile >= 0.99:
+            return "critical"
+        if percentile >= 0.95:
+            return "high"
+        if percentile >= 0.90:
+            return "medium"
+        return None
+
+    filtered_rows: list[dict[str, object]] = []
+    for index, event in enumerate(events):
+        dominated_count = sum(
+            1
+            for previous_event in events[:index]
+            if previous_event["return_z20"] <= event["return_z20"]
+            and previous_event["volume_ratio20"] <= event["volume_ratio20"]
+        )
+        percentile = (dominated_count / index) if index else 0.0
+        severity = classify(percentile)
+        if severity is None:
+            continue
+        if start_date and event["trade_date"] < start_date:
+            continue
+        if end_date and event["trade_date"] > end_date:
+            continue
+
+        filtered_rows.append(
+            {
+                **event,
+                "historical_dominated_count": dominated_count,
+                "historical_sample_count": index,
+                "joint_percentile": round(percentile, 6),
+                "severity": severity,
+            }
+        )
+
+    filtered_rows.sort(
+        key=lambda item: (
+            item["joint_percentile"],
+            item["historical_dominated_count"],
+            item["return_z20"],
+            item["volume_ratio20"],
+            pd.Timestamp(item["trade_date"]).toordinal(),
+        ),
+        reverse=True,
+    )
+    return filtered_rows[:top_n]
 
 
 class AlgoTradingRouteTests(unittest.TestCase):
@@ -171,8 +339,286 @@ class AlgoTradingRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_range_kth_volume_returns_duplicate_matches_for_counted_rank(self) -> None:
+        response = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 2,
+            },
+            headers=self._auth_headers(self.token),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["instrument_code"], "AU9999")
+        self.assertEqual(body["k"], 2)
+        self.assertEqual(body["value"], "13120.0000")
+        self.assertEqual(body["method"], "persistent_segment_tree")
+        self.assertFalse(body["is_approx"])
+        self.assertEqual([item["trade_date"] for item in body["matches"]], ["2026-01-03", "2026-01-04"])
+        self.assertEqual([item["series_index"] for item in body["matches"]], [1, 2])
+
+    def test_range_kth_volume_rejects_k_out_of_range(self) -> None:
+        response = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 5,
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_range_kth_volume_tdigest_returns_approximate_result_without_matches(self) -> None:
+        response = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 2,
+                "method": "t_digest",
+            },
+            headers=self._auth_headers(self.token),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["instrument_code"], "AU9999")
+        self.assertEqual(body["k"], 2)
+        self.assertEqual(body["value"], "13120.0000")
+        self.assertEqual(body["method"], "t_digest")
+        self.assertTrue(body["is_approx"])
+        self.assertEqual(body["matches"], [])
+        self.assertIsInstance(body["approximation_note"], str)
+        self.assertTrue(body["approximation_note"])
+
+    def test_range_kth_volume_tdigest_supports_boundary_ranks(self) -> None:
+        largest = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 1,
+                "method": "t_digest",
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(largest.status_code, 200)
+        self.assertEqual(largest.json()["value"], "13120.0000")
+
+        smallest = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 4,
+                "method": "t_digest",
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(smallest.status_code, 200)
+        self.assertEqual(smallest.json()["value"], "12600.0000")
+
+    def test_range_kth_volume_tdigest_supports_short_intervals(self) -> None:
+        response = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-03",
+                "end_date": "2026-01-04",
+                "k": 1,
+                "method": "t_digest",
+            },
+            headers=self._auth_headers(self.token),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["value"], "13120.0000")
+        self.assertEqual(body["matches"], [])
+
+    def test_range_kth_volume_rejects_unsupported_method(self) -> None:
+        response = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 2,
+                "method": "not_supported",
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_joint_anomaly_ranking_returns_expected_rows(self) -> None:
+        frame = build_joint_anomaly_frame()
+        run = self._upload_csv(
+            token=self.token,
+            dataset_name="joint_anomaly_case",
+            asset_class="stock",
+            frame=frame,
+        )
+
+        response = self.client.get(
+            "/api/algo/trading/joint-anomaly-ranking",
+            params={
+                "import_run_id": run["id"],
+                "start_date": "2026-01-24",
+                "top_n": 5,
+            },
+            headers=self._auth_headers(self.token),
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["lookback_window"], 20)
+
+        expected_rows = build_expected_joint_anomaly_rows(
+            frame,
+            start_date="2026-01-24",
+            top_n=5,
+        )
+        self.assertEqual(len(body["rows"]), len(expected_rows))
+
+        for actual_row, expected_row in zip(body["rows"], expected_rows, strict=True):
+            self.assertEqual(actual_row["instrument_code"], expected_row["instrument_code"])
+            self.assertEqual(actual_row["instrument_name"], expected_row["instrument_name"])
+            self.assertEqual(actual_row["trade_date"], expected_row["trade_date"])
+            self.assertEqual(actual_row["severity"], expected_row["severity"])
+            self.assertEqual(actual_row["historical_dominated_count"], expected_row["historical_dominated_count"])
+            self.assertEqual(actual_row["historical_sample_count"], expected_row["historical_sample_count"])
+            self.assertAlmostEqual(float(actual_row["daily_return"]), expected_row["daily_return"], places=6)
+            self.assertAlmostEqual(float(actual_row["return_z20"]), expected_row["return_z20"], places=6)
+            self.assertAlmostEqual(float(actual_row["volume_ratio20"]), expected_row["volume_ratio20"], places=6)
+            self.assertAlmostEqual(float(actual_row["joint_percentile"]), expected_row["joint_percentile"], places=6)
+
+    def test_joint_anomaly_ranking_rejects_invalid_top_n(self) -> None:
+        frame = build_joint_anomaly_frame()
+        run = self._upload_csv(
+            token=self.token,
+            dataset_name="joint_anomaly_case_invalid_top_n",
+            asset_class="stock",
+            frame=frame,
+        )
+
+        response = self.client.get(
+            "/api/algo/trading/joint-anomaly-ranking",
+            params={"import_run_id": run["id"], "top_n": 0},
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_range_kth_volume_enforces_visibility_and_admin_can_access(self) -> None:
+        bob_token = self._register_and_login("bob_user", "password123")
+        admin_token = self._login("admin", "admin123456")
+
+        forbidden = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 1,
+            },
+            headers=self._auth_headers(bob_token),
+        )
+        self.assertEqual(forbidden.status_code, 404)
+
+        allowed = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 1,
+            },
+            headers=self._auth_headers(admin_token),
+        )
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(allowed.json()["value"], "13120.0000")
+
+    def test_range_kth_volume_tdigest_enforces_visibility_and_admin_can_access(self) -> None:
+        bob_token = self._register_and_login("bob_tdigest", "password123")
+        admin_token = self._login("admin", "admin123456")
+
+        forbidden = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 2,
+                "method": "t_digest",
+            },
+            headers=self._auth_headers(bob_token),
+        )
+        self.assertEqual(forbidden.status_code, 404)
+
+        allowed = self.client.get(
+            "/api/algo/trading/range-kth-volume",
+            params={
+                "import_run_id": self.run["id"],
+                "instrument_code": "AU9999",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+                "k": 2,
+                "method": "t_digest",
+            },
+            headers=self._auth_headers(admin_token),
+        )
+        self.assertEqual(allowed.status_code, 200)
+        self.assertTrue(allowed.json()["is_approx"])
+
+    def test_joint_anomaly_ranking_enforces_visibility_and_admin_can_access(self) -> None:
+        frame = build_joint_anomaly_frame()
+        run = self._upload_csv(
+            token=self.token,
+            dataset_name="joint_anomaly_visibility",
+            asset_class="stock",
+            frame=frame,
+        )
+        bob_token = self._register_and_login("bob_joint", "password123")
+        admin_token = self._login("admin", "admin123456")
+
+        forbidden = self.client.get(
+            "/api/algo/trading/joint-anomaly-ranking",
+            params={"import_run_id": run["id"], "top_n": 5},
+            headers=self._auth_headers(bob_token),
+        )
+        self.assertEqual(forbidden.status_code, 404)
+
+        allowed = self.client.get(
+            "/api/algo/trading/joint-anomaly-ranking",
+            params={"import_run_id": run["id"], "top_n": 5},
+            headers=self._auth_headers(admin_token),
+        )
+        self.assertEqual(allowed.status_code, 200, allowed.text)
+        self.assertEqual(allowed.json()["lookback_window"], 20)
+
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
+        return self._login(username, password)
+
+    def _login(self, username: str, password: str) -> str:
         response = self.client.post("/api/auth/login", json={"username": username, "password": password})
         self.assertEqual(response.status_code, 200)
         return response.json()["access_token"]

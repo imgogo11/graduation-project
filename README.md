@@ -1,23 +1,26 @@
-# Unified Trading Data Management System
+# 融合 C++ 算法引擎的交易数据管理与分析系统设计与实现（C++-Powered Trading Data Analytics System）
 
-This project now keeps a single business path:
+## 项目简介
 
-- real user registration and login
-- user-scoped trading data uploads through `CSV` and `XLSX`
-- permanent import history with soft delete
-- admin visibility across all users
-- unified trading analysis for both stock and commodity datasets
+本项目当前聚焦一条明确主线：
 
-All legacy stock crawler, e-commerce demo, synthetic dataset, and benchmark import paths have been retired from the active system.
+- 用户注册与登录
+- 用户上传 `CSV` / `XLSX` 历史交易数据
+- 导入批次、清单与产物记录持久化
+- 基于用户权限隔离的数据查询与管理
+- 面向股票与商品数据的一体化交易分析
+- 基于 C++ 算法引擎的区间分析能力
 
-## Stack
+早期的股票爬虫、电商演示数据、synthetic 数据与 benchmark 演示链路，已经退出当前主业务主线。
 
-- Frontend: Vue 3 + TypeScript + Element Plus + ECharts
-- Backend: FastAPI + SQLAlchemy + Alembic + Pandas
-- Database: PostgreSQL
-- Algo engine: C++ + PyBind11
+## 技术栈
 
-## Current data model
+- 前端：Vue 3 + TypeScript + Element Plus + ECharts
+- 后端：FastAPI + SQLAlchemy + Alembic + Pandas
+- 数据库：PostgreSQL
+- 算法引擎：C++ + PyBind11
+
+## 当前核心数据模型
 
 - `users`
 - `import_runs`
@@ -25,19 +28,47 @@ All legacy stock crawler, e-commerce demo, synthetic dataset, and benchmark impo
 - `import_artifacts`
 - `trading_records`
 
-## Supported upload template
+## 支持的上传模板
 
 ```text
 instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 ```
 
-- supported file formats: `.csv`, `.xlsx`
-- asset classes: `stock`, `commodity`
-- asset class is now only a dataset label; both use the same storage and analysis flow
+- 支持文件格式：`.csv`、`.xlsx`
+- 支持资产类型：`stock`、`commodity`
+- 当前 `asset_class` 仅作为数据集标签，统一走同一套存储、查询与分析链路
 
-## Setup
+## 当前主要能力
 
-### 1. Install dependencies
+### 数据管理
+
+- 用户注册、登录、鉴权
+- 按用户隔离的导入批次管理
+- 导入历史、导入统计、软删除
+- 原始交易记录查询
+
+### 数据分析
+
+- 标的级交易摘要
+- 数据质量分析
+- 技术指标分析：MA / EMA / MACD / RSI / Bollinger / ATR
+- 风险指标分析：区间收益率、波动率、最大回撤、上涨日占比等
+- 异常检测：放量异常、收益率异常、振幅异常、突破前高/前低
+- 横截面分析：多标的排序
+- 相关性分析：收益率相关性矩阵
+- 批次对比分析
+
+### C++ 算法能力
+
+- `GET /api/algo/trading/range-max-amount`
+- `GET /api/algo/trading/range-kth-volume`
+- `range-kth-volume` 同时支持精确解 `persistent_segment_tree` 与近似解 `t_digest`
+- `t_digest` 在本项目中用于近似分位 / 近似第 K 大查询，不宣称任意区间严格 `O(1)` 或精确排名
+- 当前已打通链路：数据库 -> Python bridge / Python t-digest -> FastAPI -> 前端
+
+## 环境准备
+
+### 1. 安装依赖
 
 ```powershell
 uv venv .venv --python 3.13
@@ -47,13 +78,13 @@ npm install
 cd ..
 ```
 
-### 2. Prepare environment
+### 2. 准备环境变量
 
 ```powershell
 Copy-Item .env.template .env
 ```
 
-Review these variables before running:
+启动前请检查以下变量：
 
 - `DATABASE_URL`
 - `JWT_SECRET`
@@ -61,7 +92,7 @@ Review these variables before running:
 - `ADMIN_PASSWORD`
 - `UPLOAD_ROOT`
 
-### 3. Start PostgreSQL and apply migrations
+### 3. 启动 PostgreSQL 并执行迁移
 
 ```powershell
 docker compose -f deploy/docker-compose.yml up -d postgres
@@ -69,67 +100,102 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 .\.venv\Scripts\python.exe backend/scripts/init_admin.py
 ```
 
-The latest migration removes legacy business tables and purges pre-unified import history, so only the current upload-based trading flow remains visible in the system.
+当前最新迁移已经清理旧业务表与历史遗留导入路径，系统只保留当前上传式交易数据主链路。
 
-### 4. Start backend and frontend
+### 4. 启动后端与前端
 
-Backend:
+后端：
 
 ```powershell
 .\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --host 127.0.0.1 --port 8200 --reload
 ```
 
-Frontend:
+前端：
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-## Main APIs
+## 主要接口
+
+### 鉴权与系统
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
 - `GET /api/health`
+
+### 导入与交易查询
+
 - `GET /api/imports/runs`
 - `GET /api/imports/stats`
 - `POST /api/imports/trading`
 - `DELETE /api/imports/runs/{run_id}`
 - `GET /api/trading/instruments`
 - `GET /api/trading/records`
+
+### 交易分析接口
+
+- `GET /api/trading/analysis/summary`
+- `GET /api/trading/analysis/quality`
+- `GET /api/trading/analysis/indicators`
+- `GET /api/trading/analysis/risk`
+- `GET /api/trading/analysis/anomalies`
+- `GET /api/trading/analysis/cross-section`
+- `GET /api/trading/analysis/correlation`
+- `GET /api/trading/analysis/compare-runs`
+
+### C++ 算法接口
+
 - `GET /api/algo/trading/range-max-amount`
+- `GET /api/algo/trading/range-kth-volume`
 
-## Useful scripts
+其中 `GET /api/algo/trading/range-kth-volume` 支持查询参数：
 
-Initialize the admin account:
+- `import_run_id`
+- `instrument_code`
+- `start_date`
+- `end_date`
+- `k`
+- `method`
+
+`method` 目前固定为：
+
+- `persistent_segment_tree`：精确结果，返回命中的交易日期
+- `t_digest`：近似结果，返回 `is_approx=true`、`approximation_note`，且不返回精确命中日期
+
+## 常用脚本
+
+初始化管理员账号：
 
 ```powershell
 .\.venv\Scripts\python.exe backend/scripts/init_admin.py
 ```
 
-Import a local trading file from the command line:
+从命令行导入本地交易文件：
 
 ```powershell
 .\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_run --asset-class stock
 ```
 
-Export compatibility requirements:
+导出兼容依赖：
 
 ```powershell
 .\.venv\Scripts\python.exe backend/scripts/export_requirements.py
 ```
 
-## Verification
+## 验证方式
 
-Backend:
+后端：
 
 ```powershell
 .\.venv\Scripts\python.exe backend/tests/test_database_pipeline.py
 .\.venv\Scripts\python.exe backend/tests/test_algo_trading.py
+.\.venv\Scripts\python.exe backend/tests/test_trading_analysis.py
 ```
 
-Frontend:
+前端：
 
 ```powershell
 cd frontend

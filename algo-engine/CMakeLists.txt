@@ -14,6 +14,8 @@ find_package(pybind11 CONFIG REQUIRED)
 add_library(
     algo_engine_core
     STATIC
+        src/cdq/historical_dominance_cdq.cpp
+        src/segment_tree/range_kth_persistent_segment_tree.cpp
         src/segment_tree/range_max_segment_tree.cpp
 )
 target_include_directories(
@@ -43,7 +45,21 @@ if(BUILD_TESTING)
     )
     target_link_libraries(range_max_segment_tree_unit PRIVATE algo_engine_core)
 
+    add_executable(
+        historical_dominance_cdq_unit
+            tests/unit/test_historical_dominance_cdq.cpp
+    )
+    target_link_libraries(historical_dominance_cdq_unit PRIVATE algo_engine_core)
+
+    add_executable(
+        range_kth_persistent_segment_tree_unit
+            tests/unit/test_range_kth_persistent_segment_tree.cpp
+    )
+    target_link_libraries(range_kth_persistent_segment_tree_unit PRIVATE algo_engine_core)
+
     add_test(NAME range_max_segment_tree_unit COMMAND range_max_segment_tree_unit)
+    add_test(NAME historical_dominance_cdq_unit COMMAND historical_dominance_cdq_unit)
+    add_test(NAME range_kth_persistent_segment_tree_unit COMMAND range_kth_persistent_segment_tree_unit)
     add_test(
         NAME algo_engine_python_smoke
         COMMAND
@@ -55,6 +71,8 @@ if(BUILD_TESTING)
     add_custom_target(
         algo_engine_tests
         DEPENDS
+            historical_dominance_cdq_unit
+            range_kth_persistent_segment_tree_unit
             range_max_segment_tree_unit
             algo_engine_py
     )

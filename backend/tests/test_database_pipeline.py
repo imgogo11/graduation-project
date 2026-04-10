@@ -156,12 +156,22 @@ class DatabasePipelineTests(unittest.TestCase):
             asset_class="commodity",
             frame=build_trading_frame(),
         )
+        alice_third_run = self._upload_csv(
+            token=alice_token,
+            dataset_name="alice_gold_csv_2",
+            asset_class="commodity",
+            frame=build_trading_frame(),
+        )
         bob_run = self._upload_csv(
             token=bob_token,
             dataset_name="bob_stock_csv",
             asset_class="stock",
             frame=build_trading_frame(),
         )
+        self.assertEqual(alice_csv_run["display_id"], 1)
+        self.assertEqual(alice_xlsx_run["display_id"], 2)
+        self.assertEqual(alice_third_run["display_id"], 3)
+        self.assertEqual(bob_run["display_id"], 1)
         self._insert_legacy_run(
             owner_user_id=int(alice_csv_run["owner_user_id"]),
             dataset_name="legacy_retired_run",
@@ -169,13 +179,19 @@ class DatabasePipelineTests(unittest.TestCase):
 
         alice_runs = self.client.get("/api/imports/runs", headers=self._auth_headers(alice_token))
         self.assertEqual(alice_runs.status_code, 200)
-        self.assertEqual(len(alice_runs.json()), 2)
-        self.assertTrue(all(item["owner_username"] == "alice_user" for item in alice_runs.json()))
+        alice_run_rows = alice_runs.json()
+        self.assertEqual(len(alice_run_rows), 3)
+        self.assertTrue(all(item["owner_username"] == "alice_user" for item in alice_run_rows))
+        self.assertEqual(
+            [item["id"] for item in alice_run_rows],
+            [alice_third_run["id"], alice_xlsx_run["id"], alice_csv_run["id"]],
+        )
+        self.assertEqual([item["display_id"] for item in alice_run_rows], [3, 2, 1])
 
         alice_stats = self.client.get("/api/imports/stats", headers=self._auth_headers(alice_token))
         self.assertEqual(alice_stats.status_code, 200)
-        self.assertEqual(alice_stats.json()["total_runs"], 2)
-        self.assertEqual(alice_stats.json()["completed_runs"], 2)
+        self.assertEqual(alice_stats.json()["total_runs"], 3)
+        self.assertEqual(alice_stats.json()["completed_runs"], 3)
 
         instruments = self.client.get(
             "/api/trading/instruments",
@@ -202,9 +218,11 @@ class DatabasePipelineTests(unittest.TestCase):
 
         admin_runs = self.client.get("/api/imports/runs", headers=self._auth_headers(admin_token))
         self.assertEqual(admin_runs.status_code, 200)
-        self.assertEqual(len(admin_runs.json()), 3)
-        self.assertEqual({item["owner_username"] for item in admin_runs.json()}, {"alice_user", "bob_user"})
-        self.assertNotIn("legacy_retired_run", {item["dataset_name"] for item in admin_runs.json()})
+        admin_run_rows = admin_runs.json()
+        self.assertEqual(len(admin_run_rows), 4)
+        self.assertEqual({item["owner_username"] for item in admin_run_rows}, {"alice_user", "bob_user"})
+        self.assertNotIn("legacy_retired_run", {item["dataset_name"] for item in admin_run_rows})
+        self.assertEqual([item["display_id"] for item in admin_run_rows], [4, 3, 2, 1])
 
         admin_filtered = self.client.get(
             "/api/imports/runs",
@@ -214,6 +232,7 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(admin_filtered.status_code, 200)
         self.assertEqual(len(admin_filtered.json()), 1)
         self.assertEqual(admin_filtered.json()[0]["owner_username"], "bob_user")
+        self.assertEqual(admin_filtered.json()[0]["display_id"], 1)
 
         delete_response = self.client.delete(
             f"/api/imports/runs/{alice_csv_run['id']}",
@@ -224,8 +243,13 @@ class DatabasePipelineTests(unittest.TestCase):
 
         after_delete_runs = self.client.get("/api/imports/runs", headers=self._auth_headers(alice_token))
         self.assertEqual(after_delete_runs.status_code, 200)
-        self.assertEqual(len(after_delete_runs.json()), 1)
-        self.assertEqual(after_delete_runs.json()[0]["id"], alice_xlsx_run["id"])
+        after_delete_rows = after_delete_runs.json()
+        self.assertEqual(len(after_delete_rows), 2)
+        self.assertEqual(
+            [item["id"] for item in after_delete_rows],
+            [alice_third_run["id"], alice_xlsx_run["id"]],
+        )
+        self.assertEqual([item["display_id"] for item in after_delete_rows], [2, 1])
 
         deleted_records = self.client.get(
             "/api/trading/records",

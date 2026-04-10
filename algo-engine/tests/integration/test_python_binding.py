@@ -23,8 +23,25 @@ class RangeMaxSegmentTreeFactory(Protocol):
     def __call__(self, values: list[int]) -> RangeMaxSegmentTreeProtocol: ...
 
 
+class RangeKthResultProtocol(Protocol):
+    kth_value_scaled: int
+    matched_indices: list[int]
+
+
+class RangeKthPersistentSegmentTreeProtocol(Protocol):
+    def query_inclusive(self, left: int, right: int, k: int) -> RangeKthResultProtocol: ...
+
+    def size(self) -> int: ...
+
+
+class RangeKthPersistentSegmentTreeFactory(Protocol):
+    def __call__(self, values: list[int]) -> RangeKthPersistentSegmentTreeProtocol: ...
+
+
 class AlgoEngineModuleProtocol(Protocol):
+    HistoricalDominanceCdqCounter: type
     RangeMaxSegmentTree: RangeMaxSegmentTreeFactory
+    RangeKthPersistentSegmentTree: RangeKthPersistentSegmentTreeFactory
 
 
 def configure_windows_dll_search_paths() -> None:
@@ -55,6 +72,25 @@ def main() -> int:
     assert result.max_value_scaled == 250
     assert list(result.matched_indices) == [1, 2]
     assert tree.size() == 4
+
+    kth_tree = algo_engine_py.RangeKthPersistentSegmentTree([100, 250, 250, 80, 300])
+    kth_result = kth_tree.query_inclusive(0, 4, 3)
+
+    assert kth_result.kth_value_scaled == 250
+    assert list(kth_result.matched_indices) == [1, 2]
+    assert kth_tree.size() == 5
+
+    invalid_k_thrown = False
+    try:
+        kth_tree.query_inclusive(0, 4, 0)
+    except ValueError:
+        invalid_k_thrown = True
+
+    assert invalid_k_thrown
+
+    dominance_counter = algo_engine_py.HistoricalDominanceCdqCounter([5, 3, 7, 7, 8], [4, 6, 2, 4, 4])
+    assert dominance_counter.size() == 5
+    assert list(dominance_counter.count_prefix_dominance()) == [0, 0, 0, 2, 3]
     return 0
 
 

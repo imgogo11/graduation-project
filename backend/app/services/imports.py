@@ -134,10 +134,22 @@ class ImportService:
         limit: int,
     ) -> list[ImportRunRead]:
         runs = ImportRunRepository.list_runs(session, owner_user_id=owner_user_id, limit=limit)
-        return self._serialize_runs(session, runs)
+        display_id_map = self._build_display_id_map(
+            ImportRunRepository.list_all_visible_runs(session, owner_user_id=owner_user_id)
+        )
+        return self._serialize_runs(session, runs, display_id_map=display_id_map)
 
-    def serialize_run(self, session: Session, run: ImportRun) -> ImportRunRead:
-        return self._serialize_runs(session, [run])[0]
+    def serialize_run(
+        self,
+        session: Session,
+        run: ImportRun,
+        *,
+        owner_user_id: int | None,
+    ) -> ImportRunRead:
+        display_id_map = self._build_display_id_map(
+            ImportRunRepository.list_all_visible_runs(session, owner_user_id=owner_user_id)
+        )
+        return self._serialize_runs(session, [run], display_id_map=display_id_map)[0]
 
     def build_stats(
         self,
@@ -197,11 +209,20 @@ class ImportService:
     def delete_run(self, session: Session, *, run: ImportRun) -> ImportRun:
         return ImportRunRepository.soft_delete(session, run)
 
-    def _serialize_runs(self, session: Session, runs: list[ImportRun]) -> list[ImportRunRead]:
+    def _serialize_runs(
+        self,
+        session: Session,
+        runs: list[ImportRun],
+        *,
+        display_id_map: dict[int, int] | None = None,
+    ) -> list[ImportRunRead]:
+        if display_id_map is None:
+            display_id_map = self._build_display_id_map(runs)
         username_map = self._load_username_map(session, runs)
         return [
             ImportRunRead(
                 id=run.id,
+                display_id=self._resolve_display_id(display_id_map, run.id),
                 owner_user_id=run.owner_user_id,
                 owner_username=username_map.get(run.owner_user_id),
                 dataset_name=run.dataset_name,
@@ -219,6 +240,16 @@ class ImportService:
             )
             for run in runs
         ]
+
+    def _build_display_id_map(self, runs: list[ImportRun]) -> dict[int, int]:
+        ordered_runs = sorted(runs, key=lambda item: (item.started_at, item.id))
+        return {run.id: index for index, run in enumerate(ordered_runs, start=1)}
+
+    def _resolve_display_id(self, display_id_map: dict[int, int], run_id: int) -> int:
+        display_id = display_id_map.get(run_id)
+        if display_id is None:
+            raise ValueError(f"display_id is not available for import run {run_id}")
+        return display_id
 
     def _load_username_map(self, session: Session, runs: list[ImportRun]) -> dict[int, str]:
         owner_ids = sorted({run.owner_user_id for run in runs if run.owner_user_id is not None})

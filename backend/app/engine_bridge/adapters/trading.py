@@ -10,12 +10,25 @@ from pathlib import Path
 from typing import Sequence
 
 from app.core.config import get_settings
+from app.engine_bridge.tdigest import RangeKthTDigestBlockIndex
 
 
 @dataclass(frozen=True, slots=True)
 class RangeMaxEngineResult:
     max_value_scaled: int
     matched_indices: list[int]
+
+
+@dataclass(frozen=True, slots=True)
+class RangeKthEngineResult:
+    kth_value_scaled: int
+    matched_indices: list[int]
+    approximation_note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalDominanceEngineResult:
+    dominated_counts: list[int]
 
 
 def _module_directory() -> Path:
@@ -62,4 +75,36 @@ def query_range_max(values_scaled: Sequence[int], left: int, right: int) -> Rang
     return RangeMaxEngineResult(
         max_value_scaled=int(result.max_value_scaled),
         matched_indices=[int(index) for index in result.matched_indices],
+    )
+
+
+def query_range_kth(values_scaled: Sequence[int], left: int, right: int, k: int) -> RangeKthEngineResult:
+    module = load_algo_engine_module()
+    tree = module.RangeKthPersistentSegmentTree(list(values_scaled))
+    result = tree.query_inclusive(left, right, k)
+    return RangeKthEngineResult(
+        kth_value_scaled=int(result.kth_value_scaled),
+        matched_indices=[int(index) for index in result.matched_indices],
+        approximation_note=None,
+    )
+
+
+def query_range_kth_tdigest(values_scaled: Sequence[int], left: int, right: int, k: int) -> RangeKthEngineResult:
+    digest_index = RangeKthTDigestBlockIndex(values_scaled)
+    result = digest_index.query_inclusive(left, right, k)
+    return RangeKthEngineResult(
+        kth_value_scaled=int(result.kth_value_scaled),
+        matched_indices=[int(index) for index in result.matched_indices],
+        approximation_note=result.approximation_note,
+    )
+
+
+def query_historical_dominance(
+    primary_values_scaled: Sequence[int],
+    secondary_values_scaled: Sequence[int],
+) -> HistoricalDominanceEngineResult:
+    module = load_algo_engine_module()
+    counter = module.HistoricalDominanceCdqCounter(list(primary_values_scaled), list(secondary_values_scaled))
+    return HistoricalDominanceEngineResult(
+        dominated_counts=[int(item) for item in counter.count_prefix_dominance()],
     )

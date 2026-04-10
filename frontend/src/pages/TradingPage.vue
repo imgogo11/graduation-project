@@ -4,10 +4,11 @@ import { computed, onMounted, reactive, ref } from "vue";
 import type { EChartsOption } from "echarts";
 
 import { deleteImportRun, fetchImportRuns, uploadTradingFile } from "@/api/imports";
-import { fetchTradingInstruments, fetchTradingRangeMaxAmount, fetchTradingRecords } from "@/api/trading";
+import { fetchTradingInstruments, fetchTradingRangeKthVolume, fetchTradingRangeMaxAmount, fetchTradingRecords } from "@/api/trading";
 import type {
   ImportRunRead,
   TradingInstrumentRead,
+  TradingRangeKthVolumeRead,
   TradingRangeMaxAmountRead,
   TradingRecordRead,
 } from "@/api/types";
@@ -36,11 +37,14 @@ const uploading = ref(false);
 const deletingRunId = ref<number | null>(null);
 const error = ref("");
 const algoNotice = ref("");
+const algoKthNotice = ref("");
 const selectedFile = ref<File | null>(null);
 const importRuns = ref<ImportRunRead[]>([]);
 const instruments = ref<TradingInstrumentRead[]>([]);
 const records = ref<TradingRecordRead[]>([]);
 const algoResult = ref<TradingRangeMaxAmountRead | null>(null);
+const algoKthResult = ref<TradingRangeKthVolumeRead | null>(null);
+const importRunDisplayIdMap = computed(() => new Map(importRuns.value.map((item) => [item.id, item.display_id])));
 
 const uploadForm = reactive({
   datasetName: "",
@@ -52,8 +56,15 @@ const queryForm = reactive({
   instrumentCode: "",
   startDate: "",
   endDate: "",
+  kInput: "1",
+  kthMethod: "persistent_segment_tree" as "persistent_segment_tree" | "t_digest",
   limitInput: "",
 });
+
+const kthMethodOptions = [
+  { label: "精确结果", value: "persistent_segment_tree" as const },
+  { label: "近似结果", value: "t_digest" as const },
+];
 
 const cards = computed(() => [
   {
@@ -65,7 +76,7 @@ const cards = computed(() => [
   {
     label: "当前标的数",
     value: String(instruments.value.length),
-    hint: queryForm.importRunId ? `来自批次 #${queryForm.importRunId}` : "先选择一个导入批次",
+    hint: queryForm.importRunId ? `来自批次 ${formatImportRunDisplayLabel(queryForm.importRunId)}` : "先选择一个导入批次",
     tone: "orange" as const,
   },
   {
@@ -173,9 +184,30 @@ function parseLimitInput() {
   return parsed;
 }
 
+function parseKInput() {
+  const normalized = queryForm.kInput.trim();
+  if (!normalized) {
+    throw new Error("K 值必须是正整数。");
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error("K 值必须是正整数。");
+  }
+  return parsed;
+}
+
 function onFileSelected(event: Event) {
   const target = event.target as HTMLInputElement;
   selectedFile.value = target.files?.[0] || null;
+}
+
+function formatImportRunDisplayLabel(runId: number | null | undefined) {
+  if (!runId) {
+    return "--";
+  }
+  const displayId = importRunDisplayIdMap.value.get(runId);
+  return `#${displayId ?? runId}`;
 }
 
 async function loadRuns(preferredRunId?: number) {
@@ -190,7 +222,9 @@ async function loadRuns(preferredRunId?: number) {
       instruments.value = [];
       records.value = [];
       algoResult.value = null;
+      algoKthResult.value = null;
       algoNotice.value = "";
+      algoKthNotice.value = "";
       return;
     }
 
@@ -216,7 +250,9 @@ async function loadInstruments() {
     queryForm.instrumentCode = "";
     records.value = [];
     algoResult.value = null;
+    algoKthResult.value = null;
     algoNotice.value = "";
+    algoKthNotice.value = "";
     return;
   }
 
@@ -227,7 +263,9 @@ async function loadInstruments() {
       queryForm.instrumentCode = "";
       records.value = [];
       algoResult.value = null;
+      algoKthResult.value = null;
       algoNotice.value = "当前导入批次没有可分析的标的。";
+      algoKthNotice.value = algoNotice.value;
       return;
     }
 
@@ -244,12 +282,14 @@ async function runAnalysis() {
   if (!queryForm.importRunId || !queryForm.instrumentCode) {
     records.value = [];
     algoResult.value = null;
+    algoKthResult.value = null;
     return;
   }
 
   loadingAnalysis.value = true;
   error.value = "";
   algoNotice.value = "";
+  algoKthNotice.value = "";
 
   try {
     const limit = parseLimitInput();
@@ -264,7 +304,9 @@ async function runAnalysis() {
 
     if (!rows.length) {
       algoResult.value = null;
+      algoKthResult.value = null;
       algoNotice.value = "当前条件下没有匹配的交易记录。";
+      algoKthNotice.value = algoNotice.value;
       runtime.markSynced();
       return;
     }
@@ -283,10 +325,26 @@ async function runAnalysis() {
       algoResult.value = null;
       algoNotice.value = getErrorMessage(err);
     }
+
+    try {
+      const k = parseKInput();
+      algoKthResult.value = await fetchTradingRangeKthVolume({
+        import_run_id: queryForm.importRunId,
+        instrument_code: queryForm.instrumentCode,
+        start_date: startDate,
+        end_date: endDate,
+        k,
+        method: queryForm.kthMethod,
+      });
+    } catch (err) {
+      algoKthResult.value = null;
+      algoKthNotice.value = getErrorMessage(err);
+    }
     runtime.markSynced();
   } catch (err) {
     error.value = getErrorMessage(err);
     algoResult.value = null;
+    algoKthResult.value = null;
   } finally {
     loadingAnalysis.value = false;
   }
@@ -417,7 +475,7 @@ onMounted(async () => {
               <el-option
                 v-for="item in importRuns"
                 :key="item.id"
-                :label="`#${item.id} ${item.dataset_name} (${item.asset_class || '--'})`"
+                :label="`#${item.display_id} ${item.dataset_name} (${item.asset_class || '--'})`"
                 :value="item.id"
               />
             </el-select>
@@ -453,6 +511,19 @@ onMounted(async () => {
           <el-form-item label="样本数限制">
             <el-input v-model="queryForm.limitInput" placeholder="留空表示不限制，例如 200" clearable />
           </el-form-item>
+          <el-form-item label="K 值">
+            <el-input v-model="queryForm.kInput" placeholder="正整数，例如 1" clearable @change="runAnalysis" />
+          </el-form-item>
+          <el-form-item label="算法方式">
+            <el-select v-model="queryForm.kthMethod" placeholder="选择算法方式" @change="runAnalysis">
+              <el-option
+                v-for="item in kthMethodOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
+          </el-form-item>
         </el-form>
       </PanelCard>
     </section>
@@ -467,12 +538,12 @@ onMounted(async () => {
         />
       </PanelCard>
 
-      <PanelCard title="区间最大成交额结果" description="来自统一交易算法接口 `/api/algo/trading/range-max-amount`。">
+      <PanelCard title="区间最大成交额结果" description="来自系统算法接口 `/api/algo/trading/range-max-amount`。">
         <div v-if="algoResult" class="algo-result">
           <div class="algo-result__hero">
             <div class="algo-result__value">{{ formatNumberish(algoResult.max_amount, 4) }}</div>
             <div class="algo-result__meta">
-              <span>批次 #{{ algoResult.import_run_id }}</span>
+              <span>批次 {{ formatImportRunDisplayLabel(algoResult.import_run_id) }}</span>
               <span>{{ algoResult.instrument_code }}</span>
               <span>{{ algoResult.start_date }} ~ {{ algoResult.end_date }}</span>
             </div>
@@ -490,6 +561,46 @@ onMounted(async () => {
           v-else
           :title="algoNotice ? '算法结果提示' : '等待算法结果'"
           :description="algoNotice || '选择有成交额数据的批次和标的后，这里会展示区间最大成交额和命中的日期。'"
+        />
+      </PanelCard>
+
+      <PanelCard title="区间第 K 大成交量结果" description="来自系统算法接口 `/api/algo/trading/range-kth-volume`。">
+        <div v-if="algoKthResult" class="algo-result">
+          <div class="algo-result__hero algo-result__hero--teal">
+            <div class="algo-result__value">{{ formatNumberish(algoKthResult.value, 4) }}</div>
+            <div class="algo-result__meta">
+              <span>批次 {{ formatImportRunDisplayLabel(algoKthResult.import_run_id) }}</span>
+              <span>{{ algoKthResult.instrument_code }}</span>
+              <span>K = {{ algoKthResult.k }}</span>
+              <span>{{ algoKthResult.start_date }} ~ {{ algoKthResult.end_date }}</span>
+            </div>
+          </div>
+
+          <div class="algo-result__badges">
+            <span class="pill">{{ algoKthResult.is_approx ? "近似结果" : "精确结果" }}</span>
+            <span class="pill">method: {{ algoKthResult.method }}</span>
+          </div>
+
+          <div v-if="algoKthResult.approximation_note" class="algo-result__note">
+            {{ algoKthResult.approximation_note }}
+          </div>
+
+          <div v-if="algoKthResult.matches.length" class="algo-result__matches">
+            <div
+              v-for="match in algoKthResult.matches"
+              :key="`kth-${match.trade_date}-${match.series_index}`"
+              class="algo-result__match"
+            >
+              <span class="mono">idx {{ match.series_index }}</span>
+              <strong>{{ formatDate(match.trade_date) }}</strong>
+            </div>
+          </div>
+        </div>
+
+        <EmptyState
+          v-else
+          :title="algoKthNotice ? '算法结果提示' : '等待算法结果'"
+          :description="algoKthNotice || '输入 K 值并选择算法方式后，这里会展示区间第 K 大成交量。'"
         />
       </PanelCard>
     </section>
@@ -528,7 +639,7 @@ onMounted(async () => {
           stripe
           @row-click="handleRunRowClick"
         >
-          <el-table-column prop="id" label="Run ID" width="90" />
+          <el-table-column prop="display_id" label="ID" width="90" />
           <el-table-column v-if="auth.isAdmin.value" prop="owner_username" label="Owner" min-width="140" />
           <el-table-column prop="dataset_name" label="Dataset" min-width="170" />
           <el-table-column prop="asset_class" label="Asset" width="110" />
@@ -621,6 +732,10 @@ onMounted(async () => {
   background: linear-gradient(135deg, rgba(185, 82, 79, 0.12), rgba(242, 140, 40, 0.12));
 }
 
+.algo-result__hero--teal {
+  background: linear-gradient(135deg, rgba(11, 143, 140, 0.14), rgba(216, 176, 115, 0.18));
+}
+
 .algo-result__value {
   font-size: clamp(34px, 5vw, 48px);
   font-weight: 700;
@@ -632,6 +747,21 @@ onMounted(async () => {
   flex-wrap: wrap;
   gap: 10px;
   color: var(--text-secondary);
+}
+
+.algo-result__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.algo-result__note {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(11, 143, 140, 0.16);
+  background: rgba(11, 143, 140, 0.08);
+  color: #275c5b;
+  line-height: 1.5;
 }
 
 .algo-result__matches {

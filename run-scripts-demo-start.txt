@@ -14,18 +14,27 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 .\.venv\Scripts\python.exe backend/scripts/init_admin.py
 
 
-# 启动 FastAPI 后端开发服务，并监听本机 8200 端口
+# 导入一份示例交易模板数据，确保交易分析页与分析中心页有可展示内容
+.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_template --asset-class stock
+
+
+# 以下两个启动命令都是长驻服务，建议分别在独立终端执行
+
+
+# 在当前终端启动 FastAPI 后端开发服务，并监听本机 8200 端口
 .\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --host 127.0.0.1 --port 8200 --reload
 
 
-# 切换到前端工程目录，准备启动 Vue 开发服务器
+# 在另一个终端切换到前端工程目录，准备启动 Vue 开发服务器
 cd D:\graduation-project\frontend
 
 
-# 启动前端开发服务，默认运行在 5173 端口
+# 在前端终端启动开发服务，默认运行在 5173 端口
 npm run dev
+
+
+# 在交易分析页中，可切换 `persistent_segment_tree` 与 `t_digest` 查看区间第 K 大结果
 
 
 # 在浏览器中打开登录页，进入系统进行注册或登录
 start http://127.0.0.1:5173/login
-

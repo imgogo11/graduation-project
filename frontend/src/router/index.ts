@@ -44,6 +44,14 @@ const router = createRouter({
         requiresAuth: true,
       },
     },
+    {
+      path: "/analysis",
+      name: "analysis",
+      component: () => import("@/pages/AnalysisPage.vue"),
+      meta: {
+        requiresAuth: true,
+      },
+    },
   ],
 });
 

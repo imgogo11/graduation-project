@@ -10,8 +10,9 @@ const router = useRouter();
 const auth = useAuthStore();
 const runtime = useRuntimeStore();
 const navItems = [
-  { label: "系统总览", to: "/overview", subtitle: "Health / Imports / Stats" },
-  { label: "统一交易分析", to: "/trading", subtitle: "Upload / Charts / Algo" },
+  { label: "Overview", to: "/overview", subtitle: "Health / Imports / Stats" },
+  { label: "Trading", to: "/trading", subtitle: "Upload / Charts / Algo" },
+  { label: "Analysis Center", to: "/analysis", subtitle: "Indicators / Risk / Quality" },
 ];
 
 function logout() {
@@ -24,10 +25,11 @@ function logout() {
   <div class="shell">
     <header class="shell__header">
       <div class="shell__hero">
-        <div class="shell__eyebrow">Unified Trading Data Management</div>
-        <h1 class="shell__title">统一交易数据管理系统</h1>
+        <div class="shell__eyebrow">C++-Powered Trading Data Analytics System</div>
+        <h1 class="shell__title">融合 C++ 算法引擎的交易数据管理与分析系统设计与实现</h1>
         <p class="shell__subtitle">
-          统一承接用户注册登录、CSV/XLSX 历史交易数据上传、按用户隔离的数据管理，以及基于 C++ 算法引擎的区间成交额分析。
+          统一承接用户注册登录、CSV/XLSX 历史交易数据上传、按用户隔离的数据管理，以及基于
+          C++ 算法引擎和 Python 分析层的多维度交易分析能力。
         </p>
       </div>
 

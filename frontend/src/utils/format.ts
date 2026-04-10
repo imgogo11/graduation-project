@@ -32,6 +32,18 @@ export function formatCompact(value: NumericLike, digits = 1) {
   }).format(toNumber(value));
 }
 
+export function formatPercent(value: NumericLike, digits = 2) {
+  if (value === null || value === "") {
+    return "--";
+  }
+
+  return new Intl.NumberFormat("zh-CN", {
+    style: "percent",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(toNumber(value));
+}
+
 export function formatDate(value: string | null | undefined) {
   if (!value) {
     return "--";
@@ -50,6 +62,15 @@ export function formatDateTime(value: string | null | undefined) {
 
 export function toStatusTagType(status: string) {
   const normalized = status.toLowerCase();
+  if (normalized.includes("critical")) {
+    return "danger" as const;
+  }
+  if (normalized.includes("high")) {
+    return "danger" as const;
+  }
+  if (normalized.includes("medium") || normalized.includes("warning")) {
+    return "warning" as const;
+  }
   if (normalized.includes("complete") || normalized.includes("ok")) {
     return "success" as const;
   }

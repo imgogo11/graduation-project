@@ -16,8 +16,8 @@ from app.core.config import get_settings
 
 settings = get_settings()
 app = FastAPI(
-    title="Unified Trading Data Management Backend",
+    title="C++-Powered Trading Data Analytics System Backend",
     version="0.1.0",
-    description="FastAPI backend for authentication, user-scoped trading imports, and algorithmic analysis.",
+    description="FastAPI backend for the C++-Powered Trading Data Analytics System.",
 )
 app.include_router(api_router, prefix=settings.api_prefix)

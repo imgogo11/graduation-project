@@ -6,7 +6,7 @@
 
 当前仓库的主线已经不是早期的“股票抓取 + 电商演示 + benchmark 预留”组合方案，而是一个已经落地到可联调状态的：
 
-`统一交易数据管理系统（Unified Trading Data Management System）`
+`融合 C++ 算法引擎的交易数据管理与分析系统设计与实现（C++-Powered Trading Data Analytics System）`
 
 当前真实业务链路为：
 
@@ -195,7 +195,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - 已完成登录页
 - 已完成注册页
 - 已完成系统总览页
-- 已完成统一交易分析页
+- 已完成交易分析页
 - 已完成登录守卫
 - 已完成本地 Token 持久化
 - 已完成导入历史、统计、图表、算法结果展示
@@ -219,7 +219,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 
 ### 文档
 
-- `README.md` 已基本同步到统一交易系统
+- `README.md` 已基本同步到当前系统主线
 - `algo-engine/README.md` 仍停留在早期规划描述，尚未同步当前已实现内容
 - `docs/` 目前以环境说明与数据源说明为主
 - 仍缺少更完整的 API 文档、系统设计文档、实验报告/论文材料沉淀
@@ -237,7 +237,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - “项目仍以股票抓取和电商演示为主线”
 - “算法引擎只有占位结构”
 - “系统还没有用户注册登录”
-- “后端还没有统一交易上传模型”
+- “后端还没有交易上传模型”
 
 ## 本轮实际核验结果
 
@@ -259,4 +259,4 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 
 `一个具备前端界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化，以及 C++ 区间最大成交额分析能力的全栈 MVP。`
 
-它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到统一交易数据管理主线的实时工程。
+它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“融合 C++ 算法引擎的交易数据管理与分析系统”主线的实时工程。
