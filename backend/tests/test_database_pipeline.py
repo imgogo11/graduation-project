@@ -9,6 +9,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
+from sqlalchemy import select
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
@@ -26,40 +27,65 @@ def build_trading_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "instrument_code": "AU9999",
-                "instrument_name": "Shanghai Gold",
+                "instrument_code": "600519.SH",
+                "instrument_name": "Kweichow Moutai",
                 "trade_date": "2026-01-02",
-                "open": 520.15,
-                "high": 525.80,
-                "low": 518.40,
-                "close": 524.30,
+                "open": 1520.15,
+                "high": 1535.80,
+                "low": 1518.40,
+                "close": 1534.30,
                 "volume": 12800,
-                "amount": 6711040,
+                "amount": 19639040,
             },
             {
-                "instrument_code": "AU9999",
-                "instrument_name": "Shanghai Gold",
+                "instrument_code": "600519.SH",
+                "instrument_name": "Kweichow Moutai",
                 "trade_date": "2026-01-03",
-                "open": 524.30,
-                "high": 529.20,
-                "low": 522.50,
-                "close": 528.70,
+                "open": 1534.30,
+                "high": 1548.20,
+                "low": 1529.50,
+                "close": 1541.70,
                 "volume": 13120,
-                "amount": 6936544,
+                "amount": 20274816,
             },
             {
-                "instrument_code": "CU2406",
-                "instrument_name": "Copper Futures",
+                "instrument_code": "000858.SZ",
+                "instrument_name": "Wuliangye Yibin",
                 "trade_date": "2026-01-02",
-                "open": 68320.00,
-                "high": 68980.00,
-                "low": 68050.00,
-                "close": 68810.00,
+                "open": 168.32,
+                "high": 170.15,
+                "low": 167.50,
+                "close": 169.88,
                 "volume": 982,
-                "amount": 67571420,
+                "amount": 166822.16,
             },
         ]
     )
+
+
+def build_alias_frame(*, include_amount: bool = True) -> pd.DataFrame:
+    frame = build_trading_frame().rename(
+        columns={
+            "instrument_code": "代码",
+            "instrument_name": "名称",
+            "trade_date": "日期",
+            "open": "开盘",
+            "high": "最高",
+            "low": "最低",
+            "close": "收盘",
+            "volume": "成交量",
+            "amount": "成交额",
+        }
+    )
+    if not include_amount:
+        frame = frame.drop(columns=["成交额"])
+    return frame
+
+
+def build_turnover_frame() -> pd.DataFrame:
+    frame = build_trading_frame().copy()
+    frame["turnover"] = [0.12, 0.13, 0.08]
+    return frame
 
 
 class DatabasePipelineTests(unittest.TestCase):
@@ -146,26 +172,22 @@ class DatabasePipelineTests(unittest.TestCase):
 
         alice_csv_run = self._upload_csv(
             token=alice_token,
-            dataset_name="alice_gold_csv",
-            asset_class="commodity",
+            dataset_name="alice_stock_csv",
             frame=build_trading_frame(),
         )
         alice_xlsx_run = self._upload_xlsx(
             token=alice_token,
-            dataset_name="alice_gold_xlsx",
-            asset_class="commodity",
+            dataset_name="alice_stock_xlsx",
             frame=build_trading_frame(),
         )
         alice_third_run = self._upload_csv(
             token=alice_token,
-            dataset_name="alice_gold_csv_2",
-            asset_class="commodity",
+            dataset_name="alice_stock_csv_2",
             frame=build_trading_frame(),
         )
         bob_run = self._upload_csv(
             token=bob_token,
             dataset_name="bob_stock_csv",
-            asset_class="stock",
             frame=build_trading_frame(),
         )
         self.assertEqual(alice_csv_run["display_id"], 1)
@@ -203,7 +225,7 @@ class DatabasePipelineTests(unittest.TestCase):
 
         records = self.client.get(
             "/api/trading/records",
-            params={"import_run_id": alice_csv_run["id"], "instrument_code": "AU9999"},
+            params={"import_run_id": alice_csv_run["id"], "instrument_code": "600519.SH"},
             headers=self._auth_headers(alice_token),
         )
         self.assertEqual(records.status_code, 200)
@@ -253,10 +275,184 @@ class DatabasePipelineTests(unittest.TestCase):
 
         deleted_records = self.client.get(
             "/api/trading/records",
-            params={"import_run_id": alice_csv_run["id"], "instrument_code": "AU9999"},
+            params={"import_run_id": alice_csv_run["id"], "instrument_code": "600519.SH"},
             headers=self._auth_headers(alice_token),
         )
         self.assertEqual(deleted_records.status_code, 404)
+
+    def test_upload_supports_alias_headers_and_optional_amount(self) -> None:
+        token = self._register_and_login("alias_user", "password123")
+        alias_run = self._upload_csv(
+            token=token,
+            dataset_name="alias_headers",
+            frame=build_alias_frame(include_amount=False),
+        )
+
+        instruments = self.client.get(
+            "/api/trading/instruments",
+            params={"import_run_id": alias_run["id"]},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(instruments.status_code, 200, instruments.text)
+        self.assertEqual(len(instruments.json()), 2)
+
+        records = self.client.get(
+            "/api/trading/records",
+            params={"import_run_id": alias_run["id"], "instrument_code": "600519.SH"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(records.status_code, 200, records.text)
+        body = records.json()
+        self.assertEqual(body[0]["instrument_name"], "Kweichow Moutai")
+        self.assertIsNone(body[0]["amount"])
+
+    def test_upload_supports_optional_turnover_without_conflicting_with_amount(self) -> None:
+        token = self._register_and_login("turnover_user", "password123")
+        turnover_run = self._upload_csv(
+            token=token,
+            dataset_name="turnover_headers",
+            frame=build_turnover_frame(),
+        )
+
+        records = self.client.get(
+            "/api/trading/records",
+            params={"import_run_id": turnover_run["id"], "instrument_code": "600519.SH"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(records.status_code, 200, records.text)
+        body = records.json()
+        self.assertEqual(len(body), 2)
+        self.assertIsNotNone(body[0]["amount"])
+
+    def test_dataset_name_conflicts_are_user_scoped_and_deleted_names_can_be_reused(self) -> None:
+        alice_token = self._register_and_login("alice_name_user", "password123")
+        bob_token = self._register_and_login("bob_name_user", "password123")
+        dataset_name = "shared_stock_dataset"
+        frame = build_trading_frame()
+
+        first_run = self._upload_csv(
+            token=alice_token,
+            dataset_name=dataset_name,
+            frame=frame,
+        )
+
+        duplicate_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": dataset_name},
+            files={"file": ("trading.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv")},
+            headers=self._auth_headers(alice_token),
+        )
+        self.assertEqual(duplicate_response.status_code, 409)
+        self.assertIn("同名数据集", duplicate_response.json()["detail"])
+
+        other_user_run = self._upload_csv(
+            token=bob_token,
+            dataset_name=dataset_name,
+            frame=frame,
+        )
+        self.assertNotEqual(other_user_run["id"], first_run["id"])
+
+        delete_response = self.client.delete(
+            f"/api/imports/runs/{first_run['id']}",
+            headers=self._auth_headers(alice_token),
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        reused_run = self._upload_csv(
+            token=alice_token,
+            dataset_name=dataset_name,
+            frame=frame,
+        )
+        self.assertNotEqual(reused_run["id"], first_run["id"])
+
+    def test_upload_rejects_missing_required_headers_and_duplicate_alias_matches(self) -> None:
+        token = self._register_and_login("invalid_alias_user", "password123")
+
+        missing_code_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": "missing_code"},
+            files={
+                "file": (
+                    "trading.csv",
+                    build_alias_frame().drop(columns=["代码"]).to_csv(index=False).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(missing_code_response.status_code, 400)
+        self.assertIn("导入失败，数据不符合格式", missing_code_response.json()["detail"])
+
+        duplicate_alias_frame = build_trading_frame().rename(columns={"instrument_code": "code"})
+        duplicate_alias_frame["symbol"] = duplicate_alias_frame["code"]
+        duplicate_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": "duplicate_alias"},
+            files={
+                "file": (
+                    "trading.csv",
+                    duplicate_alias_frame.to_csv(index=False).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(duplicate_response.status_code, 400)
+        self.assertIn("导入失败，数据不符合格式", duplicate_response.json()["detail"])
+
+    def test_failed_uploads_are_hidden_allow_name_reuse_and_block_data_access(self) -> None:
+        token = self._register_and_login("failed_upload_user", "password123")
+        invalid_frame = build_trading_frame().drop(columns=["instrument_code"])
+
+        failed_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": "sample2"},
+            files={
+                "file": (
+                    "invalid.csv",
+                    invalid_frame.to_csv(index=False).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(failed_response.status_code, 400)
+        self.assertIn("导入失败", failed_response.json()["detail"])
+
+        runs_after_failure = self.client.get("/api/imports/runs", headers=self._auth_headers(token))
+        self.assertEqual(runs_after_failure.status_code, 200)
+        self.assertEqual(runs_after_failure.json(), [])
+
+        failed_run_id = self._find_run_id(dataset_name="sample2", status="failed")
+
+        blocked_instruments = self.client.get(
+            "/api/trading/instruments",
+            params={"import_run_id": failed_run_id},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(blocked_instruments.status_code, 404)
+
+        successful_run = self._upload_csv(
+            token=token,
+            dataset_name="sample2",
+            frame=build_trading_frame(),
+        )
+        self.assertEqual(successful_run["display_id"], 1)
+
+        runs_after_success = self.client.get("/api/imports/runs", headers=self._auth_headers(token))
+        self.assertEqual(runs_after_success.status_code, 200)
+        success_rows = runs_after_success.json()
+        self.assertEqual(len(success_rows), 1)
+        self.assertEqual(success_rows[0]["id"], successful_run["id"])
+        self.assertEqual(success_rows[0]["dataset_name"], "sample2")
+        self.assertEqual(success_rows[0]["status"], "completed")
+
+        stats_response = self.client.get("/api/imports/stats", headers=self._auth_headers(token))
+        self.assertEqual(stats_response.status_code, 200)
+        stats_body = stats_response.json()
+        self.assertEqual(stats_body["total_runs"], 2)
+        self.assertEqual(stats_body["completed_runs"], 1)
+        self.assertEqual(stats_body["failed_runs"], 1)
 
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
@@ -267,24 +463,24 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["access_token"]
 
-    def _upload_csv(self, *, token: str, dataset_name: str, asset_class: str, frame: pd.DataFrame) -> dict[str, object]:
+    def _upload_csv(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
         csv_text = frame.to_csv(index=False)
         response = self.client.post(
             "/api/imports/trading",
-            data={"dataset_name": dataset_name, "asset_class": asset_class},
+            data={"dataset_name": dataset_name},
             files={"file": ("trading.csv", csv_text.encode("utf-8"), "text/csv")},
             headers=self._auth_headers(token),
         )
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
-    def _upload_xlsx(self, *, token: str, dataset_name: str, asset_class: str, frame: pd.DataFrame) -> dict[str, object]:
+    def _upload_xlsx(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             frame.to_excel(writer, index=False)
         response = self.client.post(
             "/api/imports/trading",
-            data={"dataset_name": dataset_name, "asset_class": asset_class},
+            data={"dataset_name": dataset_name},
             files={
                 "file": (
                     "trading.xlsx",
@@ -300,6 +496,20 @@ class DatabasePipelineTests(unittest.TestCase):
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
+    def _find_run_id(self, *, dataset_name: str, status: str) -> int:
+        session = get_session_factory()()
+        try:
+            run = session.scalar(
+                select(ImportRun)
+                .where(ImportRun.dataset_name == dataset_name)
+                .where(ImportRun.status == status)
+                .order_by(ImportRun.id.desc())
+            )
+            self.assertIsNotNone(run)
+            return int(run.id)
+        finally:
+            session.close()
+
     def _insert_legacy_run(self, *, owner_user_id: int, dataset_name: str) -> None:
         session = get_session_factory()()
         try:
@@ -307,7 +517,6 @@ class DatabasePipelineTests(unittest.TestCase):
                 ImportRun(
                     owner_user_id=owner_user_id,
                     dataset_name=dataset_name,
-                    asset_class="stock",
                     source_type="legacy",
                     source_name="retired.import.path",
                     source_uri=None,

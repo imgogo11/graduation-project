@@ -14,11 +14,17 @@ from app.schemas.trading import TradingInstrumentRead, TradingRecordRead
 
 
 router = APIRouter()
+COMPLETED_RUN_STATUSES = ("completed",)
 
 
 def _get_accessible_run(session: Session, *, run_id: int, current_user: User):
     owner_scope = None if current_user.role == "admin" else current_user.id
-    run = ImportRunRepository.get_visible_run(session, run_id=run_id, owner_user_id=owner_scope)
+    run = ImportRunRepository.get_visible_run(
+        session,
+        run_id=run_id,
+        owner_user_id=owner_scope,
+        statuses=COMPLETED_RUN_STATUSES,
+    )
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import run not found")
     return run

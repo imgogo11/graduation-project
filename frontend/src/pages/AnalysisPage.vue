@@ -11,7 +11,7 @@ import {
   fetchTradingJointAnomalyRanking,
   fetchTradingQuality,
   fetchTradingRisk,
-  fetchTradingRunComparison,
+  fetchTradingScopeComparison,
   fetchTradingSummary,
 } from "@/api/analysis";
 import { fetchImportRuns } from "@/api/imports";
@@ -19,6 +19,7 @@ import { fetchTradingInstruments } from "@/api/trading";
 import type {
   ImportRunRead,
   TradingAnomalyReportRead,
+  TradingComparisonScopeRead,
   TradingCorrelationMatrixRead,
   TradingCrossSectionRead,
   TradingIndicatorPointRead,
@@ -27,7 +28,7 @@ import type {
   TradingJointAnomalyRankingRead,
   TradingQualityReportRead,
   TradingRiskMetricsRead,
-  TradingRunComparisonRead,
+  TradingScopeComparisonRead,
   TradingSummaryRead,
 } from "@/api/types";
 import EChartPanel from "@/components/EChartPanel.vue";
@@ -41,10 +42,53 @@ import {
   formatNumberish,
   formatPercent,
   getErrorMessage,
+  isDataInsufficientMessage,
   toNumber,
   toStatusTagType,
 } from "@/utils/format";
 
+
+interface PanelState {
+  loading: boolean;
+  notice: string;
+}
+
+interface AnalysisFilters {
+  importRunId: number | undefined;
+  instrumentCode: string;
+  startDate: string;
+  endDate: string;
+  crossMetric: string;
+  topNInput: string;
+  compareRunId: number | undefined;
+  compareInstrumentCode: string;
+  compareStartDate: string;
+  compareEndDate: string;
+  correlationInstrumentCodes: string[];
+}
+
+function createPanelState(): PanelState {
+  return {
+    loading: false,
+    notice: "",
+  };
+}
+
+function createDefaultFilters(): AnalysisFilters {
+  return {
+    importRunId: undefined,
+    instrumentCode: "",
+    startDate: "",
+    endDate: "",
+    crossMetric: "total_return",
+    topNInput: "10",
+    compareRunId: undefined,
+    compareInstrumentCode: "",
+    compareStartDate: "",
+    compareEndDate: "",
+    correlationInstrumentCodes: [],
+  };
+}
 
 const runtime = useRuntimeStore();
 const loadingRuns = ref(false);
@@ -52,6 +96,7 @@ const loadingAnalysis = ref(false);
 const error = ref("");
 const importRuns = ref<ImportRunRead[]>([]);
 const instruments = ref<TradingInstrumentRead[]>([]);
+const compareInstruments = ref<TradingInstrumentRead[]>([]);
 
 const summary = ref<TradingSummaryRead | null>(null);
 const quality = ref<TradingQualityReportRead | null>(null);
@@ -61,19 +106,26 @@ const anomalies = ref<TradingAnomalyReportRead | null>(null);
 const jointAnomalies = ref<TradingJointAnomalyRankingRead | null>(null);
 const crossSection = ref<TradingCrossSectionRead | null>(null);
 const correlation = ref<TradingCorrelationMatrixRead | null>(null);
-const comparison = ref<TradingRunComparisonRead | null>(null);
+const comparison = ref<TradingScopeComparisonRead | null>(null);
+const appliedFilters = ref<AnalysisFilters | null>(null);
+const draftForm = reactive(createDefaultFilters());
 const importRunDisplayIdMap = computed(() => new Map(importRuns.value.map((item) => [item.id, item.display_id])));
 
-const queryForm = reactive({
-  importRunId: undefined as number | undefined,
-  instrumentCode: "",
-  startDate: "",
-  endDate: "",
-  crossMetric: "total_return",
-  topNInput: "10",
-  compareRunId: undefined as number | undefined,
-  correlationInstrumentCodes: [] as string[],
+const panelStates = reactive({
+  summary: createPanelState(),
+  quality: createPanelState(),
+  indicators: createPanelState(),
+  risk: createPanelState(),
+  anomalies: createPanelState(),
+  crossSection: createPanelState(),
+  correlation: createPanelState(),
+  comparison: createPanelState(),
+  jointAnomalies: createPanelState(),
 });
+
+const compareRunOptions = computed(() => importRuns.value);
+const correlationHint = "仅从当前批次中选取，基于重叠日期收益率计算，不是跨批次公共标的。";
+const comparisonHint = "支持与当前相同批次做基线校验；对比标的留空时表示对比范围内全部标的。";
 
 const crossMetricOptions = [
   { label: "区间收益率", value: "total_return" },
@@ -87,25 +139,27 @@ const analysisCards = computed(() => [
   {
     label: "Latest Close",
     value: summary.value ? formatNumberish(summary.value.latest_close, 2) : "--",
-    hint: summary.value ? `${formatDate(summary.value.end_date)} 收盘价` : "等待分析结果",
+    hint: summary.value ? `${formatDate(summary.value.end_date)} 收盘价` : panelHint(panelStates.summary, "等待分析结果"),
     tone: "teal" as const,
   },
   {
     label: "Interval Return",
     value: risk.value ? formatPercent(risk.value.interval_return, 2) : "--",
-    hint: risk.value ? `${risk.value.record_count} 条记录` : "等待分析结果",
+    hint: risk.value ? `${risk.value.record_count} 条记录` : panelHint(panelStates.risk, "等待分析结果"),
     tone: "orange" as const,
   },
   {
     label: "Max Drawdown",
     value: risk.value ? formatPercent(risk.value.max_drawdown, 2) : "--",
-    hint: risk.value ? `持续 ${risk.value.max_drawdown_duration} 天` : "等待分析结果",
+    hint: risk.value ? `持续 ${risk.value.max_drawdown_duration} 天` : panelHint(panelStates.risk, "等待分析结果"),
     tone: "berry" as const,
   },
   {
-    label: "Anomalies",
-    value: String(anomalies.value?.anomalies.length ?? 0),
-    hint: quality.value ? `覆盖率 ${formatPercent(quality.value.coverage_ratio, 2)}` : "等待分析结果",
+    label: "范围对比差异",
+    value: comparison.value ? String(comparison.value.mismatch_summary.mismatched_record_count) : "--",
+    hint: comparison.value
+      ? `${comparison.value.record_overlap.shared_record_count} 条共同记录`
+      : panelHint(panelStates.comparison, "等待范围对比"),
     tone: "neutral" as const,
   },
 ]);
@@ -233,10 +287,57 @@ const correlationTableRows = computed(() => {
   });
 });
 
-const jointAnomalyRows = computed(() => jointAnomalies.value?.rows ?? []);
+const comparisonMismatchRows = computed(() => {
+  if (!comparison.value) {
+    return [];
+  }
 
-function parseTopN() {
-  const normalized = queryForm.topNInput.trim();
+  return [
+    { label: "开盘价", count: comparison.value.mismatch_summary.open_mismatch_count },
+    { label: "最高价", count: comparison.value.mismatch_summary.high_mismatch_count },
+    { label: "最低价", count: comparison.value.mismatch_summary.low_mismatch_count },
+    { label: "收盘价", count: comparison.value.mismatch_summary.close_mismatch_count },
+    { label: "成交量", count: comparison.value.mismatch_summary.volume_mismatch_count },
+    { label: "成交额", count: comparison.value.mismatch_summary.amount_mismatch_count },
+  ];
+});
+
+const jointAnomalyRows = computed(() => jointAnomalies.value?.rows ?? []);
+const hasUnappliedChanges = computed(() => serializeFilters(snapshotFilters()) !== serializeFilters(appliedFilters.value));
+
+function panelHint(state: PanelState, idleText: string) {
+  if (state.loading) {
+    return "分析中";
+  }
+  return state.notice || idleText;
+}
+
+function emptyStateTitle(state: PanelState, emptyTitle: string, loadingTitle: string) {
+  if (state.loading) {
+    return loadingTitle;
+  }
+  if (state.notice) {
+    return isDataInsufficientMessage(state.notice) ? "数据不足分析" : "加载失败";
+  }
+  return emptyTitle;
+}
+
+function emptyStateDescription(state: PanelState, emptyDescription: string, loadingDescription = "正在请求最新分析结果。") {
+  if (state.loading) {
+    return loadingDescription;
+  }
+  return state.notice || emptyDescription;
+}
+
+function resetPanelStates() {
+  Object.values(panelStates).forEach((state) => {
+    state.loading = false;
+    state.notice = "";
+  });
+}
+
+function parseTopN(rawInput: string) {
+  const normalized = rawInput.trim();
   if (!normalized) {
     return undefined;
   }
@@ -248,21 +349,52 @@ function parseTopN() {
   return parsed;
 }
 
-function buildScopeParams() {
-  if (!queryForm.importRunId || !queryForm.instrumentCode) {
-    throw new Error("请先选择批次和标的。");
-  }
-
+function snapshotFilters(source: AnalysisFilters = draftForm): AnalysisFilters {
   return {
-    import_run_id: queryForm.importRunId,
-    instrument_code: queryForm.instrumentCode,
-    start_date: queryForm.startDate || undefined,
-    end_date: queryForm.endDate || undefined,
+    importRunId: source.importRunId,
+    instrumentCode: source.instrumentCode,
+    startDate: source.startDate,
+    endDate: source.endDate,
+    crossMetric: source.crossMetric,
+    topNInput: source.topNInput,
+    compareRunId: source.compareRunId,
+    compareInstrumentCode: source.compareInstrumentCode,
+    compareStartDate: source.compareStartDate,
+    compareEndDate: source.compareEndDate,
+    correlationInstrumentCodes: [...source.correlationInstrumentCodes],
   };
 }
 
-function defaultCorrelationCodes(rows: TradingInstrumentRead[]) {
-  return rows.slice(0, 6).map((item) => item.instrument_code);
+function serializeFilters(source: AnalysisFilters | null) {
+  return JSON.stringify(source);
+}
+
+function buildScopeParams(filters: AnalysisFilters) {
+  if (!filters.importRunId || !filters.instrumentCode) {
+    throw new Error("请先选择主分析范围的批次和标的。");
+  }
+
+  return {
+    import_run_id: filters.importRunId,
+    instrument_code: filters.instrumentCode,
+    start_date: filters.startDate || undefined,
+    end_date: filters.endDate || undefined,
+  };
+}
+
+function defaultCorrelationCodes(rows: TradingInstrumentRead[], preferredCode: string) {
+  const selectedCodes: string[] = [];
+  if (preferredCode && rows.some((item) => item.instrument_code === preferredCode)) {
+    selectedCodes.push(preferredCode);
+  }
+
+  rows.forEach((item) => {
+    if (selectedCodes.length >= 6 || selectedCodes.includes(item.instrument_code)) {
+      return;
+    }
+    selectedCodes.push(item.instrument_code);
+  });
+  return selectedCodes;
 }
 
 function formatImportRunDisplayLabel(runId: number | null | undefined) {
@@ -273,6 +405,65 @@ function formatImportRunDisplayLabel(runId: number | null | undefined) {
   return `#${displayId ?? runId}`;
 }
 
+function formatScopeInstrumentLabel(scope: TradingComparisonScopeRead) {
+  if (!scope.instrument_code) {
+    return "全部标的";
+  }
+  return `${scope.instrument_code}${scope.instrument_name ? ` · ${scope.instrument_name}` : ""}`;
+}
+
+function formatScopeRequestedRange(scope: TradingComparisonScopeRead) {
+  return `${scope.requested_start_date ?? "起始不限"} ~ ${scope.requested_end_date ?? "结束不限"}`;
+}
+
+function formatScopeActualRange(scope: TradingComparisonScopeRead) {
+  return `${scope.actual_start_date} ~ ${scope.actual_end_date}`;
+}
+
+function syncCompareRunSelection() {
+  const candidateIds = compareRunOptions.value.map((item) => item.id);
+  if (!candidateIds.length) {
+    draftForm.compareRunId = undefined;
+    return;
+  }
+
+  if (draftForm.compareRunId && candidateIds.includes(draftForm.compareRunId)) {
+    return;
+  }
+
+  const defaultRunId = candidateIds.find((item) => item !== draftForm.importRunId) ?? draftForm.importRunId;
+  draftForm.compareRunId = defaultRunId;
+}
+
+function syncCorrelationSelection(rows: TradingInstrumentRead[], preferDefault = false) {
+  if (!rows.length) {
+    draftForm.correlationInstrumentCodes = [];
+    return;
+  }
+
+  const validCurrentCodes = draftForm.correlationInstrumentCodes.filter((code) =>
+    rows.some((item) => item.instrument_code === code)
+  );
+  if (!validCurrentCodes.length || preferDefault) {
+    draftForm.correlationInstrumentCodes = defaultCorrelationCodes(rows, draftForm.instrumentCode);
+    return;
+  }
+
+  const mergedCodes = [
+    draftForm.instrumentCode,
+    ...validCurrentCodes.filter((code) => code !== draftForm.instrumentCode),
+  ].filter(Boolean);
+
+  rows.forEach((item) => {
+    if (mergedCodes.length >= 6 || mergedCodes.includes(item.instrument_code)) {
+      return;
+    }
+    mergedCodes.push(item.instrument_code);
+  });
+
+  draftForm.correlationInstrumentCodes = mergedCodes.slice(0, Math.min(6, rows.length));
+}
+
 async function loadRuns(preferredRunId?: number) {
   loadingRuns.value = true;
   error.value = "";
@@ -280,19 +471,21 @@ async function loadRuns(preferredRunId?: number) {
     const rows = await fetchImportRuns({ limit: 50 });
     importRuns.value = rows;
     if (!rows.length) {
-      queryForm.importRunId = undefined;
-      queryForm.compareRunId = undefined;
+      Object.assign(draftForm, createDefaultFilters());
+      appliedFilters.value = null;
       instruments.value = [];
+      compareInstruments.value = [];
       clearAnalysisResults();
       return;
     }
 
     const fallbackRunId = preferredRunId && rows.some((row) => row.id === preferredRunId) ? preferredRunId : rows[0].id;
-    queryForm.importRunId = fallbackRunId;
-
-    const compareCandidate = rows.find((row) => row.id !== fallbackRunId)?.id ?? fallbackRunId;
-    queryForm.compareRunId = compareCandidate;
-    await loadInstruments();
+    draftForm.importRunId = fallbackRunId;
+    syncCompareRunSelection();
+    await loadInstruments(true);
+    if (draftForm.instrumentCode) {
+      await applyFilters();
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
   } finally {
@@ -300,38 +493,85 @@ async function loadRuns(preferredRunId?: number) {
   }
 }
 
-async function loadInstruments() {
-  if (!queryForm.importRunId) {
+async function loadInstruments(preferDefaults = false) {
+  if (!draftForm.importRunId) {
     instruments.value = [];
-    queryForm.instrumentCode = "";
-    clearAnalysisResults();
+    draftForm.instrumentCode = "";
+    draftForm.correlationInstrumentCodes = [];
+    compareInstruments.value = [];
+    draftForm.compareInstrumentCode = "";
     return;
   }
 
   try {
-    const rows = await fetchTradingInstruments(queryForm.importRunId);
+    const rows = await fetchTradingInstruments(draftForm.importRunId);
     instruments.value = rows;
     if (!rows.length) {
-      queryForm.instrumentCode = "";
-      queryForm.correlationInstrumentCodes = [];
+      draftForm.instrumentCode = "";
+      draftForm.correlationInstrumentCodes = [];
+      compareInstruments.value = [];
+      draftForm.compareInstrumentCode = "";
+      appliedFilters.value = null;
       clearAnalysisResults();
       return;
     }
 
-    if (!rows.some((row) => row.instrument_code === queryForm.instrumentCode)) {
-      queryForm.instrumentCode = rows[0].instrument_code;
+    if (!rows.some((row) => row.instrument_code === draftForm.instrumentCode)) {
+      draftForm.instrumentCode = rows[0].instrument_code;
     }
 
-    const validCorrelationCodes = queryForm.correlationInstrumentCodes.filter((code) =>
-      rows.some((item) => item.instrument_code === code)
-    );
-    queryForm.correlationInstrumentCodes = validCorrelationCodes.length
-      ? validCorrelationCodes
-      : defaultCorrelationCodes(rows);
-    await loadAnalysis();
+    syncCompareRunSelection();
+    syncCorrelationSelection(rows, preferDefaults);
+    await loadCompareInstruments(preferDefaults);
   } catch (err) {
     error.value = getErrorMessage(err);
   }
+}
+
+async function loadCompareInstruments(preferDefaults = false) {
+  if (!draftForm.compareRunId) {
+    compareInstruments.value = [];
+    draftForm.compareInstrumentCode = "";
+    return;
+  }
+
+  try {
+    const rows =
+      draftForm.compareRunId === draftForm.importRunId ? instruments.value : await fetchTradingInstruments(draftForm.compareRunId);
+    compareInstruments.value = rows;
+    if (!rows.length) {
+      draftForm.compareInstrumentCode = "";
+      return;
+    }
+
+    if (!draftForm.compareInstrumentCode) {
+      if (preferDefaults && rows.some((item) => item.instrument_code === draftForm.instrumentCode)) {
+        draftForm.compareInstrumentCode = draftForm.instrumentCode;
+      }
+      return;
+    }
+
+    if (!rows.some((item) => item.instrument_code === draftForm.compareInstrumentCode)) {
+      draftForm.compareInstrumentCode = rows.some((item) => item.instrument_code === draftForm.instrumentCode)
+        ? draftForm.instrumentCode
+        : "";
+    }
+  } catch (err) {
+    error.value = getErrorMessage(err);
+  }
+}
+
+async function handleBaseRunChange() {
+  await loadInstruments(true);
+}
+
+async function handleBaseInstrumentChange() {
+  syncCorrelationSelection(instruments.value, true);
+  await loadCompareInstruments(true);
+}
+
+async function handleCompareRunChange() {
+  await loadCompareInstruments(false);
 }
 
 function clearAnalysisResults() {
@@ -344,71 +584,143 @@ function clearAnalysisResults() {
   crossSection.value = null;
   correlation.value = null;
   comparison.value = null;
+  resetPanelStates();
 }
 
-async function loadAnalysis() {
-  if (!queryForm.importRunId || !queryForm.instrumentCode) {
+async function loadPanel<T>(
+  state: PanelState,
+  loader: () => Promise<T>,
+  assign: (value: T | null) => void,
+) {
+  assign(null);
+  state.loading = true;
+  state.notice = "";
+
+  try {
+    const payload = await loader();
+    assign(payload);
+    return true;
+  } catch (err) {
+    const message = getErrorMessage(err);
+    assign(null);
+    state.notice = message;
+    if (!isDataInsufficientMessage(message) && !error.value) {
+      error.value = message;
+    }
+    return false;
+  } finally {
+    state.loading = false;
+  }
+}
+
+async function loadAnalysis(filters: AnalysisFilters) {
+  if (!filters.importRunId || !filters.instrumentCode) {
     clearAnalysisResults();
     return;
   }
 
   loadingAnalysis.value = true;
   error.value = "";
+  clearAnalysisResults();
+
   try {
-    const scopeParams = buildScopeParams();
-    const topN = parseTopN();
-    const correlationCodes = queryForm.correlationInstrumentCodes.length
-      ? queryForm.correlationInstrumentCodes.join(",")
+    const scopeParams = buildScopeParams(filters);
+    const topN = parseTopN(filters.topNInput);
+    const correlationCodes = filters.correlationInstrumentCodes.length
+      ? filters.correlationInstrumentCodes.join(",")
       : undefined;
 
-    const [summaryResponse, qualityResponse, indicatorResponse, riskResponse, anomalyResponse, jointAnomalyResponse, crossSectionResponse, correlationResponse, comparisonResponse] =
-      await Promise.all([
-        fetchTradingSummary(scopeParams),
-        fetchTradingQuality(scopeParams),
-        fetchTradingIndicators(scopeParams),
-        fetchTradingRisk(scopeParams),
-        fetchTradingAnomalies(scopeParams),
-        fetchTradingJointAnomalyRanking({
-          import_run_id: queryForm.importRunId,
-          start_date: queryForm.startDate || undefined,
-          end_date: queryForm.endDate || undefined,
-          top_n: topN,
-        }),
-        fetchTradingCrossSection({
-          import_run_id: queryForm.importRunId,
-          start_date: queryForm.startDate || undefined,
-          end_date: queryForm.endDate || undefined,
-          metric: queryForm.crossMetric,
-          top_n: topN,
-        }),
-        fetchTradingCorrelation({
-          import_run_id: queryForm.importRunId,
-          start_date: queryForm.startDate || undefined,
-          end_date: queryForm.endDate || undefined,
-          instrument_codes: correlationCodes,
-        }),
-        fetchTradingRunComparison({
-          base_run_id: queryForm.importRunId,
-          target_run_id: queryForm.compareRunId || queryForm.importRunId,
-        }),
-      ]);
+    const results = await Promise.all([
+      loadPanel(panelStates.summary, () => fetchTradingSummary(scopeParams), (value) => {
+        summary.value = value;
+      }),
+      loadPanel(panelStates.quality, () => fetchTradingQuality(scopeParams), (value) => {
+        quality.value = value;
+      }),
+      loadPanel(panelStates.indicators, () => fetchTradingIndicators(scopeParams), (value) => {
+        indicators.value = value;
+      }),
+      loadPanel(panelStates.risk, () => fetchTradingRisk(scopeParams), (value) => {
+        risk.value = value;
+      }),
+      loadPanel(panelStates.anomalies, () => fetchTradingAnomalies(scopeParams), (value) => {
+        anomalies.value = value;
+      }),
+      loadPanel(
+        panelStates.jointAnomalies,
+        () =>
+          fetchTradingJointAnomalyRanking({
+            import_run_id: filters.importRunId!,
+            start_date: filters.startDate || undefined,
+            end_date: filters.endDate || undefined,
+            top_n: topN,
+          }),
+        (value) => {
+          jointAnomalies.value = value;
+        }
+      ),
+      loadPanel(
+        panelStates.crossSection,
+        () =>
+          fetchTradingCrossSection({
+            import_run_id: filters.importRunId!,
+            start_date: filters.startDate || undefined,
+            end_date: filters.endDate || undefined,
+            metric: filters.crossMetric,
+            top_n: topN,
+          }),
+        (value) => {
+          crossSection.value = value;
+        }
+      ),
+      loadPanel(
+        panelStates.correlation,
+        () =>
+          fetchTradingCorrelation({
+            import_run_id: filters.importRunId!,
+            start_date: filters.startDate || undefined,
+            end_date: filters.endDate || undefined,
+            instrument_codes: correlationCodes,
+          }),
+        (value) => {
+          correlation.value = value;
+        }
+      ),
+      loadPanel(
+        panelStates.comparison,
+        () =>
+          fetchTradingScopeComparison({
+            base_run_id: filters.importRunId!,
+            base_instrument_code: filters.instrumentCode,
+            base_start_date: filters.startDate || undefined,
+            base_end_date: filters.endDate || undefined,
+            target_run_id: filters.compareRunId ?? filters.importRunId!,
+            target_instrument_code: filters.compareInstrumentCode || undefined,
+            target_start_date: filters.compareStartDate || undefined,
+            target_end_date: filters.compareEndDate || undefined,
+          }),
+        (value) => {
+          comparison.value = value;
+        }
+      ),
+    ]);
 
-    summary.value = summaryResponse;
-    quality.value = qualityResponse;
-    indicators.value = indicatorResponse;
-    risk.value = riskResponse;
-    anomalies.value = anomalyResponse;
-    jointAnomalies.value = jointAnomalyResponse;
-    crossSection.value = crossSectionResponse;
-    correlation.value = correlationResponse;
-    comparison.value = comparisonResponse;
-    runtime.markSynced();
+    if (results.some(Boolean)) {
+      runtime.markSynced();
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
     clearAnalysisResults();
   } finally {
     loadingAnalysis.value = false;
   }
+}
+
+async function applyFilters() {
+  const nextFilters = snapshotFilters();
+  parseTopN(nextFilters.topNInput);
+  appliedFilters.value = nextFilters;
+  await loadAnalysis(nextFilters);
 }
 
 onMounted(async () => {
@@ -423,11 +735,12 @@ onMounted(async () => {
         <div class="page__eyebrow">Analysis</div>
         <h2 class="page__title">交易分析中心</h2>
         <p class="page__subtitle">
-          在当前导入批次内，对选定标的执行指标、风险、异常、横截面、相关性、数据质量和批次对比分析。
+          页面按“单标的分析、批次内多标的分析、范围对比”三种作用域拆分，筛选编辑后统一点击按钮应用。
         </p>
       </div>
       <div class="page__actions">
-        <el-button type="primary" :loading="loadingAnalysis" @click="loadAnalysis">刷新分析</el-button>
+        <el-button type="primary" :loading="loadingAnalysis" @click="applyFilters">应用筛选并分析</el-button>
+        <div v-if="hasUnappliedChanges" class="analysis-filters__hint">存在未应用的筛选修改。</div>
       </div>
     </section>
 
@@ -440,106 +753,165 @@ onMounted(async () => {
       :closable="false"
     />
 
-    <PanelCard title="分析筛选器" description="所有分析都在当前导入批次的可见范围内执行。">
-      <div class="analysis-filters">
-        <el-select
-          v-model="queryForm.importRunId"
-          placeholder="选择批次"
-          filterable
-          class="analysis-filters__control"
-          @change="loadInstruments"
-        >
-          <el-option
-            v-for="item in importRuns"
-            :key="item.id"
-            :label="`#${item.display_id} - ${item.dataset_name}`"
-            :value="item.id"
-          />
-        </el-select>
+    <PanelCard title="分析筛选器" description="三类分析范围独立编辑，但统一点击上方按钮后生效。">
+      <div class="analysis-stack">
+        <div>
+          <div class="analysis-subtitle">主分析范围</div>
+          <el-form class="analysis-filters" label-position="top">
+            <el-form-item label="当前批次">
+              <el-select
+                v-model="draftForm.importRunId"
+                placeholder="选择批次"
+                filterable
+                class="analysis-filters__control"
+                @change="handleBaseRunChange"
+              >
+                <el-option
+                  v-for="item in importRuns"
+                  :key="item.id"
+                  :label="`#${item.display_id} - ${item.dataset_name}`"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
 
-        <el-select
-          v-model="queryForm.instrumentCode"
-          placeholder="选择标的"
-          filterable
-          class="analysis-filters__control"
-          @change="loadAnalysis"
-        >
-          <el-option
-            v-for="item in instruments"
-            :key="item.instrument_code"
-            :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
-            :value="item.instrument_code"
-          />
-        </el-select>
+            <el-form-item label="分析标的">
+              <el-select
+                v-model="draftForm.instrumentCode"
+                placeholder="选择标的"
+                filterable
+                class="analysis-filters__control"
+                @change="handleBaseInstrumentChange"
+              >
+                <el-option
+                  v-for="item in instruments"
+                  :key="item.instrument_code"
+                  :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
+                  :value="item.instrument_code"
+                />
+              </el-select>
+            </el-form-item>
 
-        <el-date-picker
-          v-model="queryForm.startDate"
-          type="date"
-          value-format="YYYY-MM-DD"
-          placeholder="开始日期"
-          class="analysis-filters__control"
-        />
+            <el-form-item label="开始日期">
+              <el-date-picker
+                v-model="draftForm.startDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="开始日期"
+                class="analysis-filters__control"
+              />
+            </el-form-item>
 
-        <el-date-picker
-          v-model="queryForm.endDate"
-          type="date"
-          value-format="YYYY-MM-DD"
-          placeholder="结束日期"
-          class="analysis-filters__control"
-        />
+            <el-form-item label="结束日期">
+              <el-date-picker
+                v-model="draftForm.endDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="结束日期"
+                class="analysis-filters__control"
+              />
+            </el-form-item>
+          </el-form>
+        </div>
 
-        <el-select
-          v-model="queryForm.crossMetric"
-          placeholder="横截面指标"
-          class="analysis-filters__control"
-          @change="loadAnalysis"
-        >
-          <el-option
-            v-for="item in crossMetricOptions"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
+        <div>
+          <div class="analysis-subtitle">批次内多标的分析</div>
+          <el-form class="analysis-filters" label-position="top">
+            <el-form-item label="横截面指标">
+              <el-select v-model="draftForm.crossMetric" placeholder="横截面指标" class="analysis-filters__control">
+                <el-option
+                  v-for="item in crossMetricOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
 
-        <el-input
-          v-model="queryForm.topNInput"
-          placeholder="Top N"
-          class="analysis-filters__control"
-          @change="loadAnalysis"
-        />
+            <el-form-item label="Top N">
+              <el-input v-model="draftForm.topNInput" placeholder="Top N" class="analysis-filters__control" />
+            </el-form-item>
 
-        <el-select
-          v-model="queryForm.compareRunId"
-          placeholder="对比批次"
-          filterable
-          class="analysis-filters__control"
-          @change="loadAnalysis"
-        >
-          <el-option
-            v-for="item in importRuns"
-            :key="`compare-${item.id}`"
-            :label="`#${item.display_id} - ${item.dataset_name}`"
-            :value="item.id"
-          />
-        </el-select>
+            <el-form-item label="相关性分析标的" class="analysis-filters__item analysis-filters__item--wide">
+              <el-select
+                v-model="draftForm.correlationInstrumentCodes"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                placeholder="相关性分析标的"
+                class="analysis-filters__control"
+              >
+                <el-option
+                  v-for="item in instruments"
+                  :key="`corr-${item.instrument_code}`"
+                  :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
+                  :value="item.instrument_code"
+                />
+              </el-select>
+              <div class="analysis-filters__hint">{{ correlationHint }}</div>
+            </el-form-item>
+          </el-form>
+        </div>
 
-        <el-select
-          v-model="queryForm.correlationInstrumentCodes"
-          multiple
-          collapse-tags
-          collapse-tags-tooltip
-          placeholder="相关性标的"
-          class="analysis-filters__control analysis-filters__control--wide"
-          @change="loadAnalysis"
-        >
-          <el-option
-            v-for="item in instruments"
-            :key="`corr-${item.instrument_code}`"
-            :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
-            :value="item.instrument_code"
-          />
-        </el-select>
+        <div>
+          <div class="analysis-subtitle">范围对比</div>
+          <el-form class="analysis-filters" label-position="top">
+            <el-form-item label="对比批次">
+              <el-select
+                v-model="draftForm.compareRunId"
+                placeholder="选择对比批次"
+                filterable
+                class="analysis-filters__control"
+                @change="handleCompareRunChange"
+              >
+                <el-option
+                  v-for="item in compareRunOptions"
+                  :key="`compare-${item.id}`"
+                  :label="`#${item.display_id} - ${item.dataset_name}`"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="对比标的">
+              <el-select
+                v-model="draftForm.compareInstrumentCode"
+                placeholder="留空表示全部标的"
+                clearable
+                filterable
+                class="analysis-filters__control"
+              >
+                <el-option
+                  v-for="item in compareInstruments"
+                  :key="`compare-instrument-${item.instrument_code}`"
+                  :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
+                  :value="item.instrument_code"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="对比开始日期">
+              <el-date-picker
+                v-model="draftForm.compareStartDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="对比开始日期"
+                class="analysis-filters__control"
+              />
+            </el-form-item>
+
+            <el-form-item label="对比结束日期">
+              <el-date-picker
+                v-model="draftForm.compareEndDate"
+                type="date"
+                value-format="YYYY-MM-DD"
+                placeholder="对比结束日期"
+                class="analysis-filters__control"
+              />
+            </el-form-item>
+          </el-form>
+          <div class="analysis-filters__hint">{{ comparisonHint }}</div>
+        </div>
       </div>
     </PanelCard>
 
@@ -573,8 +945,8 @@ onMounted(async () => {
       </div>
       <EmptyState
         v-else
-        title="暂无摘要"
-        description="选择一个有数据的批次和标的后，这里会展示区间摘要。"
+        :title="emptyStateTitle(panelStates.summary, '暂无摘要', '正在加载摘要')"
+        :description="emptyStateDescription(panelStates.summary, '选择一个有数据的批次和标的后，这里会展示区间摘要。')"
       />
     </PanelCard>
 
@@ -584,7 +956,7 @@ onMounted(async () => {
       </template>
 
       <div v-if="indicators?.points.length" class="analysis-stack">
-        <EChartPanel :option="indicatorChartOption" :loading="loadingAnalysis" height="360px" />
+        <EChartPanel :option="indicatorChartOption" :loading="panelStates.indicators.loading" height="360px" />
 
         <el-descriptions v-if="latestIndicatorPoint" :column="3" border>
           <el-descriptions-item label="日收益率">
@@ -618,8 +990,8 @@ onMounted(async () => {
       </div>
       <EmptyState
         v-else
-        title="暂无指标数据"
-        description="当筛选区间内存在行情记录时，这里会展示指标走势与最新值。"
+        :title="emptyStateTitle(panelStates.indicators, '暂无指标数据', '正在加载指标')"
+        :description="emptyStateDescription(panelStates.indicators, '当筛选区间内存在行情记录时，这里会展示指标走势与最新值。')"
       />
     </PanelCard>
 
@@ -635,13 +1007,13 @@ onMounted(async () => {
       </div>
       <EmptyState
         v-else
-        title="暂无风险结果"
-        description="完成分析后，这里会展示波动率、最大回撤、上涨日占比等指标。"
+        :title="emptyStateTitle(panelStates.risk, '暂无风险结果', '正在加载风险画像')"
+        :description="emptyStateDescription(panelStates.risk, '完成分析后，这里会展示波动率、最大回撤、上涨日占比等指标。')"
       />
     </PanelCard>
 
     <PanelCard title="异常" description="全部采用可解释规则：放量、收益率异动、振幅异动、突破前高/前低。">
-      <el-table v-if="anomalies?.anomalies.length" :data="anomalies.anomalies" stripe>
+      <el-table v-if="anomalies?.anomalies.length" :data="anomalies.anomalies" stripe class="data-table" max-height="420">
         <el-table-column prop="trade_date" label="Trade Date" width="120" />
         <el-table-column prop="anomaly_type" label="Type" min-width="160" />
         <el-table-column label="Severity" width="120">
@@ -663,16 +1035,16 @@ onMounted(async () => {
       </el-table>
       <EmptyState
         v-else
-        title="未检测到异常"
-        description="如果没有满足规则阈值的记录，这里会保持空状态。"
+        :title="emptyStateTitle(panelStates.anomalies, '未检测到异常', '正在加载异常检测')"
+        :description="emptyStateDescription(panelStates.anomalies, '如果没有满足规则阈值的记录，这里会保持空状态。')"
       />
     </PanelCard>
 
-    <PanelCard title="横截面 / 相关性" description="支持批次内多标的排序与收益率相关性矩阵。">
+    <PanelCard title="横截面 / 相关性" description="仅在当前批次与当前日期范围内执行多标的排序和收益率相关性矩阵分析。">
       <div class="analysis-stack">
         <div>
           <div class="analysis-subtitle">横截面排序</div>
-          <el-table v-if="crossSection?.rows.length" :data="crossSection.rows" stripe>
+          <el-table v-if="crossSection?.rows.length" :data="crossSection.rows" stripe class="data-table" max-height="420">
             <el-table-column prop="instrument_code" label="Code" min-width="130" />
             <el-table-column prop="instrument_name" label="Name" min-width="180" />
             <el-table-column label="Return" min-width="120">
@@ -698,14 +1070,14 @@ onMounted(async () => {
           </el-table>
           <EmptyState
             v-else
-            title="暂无横截面结果"
-            description="这里会展示同一批次内多标的的区间排序结果。"
+            :title="emptyStateTitle(panelStates.crossSection, '暂无横截面结果', '正在加载横截面分析')"
+            :description="emptyStateDescription(panelStates.crossSection, '这里会展示同一批次内多标的的区间排序结果。')"
           />
         </div>
 
         <div>
           <div class="analysis-subtitle">相关性矩阵</div>
-          <el-table v-if="correlationTableRows.length" :data="correlationTableRows" stripe>
+          <el-table v-if="correlationTableRows.length" :data="correlationTableRows" stripe class="data-table" max-height="420">
             <el-table-column prop="instrument_code" label="Code" width="120" fixed />
             <el-table-column
               v-for="code in correlation?.instrument_codes || []"
@@ -721,14 +1093,14 @@ onMounted(async () => {
           </el-table>
           <EmptyState
             v-else
-            title="暂无相关性结果"
-            description="相关性需要至少两个标的且存在重叠收益率样本。"
+            :title="emptyStateTitle(panelStates.correlation, '暂无相关性结果', '正在加载相关性矩阵')"
+            :description="emptyStateDescription(panelStates.correlation, '相关性需要至少两个标的且存在重叠收益率样本。')"
           />
         </div>
       </div>
     </PanelCard>
 
-    <PanelCard title="数据质量 / 批次对比" description="用于支撑系统的数据管理能力，而不仅是单点算法查询。">
+    <PanelCard title="数据质量 / 范围对比" description="数据质量仍围绕主分析范围；范围对比用于校验两个分析范围的差异与一致性。">
       <div class="analysis-stack">
         <div>
           <div class="analysis-subtitle">数据质量</div>
@@ -749,7 +1121,7 @@ onMounted(async () => {
               {{ quality.non_positive_volume_count }}
             </el-descriptions-item>
             <el-descriptions-item label="非正成交额行">
-              {{ quality.non_positive_amount_count }}
+              {{ quality.non_positive_amount_count ?? "--" }}
             </el-descriptions-item>
             <el-descriptions-item label="平盘天数">
               {{ quality.flat_days_count }}
@@ -762,50 +1134,180 @@ onMounted(async () => {
           <div v-if="quality?.missing_trade_dates.length" class="analysis-tags">
             <span v-for="item in quality.missing_trade_dates" :key="item" class="pill">{{ item }}</span>
           </div>
+          <EmptyState
+            v-else-if="!quality"
+            :title="emptyStateTitle(panelStates.quality, '暂无数据质量结果', '正在加载数据质量')"
+            :description="emptyStateDescription(panelStates.quality, '这里会展示覆盖率、缺失交易日和异常值统计。')"
+          />
         </div>
 
         <div>
-          <div class="analysis-subtitle">批次对比</div>
-          <el-descriptions v-if="comparison" :column="2" border>
-            <el-descriptions-item label="Base ID">{{ formatImportRunDisplayLabel(comparison.base_run_id) }}</el-descriptions-item>
-            <el-descriptions-item label="Target ID">{{ formatImportRunDisplayLabel(comparison.target_run_id) }}</el-descriptions-item>
-            <el-descriptions-item label="Base Records">{{ comparison.base_record_count }}</el-descriptions-item>
-            <el-descriptions-item label="Target Records">{{ comparison.target_record_count }}</el-descriptions-item>
-            <el-descriptions-item label="Base Instruments">{{ comparison.base_instrument_count }}</el-descriptions-item>
-            <el-descriptions-item label="Target Instruments">{{ comparison.target_instrument_count }}</el-descriptions-item>
-            <el-descriptions-item label="Base Amount">
-              {{ formatCompact(comparison.base_total_amount, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="Target Amount">
-              {{ formatCompact(comparison.target_total_amount, 2) }}
-            </el-descriptions-item>
-          </el-descriptions>
-
+          <div class="analysis-subtitle">范围对比</div>
           <div v-if="comparison" class="analysis-compare">
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="当前范围批次">
+                {{ formatImportRunDisplayLabel(comparison.base_scope.import_run_id) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="对比范围批次">
+                {{ formatImportRunDisplayLabel(comparison.target_scope.import_run_id) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前范围标的">
+                {{ formatScopeInstrumentLabel(comparison.base_scope) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="对比范围标的">
+                {{ formatScopeInstrumentLabel(comparison.target_scope) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前筛选区间">
+                {{ formatScopeRequestedRange(comparison.base_scope) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="对比筛选区间">
+                {{ formatScopeRequestedRange(comparison.target_scope) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前有效数据区间">
+                {{ formatScopeActualRange(comparison.base_scope) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="对比有效数据区间">
+                {{ formatScopeActualRange(comparison.target_scope) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="当前范围记录数">{{ comparison.base_scope.record_count }}</el-descriptions-item>
+              <el-descriptions-item label="对比范围记录数">{{ comparison.target_scope.record_count }}</el-descriptions-item>
+              <el-descriptions-item label="当前范围标的数">{{ comparison.base_scope.instrument_count }}</el-descriptions-item>
+              <el-descriptions-item label="对比范围标的数">{{ comparison.target_scope.instrument_count }}</el-descriptions-item>
+              <el-descriptions-item label="当前范围成交额">
+                {{ formatCompact(comparison.base_scope.total_amount, 2) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="对比范围成交额">
+                {{ formatCompact(comparison.target_scope.total_amount, 2) }}
+              </el-descriptions-item>
+            </el-descriptions>
+
+            <section class="page__grid page__grid--stats">
+              <StatCard
+                label="共同交易记录"
+                :value="String(comparison.record_overlap.shared_record_count)"
+                :hint="`${comparison.record_overlap.shared_trade_date_count} 个共同交易日`"
+                tone="teal"
+              />
+              <StatCard
+                label="一致记录"
+                :value="String(comparison.mismatch_summary.matching_record_count)"
+                hint="共同记录中完全一致的条数"
+                tone="orange"
+              />
+              <StatCard
+                label="不一致记录"
+                :value="String(comparison.mismatch_summary.mismatched_record_count)"
+                hint="共同记录中至少一个字段不一致"
+                tone="berry"
+              />
+              <StatCard
+                label="范围独有记录"
+                :value="String(comparison.record_overlap.base_only_record_count + comparison.record_overlap.target_only_record_count)"
+                hint="两边无法按标的+日期配对的记录"
+                tone="neutral"
+              />
+            </section>
+
             <div>
-              <div class="analysis-compare__label">Shared Instruments</div>
+              <div class="analysis-compare__label">共同标的</div>
               <div class="analysis-tags">
-                <span v-for="item in comparison.shared_instruments" :key="`shared-${item}`" class="pill">{{ item }}</span>
+                <span
+                  v-for="item in comparison.instrument_overlap.shared_instruments"
+                  :key="`shared-${item}`"
+                  class="pill"
+                >
+                  {{ item }}
+                </span>
               </div>
             </div>
+
             <div>
-              <div class="analysis-compare__label">Added In Target</div>
+              <div class="analysis-compare__label">当前范围独有标的</div>
               <div class="analysis-tags">
-                <span v-for="item in comparison.added_instruments" :key="`added-${item}`" class="pill">{{ item }}</span>
+                <span
+                  v-for="item in comparison.instrument_overlap.base_only_instruments"
+                  :key="`base-only-${item}`"
+                  class="pill"
+                >
+                  {{ item }}
+                </span>
               </div>
             </div>
+
             <div>
-              <div class="analysis-compare__label">Removed From Base</div>
+              <div class="analysis-compare__label">对比范围独有标的</div>
               <div class="analysis-tags">
-                <span v-for="item in comparison.removed_instruments" :key="`removed-${item}`" class="pill">{{ item }}</span>
+                <span
+                  v-for="item in comparison.instrument_overlap.target_only_instruments"
+                  :key="`target-only-${item}`"
+                  class="pill"
+                >
+                  {{ item }}
+                </span>
               </div>
             </div>
+
+            <div>
+              <div class="analysis-compare__label">字段不一致分布</div>
+              <el-table :data="comparisonMismatchRows" stripe class="data-table" max-height="420">
+                <el-table-column prop="label" label="字段" min-width="140" />
+                <el-table-column prop="count" label="不一致条数" min-width="140" />
+              </el-table>
+            </div>
+
+            <div v-if="comparison.mismatch_samples.length">
+              <div class="analysis-compare__label">不一致样例</div>
+              <el-table :data="comparison.mismatch_samples" stripe class="data-table" max-height="420">
+                <el-table-column prop="instrument_code" label="标的" min-width="120" />
+                <el-table-column prop="trade_date" label="交易日" min-width="120" />
+                <el-table-column label="不一致字段" min-width="180">
+                  <template #default="{ row }">
+                    {{ row.mismatched_fields.join(" / ") }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="当前范围值" min-width="260">
+                  <template #default="{ row }">
+                    close {{ formatNumberish(row.base_values.close, 2) }},
+                    volume {{ formatNumberish(row.base_values.volume, 2) }},
+                    amount {{ formatCompact(row.base_values.amount, 2) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="对比范围值" min-width="260">
+                  <template #default="{ row }">
+                    close {{ formatNumberish(row.target_values.close, 2) }},
+                    volume {{ formatNumberish(row.target_values.volume, 2) }},
+                    amount {{ formatCompact(row.target_values.amount, 2) }}
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+
+            <el-alert
+              v-else-if="comparison.record_overlap.shared_record_count > 0"
+              title="共同记录全部一致"
+              type="success"
+              :closable="false"
+              description="两个范围在可对齐的共同记录上没有发现字段差异，可作为基线校验结果。"
+            />
+
+            <el-alert
+              v-else
+              title="没有共同交易记录"
+              type="info"
+              :closable="false"
+              description="当前只展示两边范围的摘要和标的差异，因为没有可按标的+日期配对的共同记录。"
+            />
           </div>
+          <EmptyState
+            v-else
+            :title="emptyStateTitle(panelStates.comparison, '暂无范围对比结果', '正在加载范围对比')"
+            :description="emptyStateDescription(panelStates.comparison, '这里会展示两个分析范围的摘要差异、重叠记录和一致性校验结果。')"
+          />
         </div>
       </div>
     </PanelCard>
     <PanelCard title="CDQ Joint Anomalies" description="Across all instruments, rank days by joint return shock and volume expansion using historical CDQ dominance counts.">
-      <el-table v-if="jointAnomalyRows.length" :data="jointAnomalyRows" stripe>
+      <el-table v-if="jointAnomalyRows.length" :data="jointAnomalyRows" stripe class="data-table" max-height="420">
         <el-table-column prop="trade_date" label="Trade Date" width="120" />
         <el-table-column prop="instrument_code" label="Code" min-width="120" />
         <el-table-column prop="instrument_name" label="Name" min-width="180" />
@@ -842,8 +1344,8 @@ onMounted(async () => {
       </el-table>
       <EmptyState
         v-else
-        title="No CDQ Joint Anomalies"
-        description="This ranking appears after the run has enough history to form 20-day baselines and any event reaches the medium percentile threshold."
+        :title="emptyStateTitle(panelStates.jointAnomalies, '暂无联合异常结果', '正在加载联合异常')"
+        :description="emptyStateDescription(panelStates.jointAnomalies, '该排名需要足够的 20 日历史样本，且事件达到中等级以上阈值后才会出现。')"
       />
     </PanelCard>
   </div>
@@ -856,12 +1358,23 @@ onMounted(async () => {
   gap: 14px;
 }
 
+.analysis-filters :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
 .analysis-filters__control {
   width: 100%;
 }
 
-.analysis-filters__control--wide {
+.analysis-filters__item--wide {
   grid-column: 1 / -1;
+}
+
+.analysis-filters__hint {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .analysis-stack {

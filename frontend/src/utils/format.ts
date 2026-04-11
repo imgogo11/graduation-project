@@ -1,6 +1,9 @@
 import type { NumericLike } from "@/api/types";
 
 
+export const DATA_INSUFFICIENT_PREFIX = "数据不足分析";
+
+
 export function toNumber(value: NumericLike, fallback = 0) {
   if (value === null || value === "") {
     return fallback;
@@ -89,4 +92,8 @@ export function getErrorMessage(error: unknown) {
   }
 
   return "请求失败，请检查后端服务和数据导入状态。";
+}
+
+export function isDataInsufficientMessage(message: string) {
+  return message.startsWith(DATA_INSUFFICIENT_PREFIX);
 }

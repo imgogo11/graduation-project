@@ -12,6 +12,7 @@ from app.repositories.imports import ImportRunRepository
 from app.schemas.trading import TradingJointAnomalyRankingRead, TradingRangeKthVolumeRead, TradingRangeMaxAmountRead
 from app.services.algo_trading import (
     PERSISTENT_SEGMENT_TREE_METHOD,
+    TradingAlgoQueryDataUnavailableError,
     TradingAlgoQueryNotFoundError,
     TradingAlgoQueryValidationError,
     TradingAlgoService,
@@ -20,11 +21,17 @@ from app.services.algo_trading import (
 
 router = APIRouter()
 service = TradingAlgoService()
+COMPLETED_RUN_STATUSES = ("completed",)
 
 
 def _ensure_run_visible(session: Session, *, import_run_id: int, current_user: User) -> None:
     owner_scope = None if current_user.role == "admin" else current_user.id
-    run = ImportRunRepository.get_visible_run(session, run_id=import_run_id, owner_user_id=owner_scope)
+    run = ImportRunRepository.get_visible_run(
+        session,
+        run_id=import_run_id,
+        owner_user_id=owner_scope,
+        statuses=COMPLETED_RUN_STATUSES,
+    )
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import run not found")
 
@@ -49,6 +56,8 @@ def get_range_max_amount(
         )
     except TradingAlgoQueryValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except TradingAlgoQueryDataUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TradingAlgoQueryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -72,6 +81,8 @@ def get_joint_anomaly_ranking(
             top_n=top_n,
         )
     except TradingAlgoQueryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except TradingAlgoQueryDataUnavailableError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TradingAlgoQueryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -100,6 +111,8 @@ def get_range_kth_volume(
             method=method,
         )
     except TradingAlgoQueryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except TradingAlgoQueryDataUnavailableError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TradingAlgoQueryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

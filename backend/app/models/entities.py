@@ -4,7 +4,20 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, utc_now
@@ -26,12 +39,25 @@ class ImportRun(Base):
     __tablename__ = "import_runs"
     __table_args__ = (
         Index("ix_import_runs_owner_deleted_started", "owner_user_id", "deleted_at", "started_at"),
+        Index(
+            "uq_import_runs_owner_dataset_name_active_upload",
+            "owner_user_id",
+            "dataset_name",
+            unique=True,
+            sqlite_where=text(
+                "owner_user_id IS NOT NULL AND deleted_at IS NULL AND status IN ('running', 'completed') "
+                "AND source_type = 'upload' AND source_name = 'user.upload'"
+            ),
+            postgresql_where=text(
+                "owner_user_id IS NOT NULL AND deleted_at IS NULL AND status IN ('running', 'completed') "
+                "AND source_type = 'upload' AND source_name = 'user.upload'"
+            ),
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     dataset_name: Mapped[str] = mapped_column(String(128), index=True)
-    asset_class: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     source_type: Mapped[str] = mapped_column(String(32))
     source_name: Mapped[str] = mapped_column(String(255))
     source_uri: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -88,4 +114,4 @@ class TradingRecord(Base):
     low: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     close: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     volume: Mapped[Decimal] = mapped_column(Numeric(20, 4))
-    amount: Mapped[Decimal] = mapped_column(Numeric(20, 4))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)

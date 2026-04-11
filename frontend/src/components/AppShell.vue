@@ -13,6 +13,7 @@ const navItems = [
   { label: "Overview", to: "/overview", subtitle: "Health / Imports / Stats" },
   { label: "Trading", to: "/trading", subtitle: "Upload / Charts / Algo" },
   { label: "Analysis Center", to: "/analysis", subtitle: "Indicators / Risk / Quality" },
+  { label: "Risk Radar", to: "/risk-radar", subtitle: "3D Anomalies / Context / Profiles" },
 ];
 
 function logout() {

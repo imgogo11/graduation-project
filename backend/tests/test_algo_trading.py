@@ -8,6 +8,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
+from sqlalchemy import select
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
@@ -18,6 +19,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.core.database import create_all_tables, get_session_factory, reset_database_state
 from app.engine_bridge.adapters.trading import load_algo_engine_module
+from app.models import ImportRun
 from app.services.auth import AuthService
 
 
@@ -25,8 +27,8 @@ def build_algo_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "instrument_code": "AU9999",
-                "instrument_name": "Shanghai Gold",
+                "instrument_code": "600519.SH",
+                "instrument_name": "Kweichow Moutai",
                 "trade_date": "2026-01-02",
                 "open": 520.15,
                 "high": 525.80,
@@ -36,8 +38,8 @@ def build_algo_frame() -> pd.DataFrame:
                 "amount": 6711040,
             },
             {
-                "instrument_code": "AU9999",
-                "instrument_name": "Shanghai Gold",
+                "instrument_code": "600519.SH",
+                "instrument_name": "Kweichow Moutai",
                 "trade_date": "2026-01-03",
                 "open": 524.30,
                 "high": 529.20,
@@ -47,8 +49,8 @@ def build_algo_frame() -> pd.DataFrame:
                 "amount": 6936544,
             },
             {
-                "instrument_code": "AU9999",
-                "instrument_name": "Shanghai Gold",
+                "instrument_code": "600519.SH",
+                "instrument_name": "Kweichow Moutai",
                 "trade_date": "2026-01-04",
                 "open": 528.70,
                 "high": 531.00,
@@ -58,8 +60,8 @@ def build_algo_frame() -> pd.DataFrame:
                 "amount": 6936544,
             },
             {
-                "instrument_code": "AU9999",
-                "instrument_name": "Shanghai Gold",
+                "instrument_code": "600519.SH",
+                "instrument_name": "Kweichow Moutai",
                 "trade_date": "2026-01-05",
                 "open": 529.10,
                 "high": 530.40,
@@ -70,6 +72,10 @@ def build_algo_frame() -> pd.DataFrame:
             },
         ]
     )
+
+
+def build_algo_frame_without_amount() -> pd.DataFrame:
+    return build_algo_frame().drop(columns=["amount"])
 
 
 def build_joint_anomaly_frame() -> pd.DataFrame:
@@ -281,7 +287,6 @@ class AlgoTradingRouteTests(unittest.TestCase):
         self.run = self._upload_csv(
             token=self.token,
             dataset_name="algo_case",
-            asset_class="commodity",
             frame=build_algo_frame(),
         )
 
@@ -299,7 +304,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
             },
@@ -308,7 +313,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["instrument_code"], "AU9999")
+        self.assertEqual(body["instrument_code"], "600519.SH")
         self.assertEqual(body["max_amount"], "6936544.0000")
         self.assertEqual([item["trade_date"] for item in body["matches"]], ["2026-01-03", "2026-01-04"])
         self.assertEqual([item["series_index"] for item in body["matches"]], [1, 2])
@@ -318,7 +323,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-05",
                 "end_date": "2026-01-02",
             },
@@ -331,7 +336,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2025-01-01",
                 "end_date": "2025-01-31",
             },
@@ -339,12 +344,32 @@ class AlgoTradingRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
+    def test_range_max_amount_reports_data_insufficient_when_amount_is_missing(self) -> None:
+        run = self._upload_csv(
+            token=self.token,
+            dataset_name="algo_no_amount",
+            frame=build_algo_frame_without_amount(),
+        )
+
+        response = self.client.get(
+            "/api/algo/trading/range-max-amount",
+            params={
+                "import_run_id": run["id"],
+                "instrument_code": "600519.SH",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn("数据不足分析", response.json()["detail"])
+
     def test_range_kth_volume_returns_duplicate_matches_for_counted_rank(self) -> None:
         response = self.client.get(
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -354,7 +379,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["instrument_code"], "AU9999")
+        self.assertEqual(body["instrument_code"], "600519.SH")
         self.assertEqual(body["k"], 2)
         self.assertEqual(body["value"], "13120.0000")
         self.assertEqual(body["method"], "persistent_segment_tree")
@@ -367,7 +392,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 5,
@@ -381,7 +406,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -392,7 +417,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["instrument_code"], "AU9999")
+        self.assertEqual(body["instrument_code"], "600519.SH")
         self.assertEqual(body["k"], 2)
         self.assertEqual(body["value"], "13120.0000")
         self.assertEqual(body["method"], "t_digest")
@@ -406,7 +431,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 1,
@@ -421,7 +446,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 4,
@@ -437,7 +462,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-03",
                 "end_date": "2026-01-04",
                 "k": 1,
@@ -456,7 +481,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -471,7 +496,6 @@ class AlgoTradingRouteTests(unittest.TestCase):
         run = self._upload_csv(
             token=self.token,
             dataset_name="joint_anomaly_case",
-            asset_class="stock",
             frame=frame,
         )
 
@@ -513,7 +537,6 @@ class AlgoTradingRouteTests(unittest.TestCase):
         run = self._upload_csv(
             token=self.token,
             dataset_name="joint_anomaly_case_invalid_top_n",
-            asset_class="stock",
             frame=frame,
         )
 
@@ -524,6 +547,15 @@ class AlgoTradingRouteTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_joint_anomaly_ranking_reports_data_insufficient_when_history_is_too_short(self) -> None:
+        response = self.client.get(
+            "/api/algo/trading/joint-anomaly-ranking",
+            params={"import_run_id": self.run["id"], "top_n": 5},
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn("数据不足分析", response.json()["detail"])
+
     def test_range_kth_volume_enforces_visibility_and_admin_can_access(self) -> None:
         bob_token = self._register_and_login("bob_user", "password123")
         admin_token = self._login("admin", "admin123456")
@@ -532,7 +564,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 1,
@@ -545,7 +577,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 1,
@@ -563,7 +595,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -577,7 +609,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "AU9999",
+                "instrument_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -593,7 +625,6 @@ class AlgoTradingRouteTests(unittest.TestCase):
         run = self._upload_csv(
             token=self.token,
             dataset_name="joint_anomaly_visibility",
-            asset_class="stock",
             frame=frame,
         )
         bob_token = self._register_and_login("bob_joint", "password123")
@@ -614,6 +645,37 @@ class AlgoTradingRouteTests(unittest.TestCase):
         self.assertEqual(allowed.status_code, 200, allowed.text)
         self.assertEqual(allowed.json()["lookback_window"], 20)
 
+    def test_failed_runs_are_hidden_from_algo_endpoints(self) -> None:
+        invalid_frame = build_algo_frame().drop(columns=["instrument_code"])
+
+        failed_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": "algo_failed"},
+            files={
+                "file": (
+                    "invalid.csv",
+                    invalid_frame.to_csv(index=False).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(failed_response.status_code, 400)
+
+        failed_run_id = self._find_run_id(dataset_name="algo_failed", status="failed")
+
+        response = self.client.get(
+            "/api/algo/trading/range-max-amount",
+            params={
+                "import_run_id": failed_run_id,
+                "instrument_code": "600519.SH",
+                "start_date": "2026-01-02",
+                "end_date": "2026-01-05",
+            },
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(response.status_code, 404)
+
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
         return self._login(username, password)
@@ -623,11 +685,11 @@ class AlgoTradingRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["access_token"]
 
-    def _upload_csv(self, *, token: str, dataset_name: str, asset_class: str, frame: pd.DataFrame) -> dict[str, object]:
+    def _upload_csv(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
         csv_text = frame.to_csv(index=False)
         response = self.client.post(
             "/api/imports/trading",
-            data={"dataset_name": dataset_name, "asset_class": asset_class},
+            data={"dataset_name": dataset_name},
             files={"file": ("trading.csv", csv_text.encode("utf-8"), "text/csv")},
             headers=self._auth_headers(token),
         )
@@ -636,6 +698,20 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
+
+    def _find_run_id(self, *, dataset_name: str, status: str) -> int:
+        session = get_session_factory()()
+        try:
+            run = session.scalar(
+                select(ImportRun)
+                .where(ImportRun.dataset_name == dataset_name)
+                .where(ImportRun.status == status)
+                .order_by(ImportRun.id.desc())
+            )
+            self.assertIsNotNone(run)
+            return int(run.id)
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":

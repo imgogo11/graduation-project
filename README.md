@@ -8,7 +8,7 @@
 - 用户上传 `CSV` / `XLSX` 历史交易数据
 - 导入批次、清单与产物记录持久化
 - 基于用户权限隔离的数据查询与管理
-- 面向股票与商品数据的一体化交易分析
+- 面向股票数据的一体化交易分析
 - 基于 C++ 算法引擎的区间分析能力
 
 早期的股票爬虫、电商演示数据、synthetic 数据与 benchmark 演示链路，已经退出当前主业务主线。
@@ -35,8 +35,8 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 ```
 
 - 支持文件格式：`.csv`、`.xlsx`
-- 支持资产类型：`stock`、`commodity`
-- 当前 `asset_class` 仅作为数据集标签，统一走同一套存储、查询与分析链路
+- 当前系统仅处理股票交易数据，上传模板标准列头为 `instrument_code`、`trade_date`、`open`、`high`、`low`、`close`、`volume`，可选列为 `instrument_name`、`amount`
+- 数据集名称在“同一用户 + 未删除上传批次”范围内必须唯一；删除后名称可再次使用
 
 ## 当前主要能力
 
@@ -55,8 +55,8 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - 风险指标分析：区间收益率、波动率、最大回撤、上涨日占比等
 - 异常检测：放量异常、收益率异常、振幅异常、突破前高/前低
 - 横截面分析：多标的排序
-- 相关性分析：收益率相关性矩阵
-- 批次对比分析
+- 相关性分析：当前批次内多标的收益率相关性矩阵
+- 范围对比分析：支持同批次/跨批次、同标的/多标的、不同日期范围的一致性校验
 
 ### C++ 算法能力
 
@@ -82,6 +82,7 @@ cd ..
 
 ```powershell
 Copy-Item .env.template .env
+Copy-Item .\frontend\.env.template .\frontend\.env
 ```
 
 启动前请检查以下变量：
@@ -91,6 +92,10 @@ Copy-Item .env.template .env
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `UPLOAD_ROOT`
+- `POSTGRES_PORT`（默认 `15432`）
+- `frontend/.env` 中的 `VITE_BACKEND_TARGET`
+- `frontend/.env` 中的 `VITE_DEV_HOST`
+- `frontend/.env` 中的 `VITE_DEV_PORT`
 
 ### 3. 启动 PostgreSQL 并执行迁移
 
@@ -101,6 +106,7 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 ```
 
 当前最新迁移已经清理旧业务表与历史遗留导入路径，系统只保留当前上传式交易数据主链路。
+项目默认把 PostgreSQL 宿主端口设置为 `15432`，而不是常见的 `5432`，这是为了避开部分 Windows 环境对 `5432` 所在端口段的系统保留限制。
 
 ### 4. 启动后端与前端
 
@@ -116,6 +122,8 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 cd frontend
 npm run dev
 ```
+
+前端开发服务器默认运行在 `http://127.0.0.1:4173`。这里刻意避开了 `5173`，因为部分 Windows 环境会对该端口段做系统保留；如需局域网访问，可在 `frontend/.env` 中将 `VITE_DEV_HOST` 改为 `0.0.0.0`。
 
 ## 主要接口
 
@@ -144,6 +152,7 @@ npm run dev
 - `GET /api/trading/analysis/anomalies`
 - `GET /api/trading/analysis/cross-section`
 - `GET /api/trading/analysis/correlation`
+- `GET /api/trading/analysis/compare-scopes`
 - `GET /api/trading/analysis/compare-runs`
 
 ### C++ 算法接口
@@ -176,7 +185,7 @@ npm run dev
 从命令行导入本地交易文件：
 
 ```powershell
-.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_run --asset-class stock
+.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_run
 ```
 
 导出兼容依赖：

@@ -17,9 +17,11 @@ from app.schemas.trading import (
     TradingQualityReportRead,
     TradingRiskMetricsRead,
     TradingRunComparisonRead,
+    TradingScopeComparisonRead,
     TradingSummaryRead,
 )
 from app.services.trading_analysis import (
+    TradingAnalysisDataUnavailableError,
     TradingAnalysisNotFoundError,
     TradingAnalysisService,
     TradingAnalysisValidationError,
@@ -28,17 +30,25 @@ from app.services.trading_analysis import (
 
 router = APIRouter()
 service = TradingAnalysisService()
+COMPLETED_RUN_STATUSES = ("completed",)
 
 
 def _ensure_run_visible(session: Session, *, import_run_id: int, current_user: User) -> None:
     owner_scope = None if current_user.role == "admin" else current_user.id
-    run = ImportRunRepository.get_visible_run(session, run_id=import_run_id, owner_user_id=owner_scope)
+    run = ImportRunRepository.get_visible_run(
+        session,
+        run_id=import_run_id,
+        owner_user_id=owner_scope,
+        statuses=COMPLETED_RUN_STATUSES,
+    )
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import run not found")
 
 
 def _handle_analysis_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TradingAnalysisValidationError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    if isinstance(exc, TradingAnalysisDataUnavailableError):
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if isinstance(exc, TradingAnalysisNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
@@ -213,5 +223,36 @@ def compare_trading_runs(
     _ensure_run_visible(session, import_run_id=target_run_id, current_user=current_user)
     try:
         return service.compare_runs(session, base_run_id=base_run_id, target_run_id=target_run_id)
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_analysis_error(exc) from exc
+
+
+@router.get("/compare-scopes", response_model=TradingScopeComparisonRead)
+def compare_trading_scopes(
+    base_run_id: int,
+    target_run_id: int,
+    base_instrument_code: str | None = None,
+    target_instrument_code: str | None = None,
+    base_start_date: date | None = None,
+    base_end_date: date | None = None,
+    target_start_date: date | None = None,
+    target_end_date: date | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> TradingScopeComparisonRead:
+    _ensure_run_visible(session, import_run_id=base_run_id, current_user=current_user)
+    _ensure_run_visible(session, import_run_id=target_run_id, current_user=current_user)
+    try:
+        return service.compare_scopes(
+            session,
+            base_run_id=base_run_id,
+            target_run_id=target_run_id,
+            base_instrument_code=base_instrument_code,
+            target_instrument_code=target_instrument_code,
+            base_start_date=base_start_date,
+            base_end_date=base_end_date,
+            target_start_date=target_start_date,
+            target_end_date=target_end_date,
+        )
     except Exception as exc:  # noqa: BLE001
         raise _handle_analysis_error(exc) from exc

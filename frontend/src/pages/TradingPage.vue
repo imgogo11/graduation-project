@@ -24,6 +24,7 @@ import {
   formatDateTime,
   formatNumberish,
   getErrorMessage,
+  isDataInsufficientMessage,
   toNumber,
   toStatusTagType,
 } from "@/utils/format";
@@ -48,7 +49,6 @@ const importRunDisplayIdMap = computed(() => new Map(importRuns.value.map((item)
 
 const uploadForm = reactive({
   datasetName: "",
-  assetClass: "stock",
 });
 
 const queryForm = reactive({
@@ -165,7 +165,7 @@ const chartOption = computed<EChartsOption | null>(() => {
           color: "#f28c28",
           borderRadius: [6, 6, 0, 0],
         },
-        data: records.value.map((item) => toNumber(item.amount)),
+        data: records.value.map((item) => (item.amount === null || item.amount === "" ? null : toNumber(item.amount))),
       },
     ],
   };
@@ -235,7 +235,7 @@ async function loadRuns(preferredRunId?: number) {
           ? queryForm.importRunId
           : rows[0].id;
     queryForm.importRunId = candidateId;
-    await loadInstruments();
+    await loadInstruments(true);
     runtime.markSynced();
   } catch (err) {
     error.value = getErrorMessage(err);
@@ -244,7 +244,7 @@ async function loadRuns(preferredRunId?: number) {
   }
 }
 
-async function loadInstruments() {
+async function loadInstruments(runAfterLoad = false) {
   if (!queryForm.importRunId) {
     instruments.value = [];
     queryForm.instrumentCode = "";
@@ -272,7 +272,9 @@ async function loadInstruments() {
     if (!rows.some((row) => row.instrument_code === queryForm.instrumentCode)) {
       queryForm.instrumentCode = rows[0].instrument_code;
     }
-    await runAnalysis();
+    if (runAfterLoad) {
+      await runAnalysis();
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
   }
@@ -365,11 +367,9 @@ async function submitUpload() {
   try {
     const run = await uploadTradingFile({
       dataset_name: uploadForm.datasetName,
-      asset_class: uploadForm.assetClass,
       file: selectedFile.value,
     });
     uploadForm.datasetName = "";
-    uploadForm.assetClass = "stock";
     selectedFile.value = null;
     await loadRuns(run.id);
   } catch (err) {
@@ -394,7 +394,7 @@ async function removeRun(runId: number) {
 
 function handleRunRowClick(row: ImportRunRead) {
   queryForm.importRunId = row.id;
-  void loadInstruments();
+  void loadInstruments(false);
 }
 
 onMounted(async () => {
@@ -409,7 +409,7 @@ onMounted(async () => {
         <div class="page__eyebrow">Trading</div>
         <h2 class="page__title">上传自己的交易文件，并按批次选择历史数据进行分析</h2>
         <p class="page__subtitle">
-          v1 采用固定模板导入。一个文件对应一个历史批次，普通用户只看自己的数据，管理员默认可以查看所有用户的未删除批次。
+          v1 支持常见股票数据列头自动识别导入。一个文件对应一个历史批次，普通用户只看自己的数据，管理员默认可以查看所有用户的未删除批次。
         </p>
       </div>
     </section>
@@ -435,20 +435,14 @@ onMounted(async () => {
     </section>
 
     <section class="page__grid page__grid--double">
-      <PanelCard title="上传交易文件" description="支持固定列头模板的 CSV / XLSX 文件。">
+      <PanelCard title="上传交易文件" description="支持常见列头自动识别的 CSV / XLSX 文件。">
         <template #actions>
           <a class="trading-template-link" href="/trading_import_template.csv" download>下载模板</a>
         </template>
 
         <el-form class="trading-upload-form" label-position="top">
           <el-form-item label="数据集名称">
-            <el-input v-model="uploadForm.datasetName" placeholder="例如 2026_Q1_gold_backtest" />
-          </el-form-item>
-          <el-form-item label="资产类型">
-            <el-select v-model="uploadForm.assetClass">
-              <el-option label="股票" value="stock" />
-              <el-option label="商品" value="commodity" />
-            </el-select>
+            <el-input v-model="uploadForm.datasetName" placeholder="例如 2026_Q1_stock_backtest" />
           </el-form-item>
           <el-form-item label="上传文件">
             <label class="trading-file-input">
@@ -460,28 +454,30 @@ onMounted(async () => {
 
         <div class="trading-upload-actions">
           <el-button type="primary" :loading="uploading" @click="submitUpload">上传并导入</el-button>
-          <span class="muted">固定列头：instrument_code, instrument_name, trade_date, open, high, low, close, volume, amount</span>
+          <span class="muted">
+            必要列：代码、日期、开盘、最高、最低、收盘、成交量；可选列：名称、成交额
+          </span>
         </div>
       </PanelCard>
 
       <PanelCard title="选择批次与标的" description="先选择一个导入批次，再选择该批次中的标的进行分析。">
         <template #actions>
-          <el-button type="primary" plain :loading="loadingAnalysis" @click="runAnalysis">刷新分析</el-button>
+          <el-button type="primary" plain :loading="loadingAnalysis" @click="runAnalysis">应用筛选并分析</el-button>
         </template>
 
         <el-form class="trading-query-form" label-position="top">
           <el-form-item label="导入批次">
-            <el-select v-model="queryForm.importRunId" placeholder="选择批次" @change="loadInstruments">
+            <el-select v-model="queryForm.importRunId" placeholder="选择批次" @change="() => loadInstruments(false)">
               <el-option
                 v-for="item in importRuns"
                 :key="item.id"
-                :label="`#${item.display_id} ${item.dataset_name} (${item.asset_class || '--'})`"
+                :label="`#${item.display_id} ${item.dataset_name}`"
                 :value="item.id"
               />
             </el-select>
           </el-form-item>
           <el-form-item label="标的代码">
-            <el-select v-model="queryForm.instrumentCode" placeholder="选择标的" @change="runAnalysis">
+            <el-select v-model="queryForm.instrumentCode" placeholder="选择标的">
               <el-option
                 v-for="item in instruments"
                 :key="item.instrument_code"
@@ -512,10 +508,10 @@ onMounted(async () => {
             <el-input v-model="queryForm.limitInput" placeholder="留空表示不限制，例如 200" clearable />
           </el-form-item>
           <el-form-item label="K 值">
-            <el-input v-model="queryForm.kInput" placeholder="正整数，例如 1" clearable @change="runAnalysis" />
+            <el-input v-model="queryForm.kInput" placeholder="正整数，例如 1" clearable />
           </el-form-item>
           <el-form-item label="算法方式">
-            <el-select v-model="queryForm.kthMethod" placeholder="选择算法方式" @change="runAnalysis">
+            <el-select v-model="queryForm.kthMethod" placeholder="选择算法方式">
               <el-option
                 v-for="item in kthMethodOptions"
                 :key="item.value"
@@ -559,7 +555,7 @@ onMounted(async () => {
 
         <EmptyState
           v-else
-          :title="algoNotice ? '算法结果提示' : '等待算法结果'"
+          :title="algoNotice ? (isDataInsufficientMessage(algoNotice) ? '数据不足分析' : '算法结果提示') : '等待算法结果'"
           :description="algoNotice || '选择有成交额数据的批次和标的后，这里会展示区间最大成交额和命中的日期。'"
         />
       </PanelCard>
@@ -599,7 +595,7 @@ onMounted(async () => {
 
         <EmptyState
           v-else
-          :title="algoKthNotice ? '算法结果提示' : '等待算法结果'"
+          :title="algoKthNotice ? (isDataInsufficientMessage(algoKthNotice) ? '数据不足分析' : '算法结果提示') : '等待算法结果'"
           :description="algoKthNotice || '输入 K 值并选择算法方式后，这里会展示区间第 K 大成交量。'"
         />
       </PanelCard>
@@ -607,7 +603,7 @@ onMounted(async () => {
 
     <section class="page__grid page__grid--double">
       <PanelCard title="当前样本明细" description="倒序展示最近读取到的交易记录，用于核对图表与算法结果。">
-        <el-table v-if="records.length" :data="[...records].slice().reverse()" stripe>
+        <el-table v-if="records.length" :data="[...records].slice().reverse()" stripe class="data-table" max-height="420">
           <el-table-column prop="trade_date" label="Trade Date" min-width="120" />
           <el-table-column label="Close" min-width="120">
             <template #default="{ row }">
@@ -632,17 +628,18 @@ onMounted(async () => {
         />
       </PanelCard>
 
-      <PanelCard title="导入历史列表" description="点击某一行即可切换到该批次，删除采用软删除。">
+      <PanelCard title="导入历史列表" description="点击某一行即可切换到该批次；删除后会从历史和分析中移除，且名称可再次使用。">
         <el-table
           v-if="importRuns.length"
           :data="importRuns"
           stripe
+          class="data-table"
+          max-height="420"
           @row-click="handleRunRowClick"
         >
           <el-table-column prop="display_id" label="ID" width="90" />
           <el-table-column v-if="auth.isAdmin.value" prop="owner_username" label="Owner" min-width="140" />
           <el-table-column prop="dataset_name" label="Dataset" min-width="170" />
-          <el-table-column prop="asset_class" label="Asset" width="110" />
           <el-table-column label="Status" width="110">
             <template #default="{ row }">
               <el-tag :type="toStatusTagType(row.status)" effect="plain">{{ row.status }}</el-tag>
@@ -727,6 +724,7 @@ onMounted(async () => {
 .algo-result__hero {
   display: grid;
   gap: 12px;
+  min-width: 0;
   padding: 20px;
   border-radius: 22px;
   background: linear-gradient(135deg, rgba(185, 82, 79, 0.12), rgba(242, 140, 40, 0.12));
@@ -737,9 +735,13 @@ onMounted(async () => {
 }
 
 .algo-result__value {
-  font-size: clamp(34px, 5vw, 48px);
+  max-width: 100%;
+  font-size: clamp(24px, 4.2vw, 48px);
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .algo-result__meta {
@@ -768,6 +770,9 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  max-height: 240px;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .algo-result__match {

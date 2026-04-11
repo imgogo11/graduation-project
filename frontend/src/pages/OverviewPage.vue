@@ -241,7 +241,7 @@ onMounted(loadOverview);
       title="管理员用户统计"
       description="管理员可查看当前可见范围内，不同用户的导入批次和记录数概览。"
     >
-      <el-table v-if="stats?.owner_summaries.length" :data="stats.owner_summaries" stripe>
+      <el-table v-if="stats?.owner_summaries.length" :data="stats.owner_summaries" stripe class="data-table" max-height="420">
         <el-table-column prop="owner_user_id" label="User ID" width="120" />
         <el-table-column prop="owner_username" label="Username" min-width="180" />
         <el-table-column prop="runs" label="Runs" width="120" />
@@ -259,11 +259,10 @@ onMounted(loadOverview);
         <span class="pill">{{ importRuns.length }} 条记录</span>
       </template>
 
-      <el-table v-if="importRuns.length" :data="importRuns" stripe>
+      <el-table v-if="importRuns.length" :data="importRuns" stripe class="data-table" max-height="420">
         <el-table-column prop="display_id" label="ID" width="90" />
         <el-table-column v-if="auth.isAdmin.value" prop="owner_username" label="Owner" min-width="140" />
         <el-table-column prop="dataset_name" label="Dataset" min-width="180" />
-        <el-table-column prop="asset_class" label="Asset" width="110" />
         <el-table-column prop="file_format" label="Format" width="100" />
         <el-table-column label="Status" width="110">
           <template #default="{ row }">

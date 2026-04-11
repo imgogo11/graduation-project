@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 import math
 
 import pandas as pd
@@ -10,14 +11,21 @@ from app.repositories.trading import TradingRepository
 from app.schemas.trading import (
     TradingAnomalyRead,
     TradingAnomalyReportRead,
+    TradingComparisonScopeRead,
+    TradingComparisonValueRead,
     TradingCorrelationMatrixRead,
     TradingCrossSectionRead,
     TradingCrossSectionRowRead,
     TradingIndicatorPointRead,
     TradingIndicatorSeriesRead,
+    TradingInstrumentOverlapRead,
+    TradingMismatchSampleRead,
+    TradingMismatchSummaryRead,
     TradingQualityReportRead,
     TradingRiskMetricsRead,
+    TradingRecordOverlapRead,
     TradingRunComparisonRead,
+    TradingScopeComparisonRead,
     TradingSummaryRead,
 )
 
@@ -29,6 +37,7 @@ VALID_CROSS_SECTION_METRICS = {
     "total_amount",
     "average_amplitude",
 }
+DATA_INSUFFICIENT_PREFIX = "数据不足分析"
 
 
 class TradingAnalysisValidationError(ValueError):
@@ -37,6 +46,14 @@ class TradingAnalysisValidationError(ValueError):
 
 class TradingAnalysisNotFoundError(LookupError):
     """Raised when no trading data matches the requested analysis scope."""
+
+
+class TradingAnalysisDataUnavailableError(ValueError):
+    """Raised when a panel-specific analysis does not have enough data to run."""
+
+
+def build_data_unavailable_message(detail: str) -> str:
+    return f"{DATA_INSUFFICIENT_PREFIX}：{detail}"
 
 
 class TradingAnalysisService:
@@ -71,7 +88,7 @@ class TradingAnalysisService:
             average_close=self._float(enriched["close"].mean()),
             latest_close=self._float(enriched["close"].iloc[-1]),
             total_volume=self._float(enriched["volume"].sum()),
-            total_amount=self._float(enriched["amount"].sum()),
+            total_amount=self._series_sum_or_none(enriched["amount"]),
             average_volume=self._float(enriched["volume"].mean()),
             average_amplitude=self._float(enriched["amplitude"].mean()),
         )
@@ -115,6 +132,7 @@ class TradingAnalysisService:
             | (scope_frame["close"] <= 0)
         )
         non_positive_volume_mask = scope_frame["volume"] <= 0
+        has_amount_data = self._has_series_data(scope_frame["amount"])
         non_positive_amount_mask = scope_frame["amount"] <= 0
         flat_days_mask = (
             (scope_frame["open"] == scope_frame["close"])
@@ -139,7 +157,7 @@ class TradingAnalysisService:
             invalid_ohlc_count=int(invalid_ohlc_mask.sum()),
             non_positive_price_count=int(non_positive_price_mask.sum()),
             non_positive_volume_count=int(non_positive_volume_mask.sum()),
-            non_positive_amount_count=int(non_positive_amount_mask.sum()),
+            non_positive_amount_count=int(non_positive_amount_mask.sum()) if has_amount_data else None,
             flat_days_count=int(flat_days_mask.sum()),
             coverage_ratio=self._float(coverage_ratio),
         )
@@ -167,7 +185,7 @@ class TradingAnalysisService:
                 trade_date=row.trade_date.date(),
                 close=self._float(row.close),
                 volume=self._float(row.volume),
-                amount=self._float(row.amount),
+                amount=self._optional_float(row.amount),
                 daily_return=self._optional_float(row.daily_return),
                 cumulative_return=self._optional_float(row.cumulative_return),
                 ma5=self._optional_float(row.ma5),
@@ -371,14 +389,16 @@ class TradingAnalysisService:
                     total_return=self._optional_float(enriched["cumulative_return"].iloc[-1]),
                     volatility=self._float(returns.std(ddof=0) if not returns.empty else 0.0),
                     total_volume=self._float(enriched["volume"].sum()),
-                    total_amount=self._float(enriched["amount"].sum()),
+                    total_amount=self._series_sum_or_none(enriched["amount"]),
                     average_amplitude=self._float(enriched["amplitude"].mean()),
                     latest_close=self._float(enriched["close"].iloc[-1]),
                 )
             )
 
-        reverse = True
-        rows.sort(key=lambda item: getattr(item, metric) if getattr(item, metric) is not None else float("-inf"), reverse=reverse)
+        rows.sort(
+            key=lambda item: getattr(item, metric) if getattr(item, metric) is not None else float("-inf"),
+            reverse=True,
+        )
         if top_n is not None:
             rows = rows[:top_n]
 
@@ -408,7 +428,12 @@ class TradingAnalysisService:
         if instrument_codes:
             frame = frame[frame["instrument_code"].isin(instrument_codes)].reset_index(drop=True)
             if frame.empty:
-                raise TradingAnalysisNotFoundError("No correlation data found for the selected instruments")
+                raise TradingAnalysisDataUnavailableError(
+                    build_data_unavailable_message("所选标的没有可用于相关性分析的收盘价数据")
+                )
+
+        if frame["instrument_code"].nunique() < 2:
+            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("相关性分析至少需要 2 个标的"))
 
         pivot = (
             frame.pivot_table(index="trade_date", columns="instrument_code", values="close", aggfunc="last")
@@ -417,10 +442,13 @@ class TradingAnalysisService:
             .dropna(how="all")
         )
         if pivot.empty:
-            raise TradingAnalysisNotFoundError("Not enough overlapping rows to calculate correlation")
+            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("缺少重叠收益率样本"))
 
         corr = pivot.corr(min_periods=2)
         codes = [str(code) for code in corr.columns.tolist()]
+        if len(codes) < 2:
+            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("缺少足够的重叠收益率样本"))
+
         matrix = [
             [self._optional_float(corr.loc[row_code, column_code]) for column_code in codes]
             for row_code in codes
@@ -441,29 +469,144 @@ class TradingAnalysisService:
         base_run_id: int,
         target_run_id: int,
     ) -> TradingRunComparisonRead:
-        base_frame = self._load_frame(session, import_run_id=base_run_id)
-        target_frame = self._load_frame(session, import_run_id=target_run_id)
-        base_codes = {str(item) for item in base_frame["instrument_code"].unique().tolist()}
-        target_codes = {str(item) for item in target_frame["instrument_code"].unique().tolist()}
+        scope_comparison = self.compare_scopes(
+            session,
+            base_run_id=base_run_id,
+            target_run_id=target_run_id,
+        )
 
         return TradingRunComparisonRead(
             base_run_id=base_run_id,
             target_run_id=target_run_id,
-            base_record_count=int(len(base_frame)),
-            target_record_count=int(len(target_frame)),
-            base_instrument_count=len(base_codes),
-            target_instrument_count=len(target_codes),
-            base_total_volume=self._float(base_frame["volume"].sum()),
-            target_total_volume=self._float(target_frame["volume"].sum()),
-            base_total_amount=self._float(base_frame["amount"].sum()),
-            target_total_amount=self._float(target_frame["amount"].sum()),
-            base_start_date=self._first_trade_date(base_frame),
-            base_end_date=self._last_trade_date(base_frame),
-            target_start_date=self._first_trade_date(target_frame),
-            target_end_date=self._last_trade_date(target_frame),
-            shared_instruments=sorted(base_codes & target_codes),
-            added_instruments=sorted(target_codes - base_codes),
-            removed_instruments=sorted(base_codes - target_codes),
+            base_record_count=scope_comparison.base_scope.record_count,
+            target_record_count=scope_comparison.target_scope.record_count,
+            base_instrument_count=scope_comparison.base_scope.instrument_count,
+            target_instrument_count=scope_comparison.target_scope.instrument_count,
+            base_total_volume=scope_comparison.base_scope.total_volume,
+            target_total_volume=scope_comparison.target_scope.total_volume,
+            base_total_amount=scope_comparison.base_scope.total_amount,
+            target_total_amount=scope_comparison.target_scope.total_amount,
+            base_start_date=scope_comparison.base_scope.actual_start_date,
+            base_end_date=scope_comparison.base_scope.actual_end_date,
+            target_start_date=scope_comparison.target_scope.actual_start_date,
+            target_end_date=scope_comparison.target_scope.actual_end_date,
+            shared_instruments=scope_comparison.instrument_overlap.shared_instruments,
+            added_instruments=scope_comparison.instrument_overlap.target_only_instruments,
+            removed_instruments=scope_comparison.instrument_overlap.base_only_instruments,
+        )
+
+    def compare_scopes(
+        self,
+        session: Session,
+        *,
+        base_run_id: int,
+        target_run_id: int,
+        base_instrument_code: str | None = None,
+        target_instrument_code: str | None = None,
+        base_start_date: date | None = None,
+        base_end_date: date | None = None,
+        target_start_date: date | None = None,
+        target_end_date: date | None = None,
+    ) -> TradingScopeComparisonRead:
+        base_rows = self._load_scope_rows(
+            session,
+            import_run_id=base_run_id,
+            instrument_code=base_instrument_code,
+            start_date=base_start_date,
+            end_date=base_end_date,
+            scope_label="当前范围",
+        )
+        target_rows = self._load_scope_rows(
+            session,
+            import_run_id=target_run_id,
+            instrument_code=target_instrument_code,
+            start_date=target_start_date,
+            end_date=target_end_date,
+            scope_label="对比范围",
+        )
+
+        base_frame = self._rows_to_frame(base_rows)
+        target_frame = self._rows_to_frame(target_rows)
+        base_codes = {str(item) for item in base_frame["instrument_code"].unique().tolist()}
+        target_codes = {str(item) for item in target_frame["instrument_code"].unique().tolist()}
+
+        base_lookup = {(str(item.instrument_code), item.trade_date): item for item in base_rows}
+        target_lookup = {(str(item.instrument_code), item.trade_date): item for item in target_rows}
+        shared_keys = sorted(base_lookup.keys() & target_lookup.keys(), key=lambda item: (item[0], item[1]))
+
+        mismatch_field_counts = {
+            "open": 0,
+            "high": 0,
+            "low": 0,
+            "close": 0,
+            "volume": 0,
+            "amount": 0,
+        }
+        mismatch_samples: list[TradingMismatchSampleRead] = []
+        mismatched_record_count = 0
+
+        for instrument_code, trade_day in shared_keys:
+            base_row = base_lookup[(instrument_code, trade_day)]
+            target_row = target_lookup[(instrument_code, trade_day)]
+            mismatched_fields = [
+                field_name
+                for field_name in mismatch_field_counts
+                if getattr(base_row, field_name) != getattr(target_row, field_name)
+            ]
+            if not mismatched_fields:
+                continue
+
+            mismatched_record_count += 1
+            for field_name in mismatched_fields:
+                mismatch_field_counts[field_name] += 1
+            if len(mismatch_samples) < 20:
+                mismatch_samples.append(
+                    TradingMismatchSampleRead(
+                        instrument_code=instrument_code,
+                        trade_date=trade_day,
+                        mismatched_fields=mismatched_fields,
+                        base_values=self._build_comparison_value(base_row),
+                        target_values=self._build_comparison_value(target_row),
+                    )
+                )
+
+        return TradingScopeComparisonRead(
+            base_scope=self._build_scope_summary(
+                base_frame,
+                import_run_id=base_run_id,
+                instrument_code=base_instrument_code,
+                requested_start_date=base_start_date,
+                requested_end_date=base_end_date,
+            ),
+            target_scope=self._build_scope_summary(
+                target_frame,
+                import_run_id=target_run_id,
+                instrument_code=target_instrument_code,
+                requested_start_date=target_start_date,
+                requested_end_date=target_end_date,
+            ),
+            instrument_overlap=TradingInstrumentOverlapRead(
+                shared_instruments=sorted(base_codes & target_codes),
+                base_only_instruments=sorted(base_codes - target_codes),
+                target_only_instruments=sorted(target_codes - base_codes),
+            ),
+            record_overlap=TradingRecordOverlapRead(
+                shared_trade_date_count=len({trade_day for _, trade_day in shared_keys}),
+                shared_record_count=len(shared_keys),
+                base_only_record_count=len(base_lookup) - len(shared_keys),
+                target_only_record_count=len(target_lookup) - len(shared_keys),
+            ),
+            mismatch_summary=TradingMismatchSummaryRead(
+                matching_record_count=len(shared_keys) - mismatched_record_count,
+                mismatched_record_count=mismatched_record_count,
+                open_mismatch_count=mismatch_field_counts["open"],
+                high_mismatch_count=mismatch_field_counts["high"],
+                low_mismatch_count=mismatch_field_counts["low"],
+                close_mismatch_count=mismatch_field_counts["close"],
+                volume_mismatch_count=mismatch_field_counts["volume"],
+                amount_mismatch_count=mismatch_field_counts["amount"],
+            ),
+            mismatch_samples=mismatch_samples,
         )
 
     def _load_frame(
@@ -475,6 +618,26 @@ class TradingAnalysisService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> pd.DataFrame:
+        rows = self._load_scope_rows(
+            session,
+            import_run_id=import_run_id,
+            instrument_code=instrument_code,
+            start_date=start_date,
+            end_date=end_date,
+            scope_label=instrument_code or "当前批次",
+        )
+        return self._rows_to_frame(rows)
+
+    def _load_scope_rows(
+        self,
+        session: Session,
+        *,
+        import_run_id: int,
+        instrument_code: str | None = None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        scope_label: str,
+    ) -> list[object]:
         if start_date and end_date and start_date > end_date:
             raise TradingAnalysisValidationError("start_date must be less than or equal to end_date")
 
@@ -485,10 +648,16 @@ class TradingAnalysisService:
             start_date=start_date,
             end_date=end_date,
         )
-        if not rows:
-            target = instrument_code or "run"
-            raise TradingAnalysisNotFoundError(f"No trading records found for {target}")
+        if rows:
+            return rows
 
+        if instrument_code:
+            detail = f"{scope_label}中的 {instrument_code} 在当前筛选条件下没有交易记录"
+        else:
+            detail = f"{scope_label} 在当前筛选条件下没有交易记录"
+        raise TradingAnalysisDataUnavailableError(build_data_unavailable_message(detail))
+
+    def _rows_to_frame(self, rows: list[object]) -> pd.DataFrame:
         frame = pd.DataFrame(
             [
                 {
@@ -500,20 +669,53 @@ class TradingAnalysisService:
                     "low": float(item.low),
                     "close": float(item.close),
                     "volume": float(item.volume),
-                    "amount": float(item.amount),
+                    "amount": float(item.amount) if item.amount is not None else None,
                 }
                 for item in rows
             ]
         )
         return frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
 
+    def _build_scope_summary(
+        self,
+        frame: pd.DataFrame,
+        *,
+        import_run_id: int,
+        instrument_code: str | None,
+        requested_start_date: date | None,
+        requested_end_date: date | None,
+    ) -> TradingComparisonScopeRead:
+        return TradingComparisonScopeRead(
+            import_run_id=import_run_id,
+            instrument_code=instrument_code,
+            instrument_name=self._instrument_name(frame) if instrument_code else None,
+            requested_start_date=requested_start_date,
+            requested_end_date=requested_end_date,
+            actual_start_date=self._first_trade_date(frame),
+            actual_end_date=self._last_trade_date(frame),
+            record_count=int(len(frame)),
+            instrument_count=int(frame["instrument_code"].nunique()),
+            total_volume=self._float(frame["volume"].sum()),
+            total_amount=self._series_sum_or_none(frame["amount"]),
+        )
+
+    def _build_comparison_value(self, row: object) -> TradingComparisonValueRead:
+        return TradingComparisonValueRead(
+            open=self._float(row.open),
+            high=self._float(row.high),
+            low=self._float(row.low),
+            close=self._float(row.close),
+            volume=self._float(row.volume),
+            amount=self._optional_decimal_to_float(row.amount),
+        )
+
     def _enrich_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
         if frame.empty:
-            raise TradingAnalysisNotFoundError("No trading records found for analysis")
+            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("缺少可分析的交易记录"))
 
         enriched = frame.sort_values("trade_date").reset_index(drop=True).copy()
         enriched["amplitude"] = (enriched["high"] - enriched["low"]) / enriched["open"].replace(0, pd.NA)
-        enriched["daily_return"] = enriched["close"].pct_change()
+        enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
         first_close = enriched["close"].iloc[0]
         enriched["cumulative_return"] = enriched["close"] / first_close - 1.0
         enriched["ma5"] = enriched["close"].rolling(window=5, min_periods=1).mean()
@@ -597,11 +799,24 @@ class TradingAnalysisService:
             return "high"
         return "medium"
 
+    def _has_series_data(self, series: pd.Series) -> bool:
+        return series.notna().any()
+
+    def _series_sum_or_none(self, series: pd.Series) -> float | None:
+        if not self._has_series_data(series):
+            return None
+        return self._float(series.sum())
+
     def _float(self, value: object) -> float:
         return round(float(value), 6)
 
     def _optional_float(self, value: object) -> float | None:
         if not self._valid_number(value):
+            return None
+        return round(float(value), 6)
+
+    def _optional_decimal_to_float(self, value: Decimal | None) -> float | None:
+        if value is None:
             return None
         return round(float(value), 6)
 

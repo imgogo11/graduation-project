@@ -10,6 +10,7 @@ import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
+from sqlalchemy import select
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
@@ -19,6 +20,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.database import create_all_tables, get_session_factory, reset_database_state
+from app.models import ImportRun
 from app.services.auth import AuthService
 
 
@@ -172,6 +174,10 @@ def build_compare_frame() -> pd.DataFrame:
     return frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
 
 
+def build_primary_frame_without_amount() -> pd.DataFrame:
+    return build_primary_frame().drop(columns=["amount"])
+
+
 def build_expected_alpha_metrics(frame: pd.DataFrame) -> dict[str, float]:
     alpha = frame.loc[frame["instrument_code"] == "ALPHA"].copy()
     alpha["close"] = pd.to_numeric(alpha["close"])
@@ -279,7 +285,6 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         run = self._upload_csv(
             token=token,
             dataset_name="analysis_primary",
-            asset_class="stock",
             frame=primary_frame,
         )
         expected = build_expected_alpha_metrics(primary_frame)
@@ -329,13 +334,11 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         primary_run = self._upload_csv(
             token=token,
             dataset_name="analysis_primary",
-            asset_class="stock",
             frame=primary_frame,
         )
         compare_run = self._upload_xlsx(
             token=token,
             dataset_name="analysis_compare",
-            asset_class="commodity",
             frame=compare_frame,
         )
 
@@ -383,6 +386,139 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertEqual(compare_body["added_instruments"], ["DELTA"])
         self.assertEqual(compare_body["removed_instruments"], ["BETA"])
 
+    def test_compare_scopes_supports_same_run_partial_and_identical_ranges(self) -> None:
+        token = self._register_and_login("scope_same_run_user", "password123")
+        primary_run = self._upload_csv(
+            token=token,
+            dataset_name="scope_same_run_primary",
+            frame=build_primary_frame(),
+        )
+
+        partial_response = self.client.get(
+            "/api/trading/analysis/compare-scopes",
+            params={
+                "base_run_id": primary_run["id"],
+                "target_run_id": primary_run["id"],
+                "base_instrument_code": "ALPHA",
+                "target_instrument_code": "ALPHA",
+                "base_start_date": "2026-01-01",
+                "base_end_date": "2026-01-10",
+                "target_start_date": "2026-01-05",
+                "target_end_date": "2026-01-15",
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(partial_response.status_code, 200, partial_response.text)
+        partial_body = partial_response.json()
+        self.assertEqual(partial_body["record_overlap"]["shared_record_count"], 6)
+        self.assertEqual(partial_body["mismatch_summary"]["mismatched_record_count"], 0)
+
+        identical_response = self.client.get(
+            "/api/trading/analysis/compare-scopes",
+            params={
+                "base_run_id": primary_run["id"],
+                "target_run_id": primary_run["id"],
+                "base_instrument_code": "ALPHA",
+                "target_instrument_code": "ALPHA",
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(identical_response.status_code, 200, identical_response.text)
+        identical_body = identical_response.json()
+        self.assertEqual(identical_body["record_overlap"]["shared_record_count"], 25)
+        self.assertEqual(identical_body["mismatch_summary"]["matching_record_count"], 25)
+        self.assertEqual(identical_body["mismatch_summary"]["mismatched_record_count"], 0)
+
+    def test_compare_scopes_reports_mismatch_samples_for_shared_records(self) -> None:
+        token = self._register_and_login("scope_mismatch_user", "password123")
+        primary_frame = build_primary_frame()
+        mismatch_frame = primary_frame.loc[lambda frame: frame["instrument_code"] == "ALPHA"].copy().reset_index(drop=True)
+        mismatch_frame.loc[mismatch_frame["trade_date"] == "2026-01-10", "close"] = 150.0
+        mismatch_frame.loc[mismatch_frame["trade_date"] == "2026-01-10", "volume"] = 9999.0
+        mismatch_frame.loc[mismatch_frame["trade_date"] == "2026-01-10", "amount"] = 150.0 * 9999.0
+
+        primary_run = self._upload_csv(
+            token=token,
+            dataset_name="scope_mismatch_primary",
+            frame=primary_frame,
+        )
+        mismatch_run = self._upload_csv(
+            token=token,
+            dataset_name="scope_mismatch_target",
+            frame=mismatch_frame,
+        )
+
+        response = self.client.get(
+            "/api/trading/analysis/compare-scopes",
+            params={
+                "base_run_id": primary_run["id"],
+                "target_run_id": mismatch_run["id"],
+                "base_instrument_code": "ALPHA",
+                "target_instrument_code": "ALPHA",
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertEqual(body["record_overlap"]["shared_record_count"], 25)
+        self.assertEqual(body["mismatch_summary"]["mismatched_record_count"], 1)
+        self.assertEqual(body["mismatch_summary"]["close_mismatch_count"], 1)
+        self.assertEqual(body["mismatch_summary"]["volume_mismatch_count"], 1)
+        self.assertEqual(body["mismatch_summary"]["amount_mismatch_count"], 1)
+        self.assertEqual(len(body["mismatch_samples"]), 1)
+        self.assertEqual(body["mismatch_samples"][0]["trade_date"], "2026-01-10")
+        self.assertIn("close", body["mismatch_samples"][0]["mismatched_fields"])
+        self.assertIn("volume", body["mismatch_samples"][0]["mismatched_fields"])
+
+    def test_compare_scopes_returns_zero_overlap_for_disjoint_scope_pairs(self) -> None:
+        token = self._register_and_login("scope_zero_overlap_user", "password123")
+        primary_run = self._upload_csv(
+            token=token,
+            dataset_name="scope_zero_overlap_primary",
+            frame=build_primary_frame(),
+        )
+        compare_run = self._upload_csv(
+            token=token,
+            dataset_name="scope_zero_overlap_dates",
+            frame=build_compare_frame(),
+        )
+        no_shared_instrument_frame = build_compare_frame().loc[lambda frame: frame["instrument_code"] == "DELTA"].reset_index(drop=True)
+        no_shared_instrument_run = self._upload_csv(
+            token=token,
+            dataset_name="scope_zero_overlap_instruments",
+            frame=no_shared_instrument_frame,
+        )
+
+        no_shared_dates_response = self.client.get(
+            "/api/trading/analysis/compare-scopes",
+            params={
+                "base_run_id": primary_run["id"],
+                "target_run_id": compare_run["id"],
+                "base_instrument_code": "ALPHA",
+                "target_instrument_code": "ALPHA",
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(no_shared_dates_response.status_code, 200, no_shared_dates_response.text)
+        no_shared_dates_body = no_shared_dates_response.json()
+        self.assertEqual(no_shared_dates_body["instrument_overlap"]["shared_instruments"], ["ALPHA"])
+        self.assertEqual(no_shared_dates_body["record_overlap"]["shared_record_count"], 0)
+        self.assertEqual(no_shared_dates_body["mismatch_summary"]["mismatched_record_count"], 0)
+
+        no_shared_instrument_response = self.client.get(
+            "/api/trading/analysis/compare-scopes",
+            params={
+                "base_run_id": primary_run["id"],
+                "target_run_id": no_shared_instrument_run["id"],
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(no_shared_instrument_response.status_code, 200, no_shared_instrument_response.text)
+        no_shared_instrument_body = no_shared_instrument_response.json()
+        self.assertEqual(no_shared_instrument_body["instrument_overlap"]["shared_instruments"], [])
+        self.assertEqual(no_shared_instrument_body["record_overlap"]["shared_record_count"], 0)
+        self.assertEqual(no_shared_instrument_body["instrument_overlap"]["target_only_instruments"], ["DELTA"])
+
     def test_analysis_endpoints_respect_visibility(self) -> None:
         alice_token = self._register_and_login("alice_user", "password123")
         bob_token = self._register_and_login("bob_user", "password123")
@@ -391,7 +527,6 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         run = self._upload_csv(
             token=alice_token,
             dataset_name="analysis_primary",
-            asset_class="stock",
             frame=build_primary_frame(),
         )
 
@@ -410,6 +545,105 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertEqual(allowed.status_code, 200, allowed.text)
         self.assertEqual(allowed.json()["instrument_code"], "ALPHA")
 
+    def test_analysis_supports_runs_without_amount_and_reports_insufficient_panels(self) -> None:
+        token = self._register_and_login("no_amount_user", "password123")
+        primary_run = self._upload_csv(
+            token=token,
+            dataset_name="analysis_without_amount",
+            frame=build_primary_frame_without_amount(),
+        )
+        compare_run = self._upload_csv(
+            token=token,
+            dataset_name="analysis_with_amount",
+            frame=build_primary_frame(),
+        )
+
+        summary_response = self.client.get(
+            "/api/trading/analysis/summary",
+            params={"import_run_id": primary_run["id"], "instrument_code": "ALPHA"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(summary_response.status_code, 200, summary_response.text)
+        self.assertIsNone(summary_response.json()["total_amount"])
+
+        quality_response = self.client.get(
+            "/api/trading/analysis/quality",
+            params={"import_run_id": primary_run["id"], "instrument_code": "ALPHA"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(quality_response.status_code, 200, quality_response.text)
+        self.assertIsNone(quality_response.json()["non_positive_amount_count"])
+
+        indicator_response = self.client.get(
+            "/api/trading/analysis/indicators",
+            params={"import_run_id": primary_run["id"], "instrument_code": "ALPHA"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(indicator_response.status_code, 200, indicator_response.text)
+        self.assertIsNone(indicator_response.json()["points"][-1]["amount"])
+
+        cross_section_response = self.client.get(
+            "/api/trading/analysis/cross-section",
+            params={"import_run_id": primary_run["id"], "metric": "total_amount", "top_n": 2},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(cross_section_response.status_code, 200, cross_section_response.text)
+        self.assertTrue(all(item["total_amount"] is None for item in cross_section_response.json()["rows"]))
+
+        compare_response = self.client.get(
+            "/api/trading/analysis/compare-runs",
+            params={"base_run_id": primary_run["id"], "target_run_id": compare_run["id"]},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(compare_response.status_code, 200, compare_response.text)
+        compare_body = compare_response.json()
+        self.assertIsNone(compare_body["base_total_amount"])
+        self.assertIsNotNone(compare_body["target_total_amount"])
+
+    def test_correlation_reports_data_insufficient_for_single_instrument_runs(self) -> None:
+        token = self._register_and_login("single_instrument_user", "password123")
+        single_instrument_frame = build_primary_frame().loc[lambda frame: frame["instrument_code"] == "ALPHA"].reset_index(drop=True)
+        run = self._upload_csv(
+            token=token,
+            dataset_name="single_instrument",
+            frame=single_instrument_frame,
+        )
+
+        response = self.client.get(
+            "/api/trading/analysis/correlation",
+            params={"import_run_id": run["id"], "instrument_codes": "ALPHA"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+        self.assertIn("数据不足分析", response.json()["detail"])
+
+    def test_failed_runs_are_hidden_from_analysis_endpoints(self) -> None:
+        token = self._register_and_login("failed_analysis_user", "password123")
+        invalid_frame = build_primary_frame().drop(columns=["instrument_code"])
+
+        failed_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": "analysis_failed"},
+            files={
+                "file": (
+                    "invalid.csv",
+                    invalid_frame.to_csv(index=False).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(failed_response.status_code, 400)
+
+        failed_run_id = self._find_run_id(dataset_name="analysis_failed", status="failed")
+
+        response = self.client.get(
+            "/api/trading/analysis/summary",
+            params={"import_run_id": failed_run_id, "instrument_code": "ALPHA"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 404)
+
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
         return self._login(username, password)
@@ -419,24 +653,24 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["access_token"]
 
-    def _upload_csv(self, *, token: str, dataset_name: str, asset_class: str, frame: pd.DataFrame) -> dict[str, object]:
+    def _upload_csv(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
         csv_text = frame.to_csv(index=False)
         response = self.client.post(
             "/api/imports/trading",
-            data={"dataset_name": dataset_name, "asset_class": asset_class},
+            data={"dataset_name": dataset_name},
             files={"file": ("trading.csv", csv_text.encode("utf-8"), "text/csv")},
             headers=self._auth_headers(token),
         )
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
-    def _upload_xlsx(self, *, token: str, dataset_name: str, asset_class: str, frame: pd.DataFrame) -> dict[str, object]:
+    def _upload_xlsx(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
         buffer = BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             frame.to_excel(writer, index=False)
         response = self.client.post(
             "/api/imports/trading",
-            data={"dataset_name": dataset_name, "asset_class": asset_class},
+            data={"dataset_name": dataset_name},
             files={
                 "file": (
                     "trading.xlsx",
@@ -451,6 +685,20 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
+
+    def _find_run_id(self, *, dataset_name: str, status: str) -> int:
+        session = get_session_factory()()
+        try:
+            run = session.scalar(
+                select(ImportRun)
+                .where(ImportRun.dataset_name == dataset_name)
+                .where(ImportRun.status == status)
+                .order_by(ImportRun.id.desc())
+            )
+            self.assertIsNotNone(run)
+            return int(run.id)
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":

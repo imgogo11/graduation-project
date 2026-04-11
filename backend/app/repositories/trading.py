@@ -72,6 +72,7 @@ class TradingRepository:
             select(TradingRecord.trade_date, TradingRecord.amount)
             .where(TradingRecord.import_run_id == import_run_id)
             .where(TradingRecord.instrument_code == instrument_code)
+            .where(TradingRecord.amount.is_not(None))
             .order_by(TradingRecord.trade_date.asc())
         )
         rows = session.execute(stmt).all()
@@ -114,4 +115,41 @@ class TradingRepository:
         return [
             (instrument_code, instrument_name, trade_date, close_value, volume_value)
             for instrument_code, instrument_name, trade_date, close_value, volume_value in rows
+        ]
+
+    @staticmethod
+    def list_risk_radar_rows(
+        session: Session,
+        *,
+        import_run_id: int,
+    ) -> list[tuple[str, str | None, date, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal | None]]:
+        stmt = (
+            select(
+                TradingRecord.instrument_code,
+                TradingRecord.instrument_name,
+                TradingRecord.trade_date,
+                TradingRecord.open,
+                TradingRecord.high,
+                TradingRecord.low,
+                TradingRecord.close,
+                TradingRecord.volume,
+                TradingRecord.amount,
+            )
+            .where(TradingRecord.import_run_id == import_run_id)
+            .order_by(TradingRecord.instrument_code.asc(), TradingRecord.trade_date.asc())
+        )
+        rows = session.execute(stmt).all()
+        return [
+            (
+                instrument_code,
+                instrument_name,
+                trade_date,
+                open_value,
+                high_value,
+                low_value,
+                close_value,
+                volume_value,
+                amount_value,
+            )
+            for instrument_code, instrument_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
         ]

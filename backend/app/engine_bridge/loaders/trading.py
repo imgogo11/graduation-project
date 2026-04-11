@@ -43,6 +43,21 @@ class TradingJointAnomalyEvent:
     volume_ratio20_scaled: int
 
 
+@dataclass(frozen=True, slots=True)
+class TradingRiskRadarEvent:
+    import_run_id: int
+    instrument_code: str
+    instrument_name: str | None
+    trade_date: date
+    daily_return: float
+    return_z20: float
+    volume_ratio20: float
+    amplitude_ratio20: float
+    return_z20_scaled: int
+    volume_ratio20_scaled: int
+    amplitude_ratio20_scaled: int
+
+
 def scale_amount(amount: Decimal) -> int:
     return int((amount * NUMERIC_SCALE).to_integral_value())
 
@@ -178,6 +193,112 @@ def build_trading_joint_anomaly_events(
             volume_ratio20=float(row.volume_ratio20),
             return_z20_scaled=scale_signal_metric(float(row.return_z20)),
             volume_ratio20_scaled=scale_signal_metric(float(row.volume_ratio20)),
+        )
+        for row in combined.itertuples(index=False)
+    ]
+
+
+def build_trading_risk_radar_events(
+    *,
+    import_run_id: int,
+    rows: Sequence[tuple[str, str | None, date, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal | None]],
+    lookback_window: int = 20,
+) -> list[TradingRiskRadarEvent]:
+    if not rows:
+        return []
+
+    frame = pd.DataFrame(
+        [
+            {
+                "instrument_code": instrument_code,
+                "instrument_name": instrument_name,
+                "trade_date": pd.Timestamp(trade_date),
+                "open": float(open_value),
+                "high": float(high_value),
+                "low": float(low_value),
+                "close": float(close_value),
+                "volume": float(volume_value),
+                "amount": float(amount_value) if amount_value is not None else math.nan,
+            }
+            for instrument_code, instrument_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
+        ]
+    )
+    frame = frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+
+    event_frames: list[pd.DataFrame] = []
+    for instrument_code, group in frame.groupby("instrument_code", sort=True):
+        enriched = group.sort_values("trade_date").reset_index(drop=True).copy()
+        enriched["amplitude"] = (enriched["high"] - enriched["low"]) / enriched["open"].replace(0.0, pd.NA)
+        enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
+        enriched["previous_return_std20"] = (
+            enriched["daily_return"]
+            .shift(1)
+            .rolling(window=lookback_window, min_periods=lookback_window)
+            .std(ddof=0)
+        )
+        enriched["previous_volume_mean20"] = (
+            enriched["volume"]
+            .shift(1)
+            .rolling(window=lookback_window, min_periods=lookback_window)
+            .mean()
+        )
+        enriched["previous_amplitude_mean20"] = (
+            enriched["amplitude"]
+            .shift(1)
+            .rolling(window=lookback_window, min_periods=lookback_window)
+            .mean()
+        )
+        enriched["return_z20"] = enriched["daily_return"].abs() / enriched["previous_return_std20"].replace(0.0, pd.NA)
+        enriched["volume_ratio20"] = enriched["volume"] / enriched["previous_volume_mean20"].replace(0.0, pd.NA)
+        enriched["amplitude_ratio20"] = enriched["amplitude"] / enriched["previous_amplitude_mean20"].replace(0.0, pd.NA)
+
+        valid_rows = enriched[
+            enriched["daily_return"].notna()
+            & enriched["previous_return_std20"].notna()
+            & enriched["previous_volume_mean20"].notna()
+            & enriched["previous_amplitude_mean20"].notna()
+            & (enriched["previous_return_std20"] > 0)
+            & (enriched["previous_volume_mean20"] > 0)
+            & (enriched["previous_amplitude_mean20"] > 0)
+            & enriched["return_z20"].notna()
+            & enriched["volume_ratio20"].notna()
+            & enriched["amplitude_ratio20"].notna()
+        ].copy()
+
+        valid_rows = valid_rows[
+            valid_rows["return_z20"].map(lambda value: math.isfinite(float(value)) and float(value) >= 0.0)
+            & valid_rows["volume_ratio20"].map(lambda value: math.isfinite(float(value)) and float(value) >= 0.0)
+            & valid_rows["amplitude_ratio20"].map(lambda value: math.isfinite(float(value)) and float(value) >= 0.0)
+        ]
+
+        if valid_rows.empty:
+            continue
+
+        valid_rows["instrument_code"] = instrument_code
+        event_frames.append(valid_rows)
+
+    if not event_frames:
+        return []
+
+    combined = (
+        pd.concat(event_frames, ignore_index=True)
+        .sort_values(["trade_date", "instrument_code"])
+        .reset_index(drop=True)
+    )
+
+    return [
+        TradingRiskRadarEvent(
+            import_run_id=import_run_id,
+            instrument_code=str(row.instrument_code),
+            instrument_name=str(row.instrument_name) if pd.notna(row.instrument_name) and row.instrument_name else None,
+            trade_date=row.trade_date.date(),
+            daily_return=float(row.daily_return),
+            return_z20=float(row.return_z20),
+            volume_ratio20=float(row.volume_ratio20),
+            amplitude_ratio20=float(row.amplitude_ratio20),
+            return_z20_scaled=scale_signal_metric(float(row.return_z20)),
+            volume_ratio20_scaled=scale_signal_metric(float(row.volume_ratio20)),
+            amplitude_ratio20_scaled=scale_signal_metric(float(row.amplitude_ratio20)),
         )
         for row in combined.itertuples(index=False)
     ]

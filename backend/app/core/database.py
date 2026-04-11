@@ -67,6 +67,12 @@ def reset_database_state() -> None:
     _SESSION_FACTORY = None
     _ENGINE_URL = None
     clear_settings_cache()
+    try:
+        from app.services.algo_indexes import algo_index_manager
+
+        algo_index_manager.reset()
+    except Exception:
+        pass
 
 
 def create_all_tables(database_url: str | None = None) -> None:

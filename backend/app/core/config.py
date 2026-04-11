@@ -23,7 +23,7 @@ def _default_database_url() -> str:
     user = os.getenv("POSTGRES_USER", "graduation")
     password = os.getenv("POSTGRES_PASSWORD", "graduation")
     host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-    port = os.getenv("POSTGRES_PORT", "5432")
+    port = os.getenv("POSTGRES_PORT", "15432")
     database = os.getenv("POSTGRES_DB", "graduation_project")
     return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{database}"
 
@@ -60,7 +60,7 @@ def build_settings() -> Settings:
         postgres_user=os.getenv("POSTGRES_USER", "graduation"),
         postgres_password=os.getenv("POSTGRES_PASSWORD", "graduation"),
         postgres_host=os.getenv("POSTGRES_HOST", "127.0.0.1"),
-        postgres_port=int(os.getenv("POSTGRES_PORT", "5432")),
+        postgres_port=int(os.getenv("POSTGRES_PORT", "15432")),
         jwt_secret=os.getenv("JWT_SECRET", "development-change-me"),
         jwt_expire_minutes=int(os.getenv("JWT_EXPIRE_MINUTES", "1440")),
         admin_username=os.getenv("ADMIN_USERNAME", "admin"),

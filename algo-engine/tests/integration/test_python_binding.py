@@ -40,6 +40,7 @@ class RangeKthPersistentSegmentTreeFactory(Protocol):
 
 class AlgoEngineModuleProtocol(Protocol):
     HistoricalDominanceCdqCounter: type
+    HistoricalDominance3dCdqCounter: type
     RangeMaxSegmentTree: RangeMaxSegmentTreeFactory
     RangeKthPersistentSegmentTree: RangeKthPersistentSegmentTreeFactory
 
@@ -91,6 +92,10 @@ def main() -> int:
     dominance_counter = algo_engine_py.HistoricalDominanceCdqCounter([5, 3, 7, 7, 8], [4, 6, 2, 4, 4])
     assert dominance_counter.size() == 5
     assert list(dominance_counter.count_prefix_dominance()) == [0, 0, 0, 2, 3]
+
+    dominance_counter_3d = algo_engine_py.HistoricalDominance3dCdqCounter([5, 3, 7, 7, 8], [4, 6, 2, 4, 4], [3, 3, 1, 4, 4])
+    assert dominance_counter_3d.size() == 5
+    assert list(dominance_counter_3d.count_prefix_dominance()) == [0, 0, 0, 2, 3]
     return 0
 
 

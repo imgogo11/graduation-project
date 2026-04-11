@@ -33,6 +33,7 @@ TDIGEST_METHOD = "t_digest"
 SUPPORTED_RANGE_KTH_METHODS = frozenset({PERSISTENT_SEGMENT_TREE_METHOD, TDIGEST_METHOD})
 JOINT_ANOMALY_LOOKBACK_WINDOW = 20
 JOINT_ANOMALY_DEFAULT_TOP_N = 50
+DATA_INSUFFICIENT_PREFIX = "数据不足分析"
 
 
 class TradingAlgoQueryValidationError(ValueError):
@@ -41,6 +42,14 @@ class TradingAlgoQueryValidationError(ValueError):
 
 class TradingAlgoQueryNotFoundError(LookupError):
     """Raised when no trading data exists for the requested range."""
+
+
+class TradingAlgoQueryDataUnavailableError(ValueError):
+    """Raised when a query cannot run because the input dataset lacks the required data."""
+
+
+def build_algo_data_unavailable_message(detail: str) -> str:
+    return f"{DATA_INSUFFICIENT_PREFIX}：{detail}"
 
 
 class TradingAlgoService:
@@ -83,8 +92,8 @@ class TradingAlgoService:
             instrument_code=instrument_code,
         )
         if not rows:
-            raise TradingAlgoQueryNotFoundError(
-                f"No amount series found for import_run_id={import_run_id} instrument_code={instrument_code}"
+            raise TradingAlgoQueryDataUnavailableError(
+                build_algo_data_unavailable_message(f"{instrument_code} 缺少成交额列或成交额数据")
             )
 
         series = build_trading_amount_series(
@@ -208,7 +217,11 @@ class TradingAlgoService:
             lookback_window=JOINT_ANOMALY_LOOKBACK_WINDOW,
         )
         if not events:
-            raise TradingAlgoQueryNotFoundError("No valid joint anomaly events found for the requested import run")
+            raise TradingAlgoQueryDataUnavailableError(
+                build_algo_data_unavailable_message(
+                    f"联合异常分析至少需要 {JOINT_ANOMALY_LOOKBACK_WINDOW} 日历史窗口和有效样本"
+                )
+            )
 
         dominance_result = query_historical_dominance(
             [event.return_z20_scaled for event in events],

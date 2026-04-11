@@ -14,8 +14,8 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 .\.venv\Scripts\python.exe backend/scripts/init_admin.py
 
 
-# 导入一份示例交易模板数据，确保交易分析页与分析中心页有可展示内容
-.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_template --asset-class stock
+# 导入一份示例交易模板数据（必要列在前、可选列在后），确保交易分析页与分析中心页有可展示内容
+.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_template
 
 
 # 以下两个启动命令都是长驻服务，建议分别在独立终端执行
@@ -29,7 +29,7 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 cd D:\graduation-project\frontend
 
 
-# 在前端终端启动开发服务，默认运行在 5173 端口
+# 在前端终端启动开发服务，默认运行在 4173 端口
 npm run dev
 
 
@@ -37,4 +37,4 @@ npm run dev
 
 
 # 在浏览器中打开登录页，进入系统进行注册或登录
-start http://127.0.0.1:5173/login
+start http://127.0.0.1:4173/login

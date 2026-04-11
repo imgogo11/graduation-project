@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 from importlib import metadata
+import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
+
+from dotenv import dotenv_values
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +47,11 @@ CORE_PACKAGES = [
     "httpx",
 ]
 
+BACKEND_ENV_FILE = REPO_ROOT / ".env"
+BACKEND_ENV_TEMPLATE = REPO_ROOT / ".env.template"
+FRONTEND_ENV_FILE = REPO_ROOT / "frontend" / ".env"
+FRONTEND_ENV_TEMPLATE = REPO_ROOT / "frontend" / ".env.template"
+
 
 def _run_command(command: list[str]) -> tuple[bool, str]:
     try:
@@ -75,6 +84,28 @@ def _uses_project_venv() -> bool:
         return PROJECT_VENV_PYTHON.exists() and Path(sys.executable).resolve() == PROJECT_VENV_PYTHON.resolve()
     except OSError:
         return False
+
+
+def _load_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    return {key: value for key, value in dotenv_values(path).items() if value is not None}
+
+
+def _pick_env_value(*sources: dict[str, str], key: str, default: str) -> str:
+    for source in sources:
+        value = source.get(key)
+        if value:
+            return value
+    return default
+
+
+def _check_tcp(address: str, port: int) -> tuple[bool, str]:
+    try:
+        with socket.create_connection((address, port), timeout=1.5):
+            return True, f"{address}:{port} reachable"
+    except OSError as exc:
+        return False, f"{address}:{port} unreachable ({exc})"
 
 
 def main() -> int:
@@ -123,12 +154,47 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    backend_env = _load_env_file(BACKEND_ENV_FILE)
+    backend_template_env = _load_env_file(BACKEND_ENV_TEMPLATE)
+    frontend_env = _load_env_file(FRONTEND_ENV_FILE)
+    frontend_template_env = _load_env_file(FRONTEND_ENV_TEMPLATE)
+
+    postgres_host = _pick_env_value(os.environ, backend_env, backend_template_env, key="POSTGRES_HOST", default="127.0.0.1")
+    postgres_port_text = _pick_env_value(os.environ, backend_env, backend_template_env, key="POSTGRES_PORT", default="15432")
+    database_url = _pick_env_value(os.environ, backend_env, backend_template_env, key="DATABASE_URL", default="")
+    frontend_host = _pick_env_value(os.environ, frontend_env, frontend_template_env, key="VITE_DEV_HOST", default="127.0.0.1")
+    frontend_port = _pick_env_value(os.environ, frontend_env, frontend_template_env, key="VITE_DEV_PORT", default="4173")
+
+    print()
+    print("== Runtime defaults ==")
+    print(f"Backend env file   : {BACKEND_ENV_FILE if BACKEND_ENV_FILE.exists() else '(missing, template fallback)'}")
+    print(f"Frontend env file  : {FRONTEND_ENV_FILE if FRONTEND_ENV_FILE.exists() else '(missing, template fallback)'}")
+    print(f"PostgreSQL host    : {postgres_host}")
+    print(f"PostgreSQL port    : {postgres_port_text}")
+    print(f"Database URL       : {database_url or '(derived from POSTGRES_* variables)'}")
+    print(f"Frontend dev host  : {frontend_host}")
+    print(f"Frontend dev port  : {frontend_port}")
+
+    try:
+        postgres_port = int(postgres_port_text)
+    except ValueError:
+        postgres_port = -1
+        print("[WARN] PostgreSQL port is not a valid integer")
+        failures += 1
+
+    if postgres_port > 0:
+        ok, output = _check_tcp(postgres_host, postgres_port)
+        print(f"[{_status(ok)}] PostgreSQL socket {output}")
+        if not ok:
+            failures += 1
+
     print()
     print("Notes:")
     print("- version-description.txt stores the local machine/version checklist.")
-    print("- Use .env.template as the runtime template, and copy it to .env when needed.")
+    print("- Use .env.template and frontend/.env.template as runtime templates.")
     print("- Python 3.13 is the default project interpreter for the .venv workflow.")
     print("- The project now keeps only the user-upload trading workflow.")
+    print("- Default local ports are PostgreSQL 15432 and frontend dev server 4173.")
 
     if args.strict and failures:
         return 1

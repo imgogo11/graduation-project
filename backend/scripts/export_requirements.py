@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 MAIN_REQUIREMENTS_PATH = REPO_ROOT / "backend" / "requirements.txt"
 OPTIONAL_REQUIREMENTS_PATH = REPO_ROOT / "backend" / "requirements-optional.txt"
-OPTIONAL_EXTRA_NAME = "data-sources"
+OPTIONAL_EXTRA_NAME = "benchmark"
 
 
 def _load_pyproject() -> dict:

@@ -17,12 +17,29 @@ from app.models import ImportArtifactRecord, ImportManifestRecord, ImportRun, ut
 
 CURRENT_IMPORT_SOURCE_TYPE = "upload"
 CURRENT_IMPORT_SOURCE_NAME = "user.upload"
+ACTIVE_UPLOAD_STATUSES = ("running", "completed")
 
 
 def _current_import_filter(stmt):
     return stmt.where(ImportRun.source_type == CURRENT_IMPORT_SOURCE_TYPE).where(
         ImportRun.source_name == CURRENT_IMPORT_SOURCE_NAME
     )
+
+
+def _apply_visibility_filters(
+    stmt,
+    *,
+    owner_user_id: int | None = None,
+    include_deleted: bool = False,
+    statuses: tuple[str, ...] | None = None,
+):
+    if owner_user_id is not None:
+        stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
+    if not include_deleted:
+        stmt = stmt.where(ImportRun.deleted_at.is_(None))
+    if statuses is not None:
+        stmt = stmt.where(ImportRun.status.in_(statuses))
+    return stmt
 
 
 class ImportRunRepository:
@@ -32,7 +49,6 @@ class ImportRunRepository:
         *,
         owner_user_id: int | None,
         dataset_name: str,
-        asset_class: str | None,
         source_type: str,
         source_name: str,
         source_uri: str | None,
@@ -43,7 +59,6 @@ class ImportRunRepository:
         run = ImportRun(
             owner_user_id=owner_user_id,
             dataset_name=dataset_name,
-            asset_class=asset_class,
             source_type=source_type,
             source_name=source_name,
             source_uri=source_uri,
@@ -133,12 +148,32 @@ class ImportRunRepository:
         run_id: int,
         owner_user_id: int | None = None,
         include_deleted: bool = False,
+        statuses: tuple[str, ...] | None = None,
     ) -> ImportRun | None:
         stmt = _current_import_filter(select(ImportRun).where(ImportRun.id == run_id))
-        if owner_user_id is not None:
+        stmt = _apply_visibility_filters(
+            stmt,
+            owner_user_id=owner_user_id,
+            include_deleted=include_deleted,
+            statuses=statuses,
+        )
+        return session.scalar(stmt)
+
+    @staticmethod
+    def get_active_upload_run_by_dataset_name(
+        session: Session,
+        *,
+        owner_user_id: int | None,
+        dataset_name: str,
+    ) -> ImportRun | None:
+        stmt = _current_import_filter(select(ImportRun).where(ImportRun.dataset_name == dataset_name))
+        stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        stmt = stmt.where(ImportRun.status.in_(ACTIVE_UPLOAD_STATUSES))
+        if owner_user_id is None:
+            stmt = stmt.where(ImportRun.owner_user_id.is_(None))
+        else:
             stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
-        if not include_deleted:
-            stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        stmt = stmt.order_by(desc(ImportRun.id)).limit(1)
         return session.scalar(stmt)
 
     @staticmethod
@@ -147,13 +182,16 @@ class ImportRunRepository:
         *,
         owner_user_id: int | None = None,
         include_deleted: bool = False,
+        statuses: tuple[str, ...] | None = None,
         limit: int = 20,
     ) -> list[ImportRun]:
         stmt = _current_import_filter(select(ImportRun))
-        if owner_user_id is not None:
-            stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
-        if not include_deleted:
-            stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        stmt = _apply_visibility_filters(
+            stmt,
+            owner_user_id=owner_user_id,
+            include_deleted=include_deleted,
+            statuses=statuses,
+        )
         stmt = stmt.order_by(desc(ImportRun.id)).limit(limit)
         return list(session.scalars(stmt))
 
@@ -163,12 +201,15 @@ class ImportRunRepository:
         *,
         owner_user_id: int | None = None,
         include_deleted: bool = False,
+        statuses: tuple[str, ...] | None = None,
     ) -> list[ImportRun]:
         stmt = _current_import_filter(select(ImportRun))
-        if owner_user_id is not None:
-            stmt = stmt.where(ImportRun.owner_user_id == owner_user_id)
-        if not include_deleted:
-            stmt = stmt.where(ImportRun.deleted_at.is_(None))
+        stmt = _apply_visibility_filters(
+            stmt,
+            owner_user_id=owner_user_id,
+            include_deleted=include_deleted,
+            statuses=statuses,
+        )
         stmt = stmt.order_by(desc(ImportRun.started_at), desc(ImportRun.id))
         return list(session.scalars(stmt))
 

@@ -19,12 +19,6 @@ def main() -> int:
     parser.add_argument("--file-path", required=True, help="Path to the local trading CSV/XLSX file")
     parser.add_argument("--dataset-name", required=True, help="Display name for the imported dataset")
     parser.add_argument(
-        "--asset-class",
-        choices=["stock", "commodity"],
-        required=True,
-        help="Logical asset class for the uploaded file",
-    )
-    parser.add_argument(
         "--username",
         default=settings.admin_username,
         help="Existing username that should own the imported run",
@@ -45,7 +39,6 @@ def main() -> int:
             session,
             owner=user,
             dataset_name=args.dataset_name,
-            asset_class=args.asset_class,
             original_file_name=file_path.name,
             file_bytes=file_path.read_bytes(),
         )

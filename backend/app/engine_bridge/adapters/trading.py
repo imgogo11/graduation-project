@@ -108,3 +108,19 @@ def query_historical_dominance(
     return HistoricalDominanceEngineResult(
         dominated_counts=[int(item) for item in counter.count_prefix_dominance()],
     )
+
+
+def query_historical_dominance_3d(
+    primary_values_scaled: Sequence[int],
+    secondary_values_scaled: Sequence[int],
+    tertiary_values_scaled: Sequence[int],
+) -> HistoricalDominanceEngineResult:
+    module = load_algo_engine_module()
+    counter = module.HistoricalDominance3dCdqCounter(
+        list(primary_values_scaled),
+        list(secondary_values_scaled),
+        list(tertiary_values_scaled),
+    )
+    return HistoricalDominanceEngineResult(
+        dominated_counts=[int(item) for item in counter.count_prefix_dominance()],
+    )

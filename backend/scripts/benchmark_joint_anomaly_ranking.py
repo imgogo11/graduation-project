@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+import json
 import random
 from statistics import median
 import sys
@@ -150,6 +152,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Keep the generated benchmark import run instead of deleting it after the benchmark finishes.",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Optional output directory for summary.json and timings.csv.",
+    )
     return parser.parse_args()
 
 
@@ -217,7 +224,6 @@ def create_benchmark_run(session: Session, *, instruments: int, days: int, row_c
     run = ImportRun(
         owner_user_id=None,
         dataset_name=f"joint_anomaly_benchmark_{instruments}x{days}_{int(timestamp.timestamp())}",
-        asset_class="stock",
         source_type=CURRENT_IMPORT_SOURCE_TYPE,
         source_name=CURRENT_IMPORT_SOURCE_NAME,
         source_uri=f"benchmark://joint-anomaly/{instruments}x{days}",
@@ -272,6 +278,49 @@ def run_sql_path(session: Session, *, import_run_id: int) -> tuple[list[int], fl
 def cleanup_benchmark_run(session: Session, *, import_run_id: int) -> None:
     session.execute(delete(TradingRecord).where(TradingRecord.import_run_id == import_run_id))
     session.execute(delete(ImportRun).where(ImportRun.id == import_run_id))
+
+
+def write_benchmark_artifacts(
+    output_dir: Path,
+    *,
+    import_run_id: int,
+    sample: BenchmarkSample,
+    row_count: int,
+    result: BenchmarkResult,
+    skip_sql: bool,
+) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary = {
+        "import_run_id": import_run_id,
+        "sample": f"{sample.instruments}x{sample.days}",
+        "row_count": row_count,
+        "valid_event_count": result.valid_event_count,
+        "cdq_total_median_seconds": result.cdq_total_median_seconds,
+        "cdq_engine_median_seconds": result.cdq_engine_median_seconds,
+        "sql_median_seconds": None if skip_sql else result.sql_median_seconds,
+        "speedup_vs_sql": None if skip_sql else result.speedup_vs_sql,
+    }
+    (output_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    with (output_dir / "timings.csv").open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=["scenario", "mode", "batch_queries", "seconds"])
+        writer.writeheader()
+        writer.writerow(
+            {
+                "scenario": "joint_anomaly_cdq",
+                "mode": "algo_hot",
+                "batch_queries": 1,
+                "seconds": f"{result.cdq_total_median_seconds:.6f}",
+            }
+        )
+        if not skip_sql:
+            writer.writerow(
+                {
+                    "scenario": "joint_anomaly_cdq",
+                    "mode": "sql_cold",
+                    "batch_queries": 1,
+                    "seconds": f"{result.sql_median_seconds:.6f}",
+                }
+            )
 
 
 def benchmark_run(
@@ -374,6 +423,16 @@ def main() -> int:
         else:
             print(f"sql_median_seconds={result.sql_median_seconds:.6f}")
             print(f"speedup_vs_sql={result.speedup_vs_sql:.2f}x")
+
+        if args.output_dir:
+            write_benchmark_artifacts(
+                args.output_dir.resolve(),
+                import_run_id=run.id,
+                sample=sample,
+                row_count=len(rows),
+                result=result,
+                skip_sql=args.skip_sql,
+            )
 
         if not args.keep_data:
             cleanup_benchmark_run(session, import_run_id=run.id)

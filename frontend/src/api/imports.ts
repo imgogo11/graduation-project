@@ -13,7 +13,6 @@ export interface ImportStatsParams {
 
 export interface UploadTradingFileParams {
   dataset_name: string;
-  asset_class: string;
   file: File;
 }
 
@@ -28,7 +27,6 @@ export function fetchImportStats(params: ImportStatsParams = {}) {
 export function uploadTradingFile(params: UploadTradingFileParams) {
   const formData = new FormData();
   formData.append("dataset_name", params.dataset_name);
-  formData.append("asset_class", params.asset_class);
   formData.append("file", params.file);
   return postForm<ImportRunRead>("/api/imports/trading", formData);
 }

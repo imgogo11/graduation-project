@@ -52,6 +52,14 @@ const router = createRouter({
         requiresAuth: true,
       },
     },
+    {
+      path: "/risk-radar",
+      name: "risk-radar",
+      component: () => import("@/pages/RiskRadarPage.vue"),
+      meta: {
+        requiresAuth: true,
+      },
+    },
   ],
 });
 

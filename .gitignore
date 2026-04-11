@@ -21,3 +21,4 @@ algo-engine/build/
 backend/.tmp-tests/
 __pycache__/
 *.pyc
+*.docx

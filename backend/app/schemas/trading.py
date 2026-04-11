@@ -12,7 +12,6 @@ class ImportRunRead(BaseModel):
     owner_user_id: int | None
     owner_username: str | None
     dataset_name: str
-    asset_class: str | None
     source_type: str
     source_name: str
     original_file_name: str | None
@@ -74,7 +73,7 @@ class TradingRecordRead(BaseModel):
     low: Decimal
     close: Decimal
     volume: Decimal
-    amount: Decimal
+    amount: Decimal | None
 
 
 class TradingRangeMaxMatchRead(BaseModel):
@@ -123,6 +122,124 @@ class TradingJointAnomalyRankingRead(BaseModel):
     rows: list[TradingJointAnomalyRowRead]
 
 
+class AlgoIndexStatusRead(BaseModel):
+    import_run_id: int
+    status: str
+    is_ready: bool
+    build_started_at: datetime | None
+    build_completed_at: datetime | None
+    build_duration_ms: int | None
+    instrument_count: int | None
+    event_count: int | None
+    reuse_count: int
+    last_error: str | None
+
+
+class TradingRiskRadarEventRead(BaseModel):
+    instrument_code: str
+    instrument_name: str | None
+    trade_date: date
+    daily_return: float
+    return_z20: float
+    volume_ratio20: float
+    amplitude_ratio20: float
+    historical_dominated_count: int
+    historical_sample_count: int
+    joint_percentile: float
+    severity: str
+    cause_label: str
+
+
+class TradingInstrumentRiskProfileRead(BaseModel):
+    instrument_code: str
+    instrument_name: str | None
+    event_count: int
+    medium_count: int
+    high_count: int
+    critical_count: int
+    max_joint_percentile: float
+    avg_joint_percentile: float
+    latest_event_date: date
+    top_event_date: date
+    top_event_severity: str
+
+
+class TradingRiskRadarCalendarDayRead(BaseModel):
+    trade_date: date
+    event_count: int
+    impacted_instrument_count: int
+    medium_count: int
+    high_count: int
+    critical_count: int
+    max_joint_percentile: float
+
+
+class TradingRiskRadarOverviewRead(BaseModel):
+    import_run_id: int
+    lookback_window: int
+    generated_at: datetime | None
+    total_events: int
+    impacted_instrument_count: int
+    medium_count: int
+    high_count: int
+    critical_count: int
+    top_instruments: list[TradingInstrumentRiskProfileRead]
+    busiest_dates: list[TradingRiskRadarCalendarDayRead]
+
+
+class TradingRiskRadarEventListRead(BaseModel):
+    import_run_id: int
+    rows: list[TradingRiskRadarEventRead]
+
+
+class TradingRiskRadarInstrumentListRead(BaseModel):
+    import_run_id: int
+    rows: list[TradingInstrumentRiskProfileRead]
+
+
+class TradingRiskRadarCalendarRead(BaseModel):
+    import_run_id: int
+    rows: list[TradingRiskRadarCalendarDayRead]
+
+
+class TradingRiskRadarWindowRead(BaseModel):
+    window_days: int
+    current_value: float
+    exact_percentile: float
+    p50: float
+    p90: float
+    p95: float
+    top_1: float
+    top_3: float | None
+
+
+class TradingRiskRadarDistributionChangeRead(BaseModel):
+    metric: str
+    window_days: int
+    before_median: float
+    before_p90: float
+    before_p95: float
+    after_median: float
+    after_p90: float
+    after_p95: float
+
+
+class TradingRiskRadarAmountPeakRead(BaseModel):
+    start_date: date
+    end_date: date
+    peak_amount: float
+    peak_dates: list[TradingRangeMaxMatchRead]
+
+
+class TradingRiskRadarEventContextRead(BaseModel):
+    import_run_id: int
+    event: TradingRiskRadarEventRead
+    volume_windows: list[TradingRiskRadarWindowRead]
+    amplitude_windows: list[TradingRiskRadarWindowRead]
+    distribution_changes: list[TradingRiskRadarDistributionChangeRead]
+    local_amount_peak: TradingRiskRadarAmountPeakRead | None
+
+
 class TradingSummaryRead(BaseModel):
     import_run_id: int
     instrument_code: str | None
@@ -136,7 +253,7 @@ class TradingSummaryRead(BaseModel):
     average_close: float
     latest_close: float
     total_volume: float
-    total_amount: float
+    total_amount: float | None
     average_volume: float
     average_amplitude: float
 
@@ -154,7 +271,7 @@ class TradingQualityReportRead(BaseModel):
     invalid_ohlc_count: int
     non_positive_price_count: int
     non_positive_volume_count: int
-    non_positive_amount_count: int
+    non_positive_amount_count: int | None
     flat_days_count: int
     coverage_ratio: float
 
@@ -163,7 +280,7 @@ class TradingIndicatorPointRead(BaseModel):
     trade_date: date
     close: float
     volume: float
-    amount: float
+    amount: float | None
     daily_return: float | None
     cumulative_return: float | None
     ma5: float | None
@@ -235,7 +352,7 @@ class TradingCrossSectionRowRead(BaseModel):
     total_return: float | None
     volatility: float
     total_volume: float
-    total_amount: float
+    total_amount: float | None
     average_amplitude: float
     latest_close: float
 
@@ -256,6 +373,70 @@ class TradingCorrelationMatrixRead(BaseModel):
     matrix: list[list[float | None]]
 
 
+class TradingComparisonScopeRead(BaseModel):
+    import_run_id: int
+    instrument_code: str | None
+    instrument_name: str | None
+    requested_start_date: date | None
+    requested_end_date: date | None
+    actual_start_date: date
+    actual_end_date: date
+    record_count: int
+    instrument_count: int
+    total_volume: float
+    total_amount: float | None
+
+
+class TradingInstrumentOverlapRead(BaseModel):
+    shared_instruments: list[str]
+    base_only_instruments: list[str]
+    target_only_instruments: list[str]
+
+
+class TradingRecordOverlapRead(BaseModel):
+    shared_trade_date_count: int
+    shared_record_count: int
+    base_only_record_count: int
+    target_only_record_count: int
+
+
+class TradingComparisonValueRead(BaseModel):
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    amount: float | None
+
+
+class TradingMismatchSummaryRead(BaseModel):
+    matching_record_count: int
+    mismatched_record_count: int
+    open_mismatch_count: int
+    high_mismatch_count: int
+    low_mismatch_count: int
+    close_mismatch_count: int
+    volume_mismatch_count: int
+    amount_mismatch_count: int
+
+
+class TradingMismatchSampleRead(BaseModel):
+    instrument_code: str
+    trade_date: date
+    mismatched_fields: list[str]
+    base_values: TradingComparisonValueRead
+    target_values: TradingComparisonValueRead
+
+
+class TradingScopeComparisonRead(BaseModel):
+    base_scope: TradingComparisonScopeRead
+    target_scope: TradingComparisonScopeRead
+    instrument_overlap: TradingInstrumentOverlapRead
+    record_overlap: TradingRecordOverlapRead
+    mismatch_summary: TradingMismatchSummaryRead
+    mismatch_samples: list[TradingMismatchSampleRead]
+
+
 class TradingRunComparisonRead(BaseModel):
     base_run_id: int
     target_run_id: int
@@ -265,8 +446,8 @@ class TradingRunComparisonRead(BaseModel):
     target_instrument_count: int
     base_total_volume: float
     target_total_volume: float
-    base_total_amount: float
-    target_total_amount: float
+    base_total_amount: float | None
+    target_total_amount: float | None
     base_start_date: date
     base_end_date: date
     target_start_date: date

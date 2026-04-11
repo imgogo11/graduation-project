@@ -42,6 +42,10 @@ cmake --build algo-engine/build
 Copy-Item .env.template .env -Force
 
 
+# 复制前端环境变量模板，确保 Vite 代理地址与开发端口可显式配置
+Copy-Item .\frontend\.env.template .\frontend\.env -Force
+
+
 # 启动 PostgreSQL 数据库容器，供系统持久化存储用户和交易数据
 docker compose -f deploy/docker-compose.yml up -d postgres
 
@@ -54,8 +58,8 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 .\.venv\Scripts\python.exe backend/scripts/init_admin.py
 
 
-# 导入一份示例交易模板数据，用于快速验证上传与分析链路是否正常
-.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_template --asset-class stock
+# 导入一份示例交易模板数据（必要列在前、可选列在后），用于快速验证上传与分析链路是否正常
+.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_template
 
 
 # 运行 C++ 单测与 Python 绑定 smoke test，验证 algo-engine 构建产物可用
@@ -74,6 +78,22 @@ ctest --test-dir algo-engine/build --output-on-failure
 .\.venv\Scripts\python.exe backend/tests/test_trading_analysis.py
 
 
+# 运行导入链路与权限测试，验证列头映射、可选 amount 和导入后查询流程正常
+.\.venv\Scripts\python.exe backend/tests/test_database_pipeline.py
+
+
+# 进入前端目录，执行生产构建校验，验证页面改动与类型检查通过
+cd D:\graduation-project\frontend
+
+
+# 运行前端构建，验证上传页和分析页改动可正常编译
+npm run build
+
+
+# 返回项目根目录，继续执行开发服务启动命令
+cd ..
+
+
 # 以下两个启动命令都是长驻服务，建议分别在独立终端执行
 
 
@@ -85,9 +105,9 @@ ctest --test-dir algo-engine/build --output-on-failure
 cd D:\graduation-project\frontend
 
 
-# 在前端终端启动开发服务，提供管理系统界面
+# 在前端终端启动开发服务，默认提供 127.0.0.1:4173 的管理系统界面
 npm run dev
 
 
 # 在浏览器中打开登录页，进入系统进行功能验证
-start http://127.0.0.1:5173/login
+start http://127.0.0.1:4173/login

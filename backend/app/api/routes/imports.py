@@ -8,7 +8,8 @@ from app.core.database import get_db_session
 from app.models import User
 from app.repositories.imports import ImportRunRepository
 from app.schemas.trading import DeleteImportRunResponse, ImportRunRead, ImportStatsRead
-from app.services.imports import ImportExecutionError, ImportService, ImportValidationError
+from app.services.algo_indexes import algo_index_manager
+from app.services.imports import ImportConflictError, ImportExecutionError, ImportService, ImportValidationError
 
 
 router = APIRouter()
@@ -55,7 +56,6 @@ def get_import_stats(
 @router.post("/trading", response_model=ImportRunRead)
 async def import_trading_file(
     dataset_name: str = Form(...),
-    asset_class: str = Form(...),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
@@ -72,16 +72,22 @@ async def import_trading_file(
             session,
             owner=current_user,
             dataset_name=dataset_name,
-            asset_class=asset_class,
             original_file_name=file.filename,
             file_bytes=file_bytes,
         )
+    except ImportConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ImportValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ImportExecutionError as exc:
         if isinstance(exc.__cause__, ImportValidationError):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc.__cause__)) from exc
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+    algo_index_manager.prepare_after_import(int(run.id))
+    try:
+        algo_index_manager.enqueue_build(int(run.id))
+    except Exception:
+        pass
 
     return service.serialize_run(
         session,
@@ -98,4 +104,5 @@ def delete_import_run(
 ) -> DeleteImportRunResponse:
     run = _get_visible_run_or_404(session, run_id=run_id, current_user=current_user)
     service.delete_run(session, run=run)
+    algo_index_manager.invalidate(run_id)
     return DeleteImportRunResponse(id=run_id, status="deleted")

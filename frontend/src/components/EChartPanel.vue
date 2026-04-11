@@ -3,12 +3,12 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import * as echarts from "echarts/core";
 import type { EChartsOption } from "echarts";
-import { BarChart, LineChart } from "echarts/charts";
+import { BarChart, LineChart, ScatterChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 
 
-echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, LineChart, ScatterChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
 const props = withDefaults(
   defineProps<{
