@@ -34,7 +34,7 @@ cd ..
 cmake -S algo-engine -B algo-engine/build -DPython_EXECUTABLE="$pythonExe" -Dpybind11_DIR="$pybind11CMakeDir"
 
 
-# 编译 C++ 算法引擎和 Python 绑定模块，供后端算法接口直接调用
+# 编译 C++ 算法模块和 Python 绑定模块，供后端算法接口直接调用
 cmake --build algo-engine/build
 
 

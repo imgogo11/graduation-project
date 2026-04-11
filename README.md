@@ -1,4 +1,4 @@
-# 融合 C++ 算法引擎的交易数据管理与分析系统设计与实现（C++-Powered Trading Data Analytics System）
+# 基于 C++ 算法模块的股票交易数据管理与分析系统设计与实现（Stock Trading Data Management and Analysis System Based on C++ Algorithm Module）
 
 ## 项目简介
 
@@ -9,7 +9,7 @@
 - 导入批次、清单与产物记录持久化
 - 基于用户权限隔离的数据查询与管理
 - 面向股票数据的一体化交易分析
-- 基于 C++ 算法引擎的区间分析能力
+- 基于 C++ 算法模块的区间分析能力
 
 早期的股票爬虫、电商演示数据、synthetic 数据与 benchmark 演示链路，已经退出当前主业务主线。
 
@@ -18,7 +18,7 @@
 - 前端：Vue 3 + TypeScript + Element Plus + ECharts
 - 后端：FastAPI + SQLAlchemy + Alembic + Pandas
 - 数据库：PostgreSQL
-- 算法引擎：C++ + PyBind11
+- 算法模块：C++ + PyBind11
 
 ## 当前核心数据模型
 

@@ -26,11 +26,11 @@ function logout() {
   <div class="shell">
     <header class="shell__header">
       <div class="shell__hero">
-        <div class="shell__eyebrow">C++-Powered Trading Data Analytics System</div>
-        <h1 class="shell__title">融合 C++ 算法引擎的交易数据管理与分析系统设计与实现</h1>
+        <div class="shell__eyebrow">Stock Trading Data Management and Analysis System Based on C++ Algorithm Module</div>
+        <h1 class="shell__title">基于 C++ 算法模块的股票交易数据管理与分析系统设计与实现</h1>
         <p class="shell__subtitle">
           统一承接用户注册登录、CSV/XLSX 历史交易数据上传、按用户隔离的数据管理，以及基于
-          C++ 算法引擎和 Python 分析层的多维度交易分析能力。
+          C++ 算法模块和 Python 分析层的多维度交易分析能力。
         </p>
       </div>
 

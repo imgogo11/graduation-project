@@ -6,7 +6,7 @@
 
 当前仓库的主线已经不是早期的“股票抓取 + 电商演示 + benchmark 预留”组合方案，而是一个已经落地到可联调、可验证状态的：
 
-`融合 C++ 算法引擎的交易数据管理与分析系统设计与实现（C++-Powered Trading Data Analytics System）`
+`基于 C++ 算法模块的股票交易数据管理与分析系统设计与实现（Stock Trading Data Management and Analysis System Based on C++ Algorithm Module）`
 
 当前真实业务链路为：
 
@@ -53,7 +53,7 @@
 - `PBKDF2-SHA256` 密码哈希
 - 基于 `user / admin` 的最小权限区分
 
-### 算法引擎
+### 算法模块
 
 - C++23
 - pybind11
@@ -132,7 +132,7 @@ graduation-project/
 │     ├─ test_algo_trading.py
 │     ├─ test_trading_analysis.py
 │     └─ test_tdigest_range_kth.py
-├─ algo-engine/                      C++ 算法引擎与 Python 绑定
+├─ algo-engine/                      C++ 算法模块与 Python 绑定
 │  ├─ include/algo_engine/
 │  │  ├─ cdq/
 │  │  │  └─ historical_dominance_cdq.hpp
@@ -275,7 +275,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - “项目仍以股票抓取和电商演示为主线”
 - “系统只有 Trading 页面，没有独立 Analysis 页面”
 - “后端只有基础导入接口，没有分析接口”
-- “算法引擎只有占位结构”
+- “算法模块只有占位结构”
 - “系统还没有用户注册登录”
 - “后端还没有交易上传模型”
 - “系统只有区间最大成交额，没有第 K 大和联合异常能力”
@@ -303,4 +303,4 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 
 `一个具备前端界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化、交易分析中心，以及 C++ / Python 混合算法能力（区间最大成交额、区间第 K 大成交量、联合异常排序）的全栈 MVP。`
 
-它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“融合 C++ 算法引擎的交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
+它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“基于 C++ 算法模块的股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
