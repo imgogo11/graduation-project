@@ -5,13 +5,13 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.engine_bridge.adapters.trading import (
+from app.algo_bridge.adapters.trading import (
     query_historical_dominance,
     query_range_kth,
     query_range_kth_tdigest,
     query_range_max,
 )
-from app.engine_bridge.loaders.trading import (
+from app.algo_bridge.loaders.trading import (
     build_trading_joint_anomaly_events,
     build_trading_amount_series,
     build_trading_volume_series,

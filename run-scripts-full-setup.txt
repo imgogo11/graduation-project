@@ -14,7 +14,7 @@ uv sync
 $pythonExe = (Resolve-Path .\.venv\Scripts\python.exe).Path
 
 
-# 获取 pybind11 的 CMake 配置目录，确保 algo-engine 在新环境下也能正确配置
+# 获取 pybind11 的 CMake 配置目录，确保 algo-module 在新环境下也能正确配置
 $pybind11CMakeDir = & $pythonExe -m pybind11 --cmakedir
 
 
@@ -30,12 +30,12 @@ npm install
 cd ..
 
 
-# 配置 C++ algo-engine 工程，生成 pybind11 Python 绑定所需的构建文件
-cmake -S algo-engine -B algo-engine/build -DPython_EXECUTABLE="$pythonExe" -Dpybind11_DIR="$pybind11CMakeDir"
+# 配置 C++ algo-module 工程，生成 pybind11 Python 绑定所需的构建文件
+cmake -S algo-module -B algo-module/build -DPython_EXECUTABLE="$pythonExe" -Dpybind11_DIR="$pybind11CMakeDir"
 
 
 # 编译 C++ 算法模块和 Python 绑定模块，供后端算法接口直接调用
-cmake --build algo-engine/build
+cmake --build algo-module/build
 
 
 # 复制环境变量模板，生成本地运行所需的 .env 配置文件
@@ -62,8 +62,8 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 .\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_template
 
 
-# 运行 C++ 单测与 Python 绑定 smoke test，验证 algo-engine 构建产物可用
-ctest --test-dir algo-engine/build --output-on-failure
+# 运行 C++ 单测与 Python 绑定 smoke test，验证 algo-module 构建产物可用
+ctest --test-dir algo-module/build --output-on-failure
 
 
 # 运行交易算法接口测试，验证区间最大值、主席树第 K 大以及 t-digest 近似链路
@@ -111,3 +111,27 @@ npm run dev
 
 # 在浏览器中打开登录页，进入系统进行功能验证
 start http://127.0.0.1:4173/login
+
+
+# 安装项目级 benchmark 所需的可选依赖（matplotlib / psutil / locust）
+uv sync --extra benchmark
+
+
+# 运行高频查询效率基准，结果与图表将写入根目录 benchmarks/query_efficiency/
+python benchmarks/run_all.py --suite query_efficiency --sample all
+
+
+# 运行第 K 大三方案对比基准，结果与图表将写入根目录 benchmarks/kth_comparison/
+python benchmarks/run_all.py --suite kth_comparison --sample all
+
+
+# 运行平台稳定性与安全性压测前，请先设置 Locust 所需环境变量
+$env:BENCHMARK_BASE_URL = "http://127.0.0.1:8200"
+$env:BENCHMARK_USERNAME = "admin"
+$env:BENCHMARK_PASSWORD = "admin123456"
+$env:BENCHMARK_IMPORT_RUN_ID = "1"
+$env:BENCHMARK_SAMPLE = "smoke"
+
+
+# 运行平台压测，结果与图表将写入根目录 benchmarks/platform_quality/
+python benchmarks/run_all.py --suite platform_quality --profile smoke

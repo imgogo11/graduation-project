@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-04-12T19:04:34.357863",
+  "profile": "smoke",
+  "request_count": 233,
+  "failure_count": 0,
+  "status_counts": {
+    "200": 149,
+    "401": 70,
+    "400": 24,
+    "404": 7
+  },
+  "security_case_count": 5
+}

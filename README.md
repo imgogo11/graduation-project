@@ -66,6 +66,10 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - `t_digest` 在本项目中用于近似分位 / 近似第 K 大查询，不宣称任意区间严格 `O(1)` 或精确排名
 - 当前已打通链路：数据库 -> Python bridge / Python t-digest -> FastAPI -> 前端
 
+## 论文材料
+
+- 毕业论文目录与写作提纲：[`docs/graduation-thesis-outline.md`](docs/graduation-thesis-outline.md)
+
 ## 环境准备
 
 ### 1. 安装依赖
@@ -209,4 +213,45 @@ npm run dev
 ```powershell
 cd frontend
 npm run build
+```
+
+## 项目级 Benchmarks
+
+- C++ 算法模块目录现为 `algo-module/`
+- Python 桥接层目录现为 `backend/app/algo_bridge/`
+- 项目级 benchmark 入口统一收敛到根目录 `benchmarks/`
+- 每个 suite 都会把数值结果写入对应目录的 `results/`，把可视化图写入 `images/`
+
+### Benchmark 依赖
+
+```powershell
+uv sync --extra benchmark
+```
+
+### 算法查询效率与第 K 大对比
+
+```powershell
+python benchmarks/run_all.py --suite query_efficiency --sample all
+python benchmarks/run_all.py --suite kth_comparison --sample all
+```
+
+### 平台稳定性与安全性压测
+
+平台压测使用 `Locust`，默认读取以下环境变量：
+
+- `BENCHMARK_BASE_URL`
+- `BENCHMARK_USERNAME`
+- `BENCHMARK_PASSWORD`
+- `BENCHMARK_IMPORT_RUN_ID`
+- `BENCHMARK_SAMPLE`
+
+示例：
+
+```powershell
+$env:BENCHMARK_BASE_URL = "http://127.0.0.1:8200"
+$env:BENCHMARK_USERNAME = "admin"
+$env:BENCHMARK_PASSWORD = "admin123456"
+$env:BENCHMARK_IMPORT_RUN_ID = "1"
+$env:BENCHMARK_SAMPLE = "smoke"
+python benchmarks/run_all.py --suite platform_quality --profile smoke
 ```

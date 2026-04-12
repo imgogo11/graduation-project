@@ -18,7 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.database import create_all_tables, get_session_factory, reset_database_state
-from app.engine_bridge.adapters.trading import load_algo_engine_module
+from app.algo_bridge.adapters.trading import load_algo_module
 from app.models import ImportRun
 from app.services.auth import AuthService
 
@@ -250,7 +250,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            load_algo_engine_module()
+            load_algo_module()
         except RuntimeError as exc:
             raise unittest.SkipTest(str(exc)) from exc
 

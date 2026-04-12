@@ -1,0 +1,3 @@
+sample,implementation,build_seconds,build_rss_mb
+300x480,persistent_segment_tree,0.000732,0.2148
+300x480,t_digest,0.00058,0.0078

@@ -13,7 +13,7 @@ C++算法引擎与数据库协同优势详述.md
 .venv/
 .uv-cache/
 /build/
-algo-engine/build/
+algo-module/build/
 /frontend/node_modules/
 /frontend/dist/
 /frontend/.vite/

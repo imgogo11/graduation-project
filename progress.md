@@ -95,7 +95,7 @@ graduation-project/
 │  │  │  ├─ config.py                环境变量与运行配置
 │  │  │  ├─ database.py              Engine / Session / 建表 / 连接检查
 │  │  │  └─ security.py              密码哈希与 Token 编解码
-│  │  ├─ engine_bridge/
+│  │  ├─ algo_bridge/
 │  │  │  ├─ adapters/trading.py      Python -> C++ / t-digest 算法调用
 │  │  │  └─ loaders/trading.py       成交额 / 成交量 / 联合异常事件序列构建
 │  │  ├─ models/
@@ -126,14 +126,14 @@ graduation-project/
 │  │  ├─ init_admin.py
 │  │  ├─ import_data.py
 │  │  ├─ export_requirements.py
-│  │  └─ benchmark_joint_anomaly_ranking.py
+- ?????? `benchmarks/` ???????????????Kth ??????? Locust ?????/??????????? `results/` ? `images/`
 │  └─ tests/
 │     ├─ test_database_pipeline.py
 │     ├─ test_algo_trading.py
 │     ├─ test_trading_analysis.py
 │     └─ test_tdigest_range_kth.py
-├─ algo-engine/                      C++ 算法模块与 Python 绑定
-│  ├─ include/algo_engine/
+├─ algo-module/                      C++ 算法模块与 Python 绑定
+│  ├─ include/algo_module/
 │  │  ├─ cdq/
 │  │  │  └─ historical_dominance_cdq.hpp
 │  │  └─ segment_tree/
@@ -236,11 +236,11 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 
 ### 5. 算法链路已真实接通
 
-- `algo-engine` 不再只是目录骨架
+- `algo-module` 不再只是目录骨架
 - 已实现 `RangeMaxSegmentTree`
 - 已实现 `RangeKthPersistentSegmentTree`
 - 已实现 `HistoricalDominanceCDQ`
-- 已通过 pybind11 暴露 `algo_engine_py`
+- 已通过 pybind11 暴露 `algo_module_py`
 - 后端已能把数据库中的成交额序列送入 C++ 引擎做区间最大值查询
 - 后端已能把数据库中的成交量序列送入精确第 K 大查询，或走 `t_digest` 近似查询链路
 - 后端已能把联合异常事件序列送入 CDQ 历史支配计数算法，并返回排序结果
@@ -257,9 +257,9 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 ### 文档
 
 - `README.md` 已基本同步到当前系统主线
-- `algo-engine/README.md` 仍停留在早期规划描述，尚未同步当前已实现内容
+- `algo-module/README.md` 仍停留在早期规划描述，尚未同步当前已实现内容
 - `docs/` 目前以环境说明与数据源说明为主
-- 已有 `backend/scripts/benchmark_joint_anomaly_ranking.py` 离线 benchmark 脚本，但还没有系统化性能报告与结论沉淀
+- ?????? `benchmarks/` ???????????????Kth ??????? Locust ?????/??????????? `results/` ? `images/`
 - 仍缺少更完整的 API 文档、系统设计文档、实验报告/论文材料沉淀
 
 ### 前端构建质量
@@ -288,14 +288,14 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - `backend/tests/test_algo_trading.py` 通过，共 14 个测试
 - `backend/tests/test_trading_analysis.py` 通过，共 3 个测试
 - `backend/tests/test_tdigest_range_kth.py` 通过，共 2 个测试
-- `ctest --test-dir algo-engine/build --output-on-failure` 通过，共 4 个测试
+- `ctest --test-dir algo-module/build --output-on-failure` 通过，共 4 个测试
 - `frontend` 执行 `npm run build` 成功
 
 本轮额外观察到：
 
 - 前端构建存在 chunk 体积告警，但不影响当前构建成功
-- `algo_engine_python_smoke` 已通过，说明 pybind11 绑定产物可被 Python 正常加载
-- `algo-engine/build/` 已存在可用构建产物，C++ 单元测试与 Python smoke test 均可运行
+- `algo_module_python_smoke` 已通过，说明 pybind11 绑定产物可被 Python 正常加载
+- `algo-module/build/` 已存在可用构建产物，C++ 单元测试与 Python smoke test 均可运行
 
 ## 一句话结论
 

@@ -11,14 +11,14 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.core.database import get_session_factory
-from app.engine_bridge.adapters.trading import load_algo_engine_module, query_historical_dominance_3d
-from app.engine_bridge.loaders.trading import (
+from app.algo_bridge.adapters.trading import load_algo_module, query_historical_dominance_3d
+from app.algo_bridge.loaders.trading import (
     build_trading_risk_radar_events,
     scale_amount,
     scale_signal_metric,
     scale_volume,
 )
-from app.engine_bridge.tdigest import RangeKthTDigestBlockIndex
+from app.algo_bridge.tdigest import RangeKthTDigestBlockIndex
 from app.models import ImportRun, utc_now
 from app.repositories.trading import TradingRepository
 from app.schemas.trading import (
@@ -298,7 +298,7 @@ class AlgoIndexManager:
         )
 
     def _build_instrument_indexes(self, rows: list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]) -> dict[str, InstrumentAlgoIndex]:
-        module = load_algo_engine_module()
+        module = load_algo_module()
         grouped: dict[str, list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]] = {}
         for row in rows:
             grouped.setdefault(row[0], []).append(row)

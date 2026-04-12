@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-04-12T19:04:34.190146",
+  "sample": "smoke",
+  "status_counts": {
+    "200": 149,
+    "401": 70,
+    "400": 24,
+    "404": 7
+  },
+  "security_cases": [
+    {
+      "case": "cross_user_records",
+      "expected_statuses": [
+        "404"
+      ],
+      "total": 7,
+      "matched": 7,
+      "matched_ratio": 1.0,
+      "status_counts": {
+        "404": 7
+      }
+    },
+    {
+      "case": "invalid_date_range",
+      "expected_statuses": [
+        "400"
+      ],
+      "total": 12,
+      "matched": 12,
+      "matched_ratio": 1.0,
+      "status_counts": {
+        "400": 12
+      }
+    },
+    {
+      "case": "invalid_k",
+      "expected_statuses": [
+        "400"
+      ],
+      "total": 12,
+      "matched": 12,
+      "matched_ratio": 1.0,
+      "status_counts": {
+        "400": 12
+      }
+    },
+    {
+      "case": "invalid_token_me",
+      "expected_statuses": [
+        "401"
+      ],
+      "total": 35,
+      "matched": 35,
+      "matched_ratio": 1.0,
+      "status_counts": {
+        "401": 35
+      }
+    },
+    {
+      "case": "no_auth_runs",
+      "expected_statuses": [
+        "401"
+      ],
+      "total": 35,
+      "matched": 35,
+      "matched_ratio": 1.0,
+      "status_counts": {
+        "401": 35
+      }
+    }
+  ]
+}

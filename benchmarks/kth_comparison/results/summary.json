@@ -1,0 +1,14 @@
+{
+  "generated_at": "2026-04-12T18:59:26.230818",
+  "samples": [
+    "300x480"
+  ],
+  "query_counts": [
+    10,
+    100
+  ],
+  "benchmark_run_ids": [
+    2
+  ],
+  "suite": "kth_comparison"
+}

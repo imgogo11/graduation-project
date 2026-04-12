@@ -8,8 +8,8 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from app.engine_bridge.adapters.trading import (
-    load_algo_engine_module,
+from app.algo_bridge.adapters.trading import (
+    load_algo_module,
     query_range_kth,
     query_range_kth_tdigest,
 )
@@ -31,7 +31,7 @@ class TDigestRangeKthTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         try:
-            load_algo_engine_module()
+            load_algo_module()
         except RuntimeError as exc:
             raise unittest.SkipTest(str(exc)) from exc
 

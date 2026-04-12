@@ -1,0 +1,7 @@
+sample,implementation,query_count,mean_absolute_error,mean_relative_error,mean_rank_error,max_rank_error,zero_error_ratio,band_0,band_lte_1,band_lte_5,band_gt_5
+300x480,sql,10,0.0,0.0,0.0,0,1.0,10,0,0,0
+300x480,sql,100,0.0,0.0,0.0,0,1.0,100,0,0,0
+300x480,persistent_segment_tree,10,0.0,0.0,0.0,0,1.0,10,0,0,0
+300x480,persistent_segment_tree,100,0.0,0.0,0.0,0,1.0,100,0,0,0
+300x480,t_digest,10,0.18012,3.3e-06,0.2,1,0.8,8,2,0,0
+300x480,t_digest,100,0.458024,8.52e-06,0.1,1,0.9,90,10,0,0

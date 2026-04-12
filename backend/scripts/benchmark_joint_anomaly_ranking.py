@@ -23,8 +23,8 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.core.config import get_settings
 from app.core.database import create_all_tables, get_engine, get_session_factory
-from app.engine_bridge.adapters.trading import query_historical_dominance
-from app.engine_bridge.loaders.trading import build_trading_joint_anomaly_events
+from app.algo_bridge.adapters.trading import query_historical_dominance
+from app.algo_bridge.loaders.trading import build_trading_joint_anomaly_events
 from app.models import ImportRun, TradingRecord, utc_now
 from app.repositories.imports import CURRENT_IMPORT_SOURCE_NAME, CURRENT_IMPORT_SOURCE_TYPE
 from app.repositories.trading import TradingRepository
