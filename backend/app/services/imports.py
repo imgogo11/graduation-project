@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -256,10 +256,9 @@ class ImportService:
         completed_runs = 0
         failed_runs = 0
         total_records = 0
-        dataset_names: set[str] = set()
+        completed_dataset_names: set[str] = set()
 
         for run in runs:
-            dataset_names.add(run.dataset_name)
             month_key = run.started_at.strftime("%Y-%m")
             monthly_imports[month_key]["runs"] += 1
             monthly_imports[month_key]["records"] += run.record_count or 0
@@ -271,6 +270,7 @@ class ImportService:
             total_records += run.record_count or 0
             if run.status == "completed":
                 completed_runs += 1
+                completed_dataset_names.add(run.dataset_name)
             elif run.status == "failed":
                 failed_runs += 1
 
@@ -292,7 +292,7 @@ class ImportService:
             completed_runs=completed_runs,
             failed_runs=failed_runs,
             total_records=total_records,
-            active_datasets=len(dataset_names),
+            available_datasets=len(completed_dataset_names),
             monthly_imports=monthly_points,
             owner_summaries=owner_points if owner_user_id is None else [],
         )
@@ -375,9 +375,9 @@ class ImportService:
         selected_columns = [column for column in head_dictionary.canonical_columns if column in canonical_to_original]
         normalized = frame.rename(columns=rename_map)[selected_columns].copy()
 
-        normalized["instrument_code"] = normalized["instrument_code"].map(self._normalize_text)
-        if normalized["instrument_code"].isna().any():
-            raise ImportValidationError(build_import_format_error("instrument_code 存在空值"))
+        normalized["stock_code"] = normalized["stock_code"].map(self._normalize_text)
+        if normalized["stock_code"].isna().any():
+            raise ImportValidationError(build_import_format_error("stock_code 存在空值"))
 
         parsed_dates = pd.to_datetime(normalized["trade_date"], errors="coerce")
         if parsed_dates.isna().any():
@@ -390,10 +390,10 @@ class ImportService:
                 raise ImportValidationError(build_import_format_error(f"{column} 存在非法数值"))
             normalized[column] = parsed
 
-        if "instrument_name" in normalized.columns:
-            normalized["instrument_name"] = normalized["instrument_name"].map(self._normalize_nullable_text)
+        if "stock_name" in normalized.columns:
+            normalized["stock_name"] = normalized["stock_name"].map(self._normalize_nullable_text)
         else:
-            normalized["instrument_name"] = None
+            normalized["stock_name"] = None
 
         if "amount" in normalized.columns:
             parsed_amount = pd.to_numeric(normalized["amount"], errors="coerce")
@@ -414,19 +414,19 @@ class ImportService:
 
         normalized = normalized[list(head_dictionary.canonical_columns)]
 
-        duplicate_mask = normalized.duplicated(subset=["instrument_code", "trade_date"], keep=False)
+        duplicate_mask = normalized.duplicated(subset=["stock_code", "trade_date"], keep=False)
         if duplicate_mask.any():
-            duplicates = normalized.loc[duplicate_mask, ["instrument_code", "trade_date"]].drop_duplicates()
+            duplicates = normalized.loc[duplicate_mask, ["stock_code", "trade_date"]].drop_duplicates()
             preview = ", ".join(
-                f"{row.instrument_code}@{row.trade_date.isoformat()}" for row in duplicates.head(3).itertuples()
+                f"{row.stock_code}@{row.trade_date.isoformat()}" for row in duplicates.head(3).itertuples()
             )
-            raise ImportValidationError(build_import_format_error(f"存在重复的 instrument_code/trade_date：{preview}"))
+            raise ImportValidationError(build_import_format_error(f"存在重复的 stock_code/trade_date：{preview}"))
 
-        normalized = normalized.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+        normalized = normalized.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
         rows = [
             {
-                "instrument_code": str(row["instrument_code"]),
-                "instrument_name": row["instrument_name"],
+                "stock_code": str(row["stock_code"]),
+                "stock_name": row["stock_name"],
                 "trade_date": row["trade_date"],
                 "open": self._to_decimal(row["open"]),
                 "high": self._to_decimal(row["high"]),
@@ -521,3 +521,5 @@ class ImportService:
         return "uq_import_runs_owner_dataset_name_active_upload" in message or (
             "import_runs" in message and "dataset_name" in message and "owner_user_id" in message
         )
+
+

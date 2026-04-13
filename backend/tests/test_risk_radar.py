@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -58,7 +59,7 @@ def build_risk_radar_frame() -> pd.DataFrame:
     }
 
     rows: list[dict[str, object]] = []
-    for instrument_code, config in configs.items():
+    for stock_code, config in configs.items():
         previous_close = float(config["base_close"])
         for index, trade_day in enumerate(dates):
             if index == 0:
@@ -76,8 +77,8 @@ def build_risk_radar_frame() -> pd.DataFrame:
 
             rows.append(
                 {
-                    "instrument_code": instrument_code,
-                    "instrument_name": str(config["name"]),
+                    "stock_code": stock_code,
+                    "stock_name": str(config["name"]),
                     "trade_date": trade_day.strftime("%Y-%m-%d"),
                     "open": round(open_value, 4),
                     "high": round(high_value, 4),
@@ -89,7 +90,7 @@ def build_risk_radar_frame() -> pd.DataFrame:
             )
             previous_close = close_value
 
-    return pd.DataFrame(rows).sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
 
 class RiskRadarRouteTests(unittest.TestCase):
@@ -130,6 +131,7 @@ class RiskRadarRouteTests(unittest.TestCase):
 
         self.client = TestClient(app)
         self.token = self._register_and_login("radar_user", "password123")
+        self.admin_token = self._login("admin", "admin123456")
         self.run = self._upload_csv(token=self.token, dataset_name="risk_radar_case", frame=build_risk_radar_frame())
 
     def tearDown(self) -> None:
@@ -150,7 +152,7 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertEqual(status_response.status_code, 200, status_response.text)
         self.assertEqual(status_response.json()["status"], "ready")
         self.assertTrue(status_response.json()["is_ready"])
-        self.assertGreaterEqual(status_response.json()["instrument_count"], 3)
+        self.assertGreaterEqual(status_response.json()["stock_count"], 3)
         self.assertGreater(status_response.json()["event_count"], 0)
 
         algo_index_manager.invalidate(int(self.run["id"]))
@@ -167,10 +169,17 @@ class RiskRadarRouteTests(unittest.TestCase):
         rebuild_response = self.client.post(
             "/api/algo/indexes/rebuild",
             params={"import_run_id": self.run["id"]},
-            headers=self._auth_headers(self.token),
+            headers=self._auth_headers(self.admin_token),
         )
         self.assertEqual(rebuild_response.status_code, 200, rebuild_response.text)
         self.assertEqual(rebuild_response.json()["status"], "ready")
+
+        forbidden_rebuild = self.client.post(
+            "/api/algo/indexes/rebuild",
+            params={"import_run_id": self.run["id"]},
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(forbidden_rebuild.status_code, 403, forbidden_rebuild.text)
 
     def test_risk_radar_overview_events_and_context(self) -> None:
         overview_response = self.client.get(
@@ -181,8 +190,8 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertEqual(overview_response.status_code, 200, overview_response.text)
         overview = overview_response.json()
         self.assertGreater(overview["total_events"], 0)
-        self.assertGreater(overview["impacted_instrument_count"], 0)
-        self.assertTrue(overview["top_instruments"])
+        self.assertGreater(overview["impacted_stock_count"], 0)
+        self.assertTrue(overview["top_stocks"])
         self.assertTrue(overview["busiest_dates"])
 
         events_response = self.client.get(
@@ -209,7 +218,7 @@ class RiskRadarRouteTests(unittest.TestCase):
             "/api/algo/risk-radar/event-context",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": event["instrument_code"],
+                "stock_code": event["stock_code"],
                 "trade_date": event["trade_date"],
             },
             headers=self._auth_headers(self.token),
@@ -220,6 +229,68 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertEqual(len(context["amplitude_windows"]), 3)
         self.assertEqual(len(context["distribution_changes"]), 2)
         self.assertIsNotNone(context["local_amount_peak"])
+
+    def test_legacy_instrument_snapshot_is_auto_compatible(self) -> None:
+        snapshot_path = algo_index_manager._snapshot_path(int(self.run["id"]))
+        payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+        legacy_payload = {
+            "overview": {
+                **payload["overview"],
+                "top_instruments": payload["overview"]["top_stocks"],
+                "impacted_instrument_count": payload["overview"]["impacted_stock_count"],
+            },
+            "events": [
+                {
+                    **row,
+                    "instrument_code": row["stock_code"],
+                    "instrument_name": row["stock_name"],
+                }
+                for row in payload["events"]
+            ],
+            "instrument_profiles": [
+                {
+                    **row,
+                    "instrument_code": row["stock_code"],
+                    "instrument_name": row["stock_name"],
+                }
+                for row in payload["stock_profiles"]
+            ],
+            "calendar_rows": [
+                {
+                    **row,
+                    "impacted_instrument_count": row["impacted_stock_count"],
+                }
+                for row in payload["calendar_rows"]
+            ],
+        }
+        legacy_payload["overview"].pop("top_stocks", None)
+        legacy_payload["overview"].pop("impacted_stock_count", None)
+
+        for row in legacy_payload["events"]:
+            row.pop("stock_code", None)
+            row.pop("stock_name", None)
+        for row in legacy_payload["instrument_profiles"]:
+            row.pop("stock_code", None)
+            row.pop("stock_name", None)
+        for row in legacy_payload["calendar_rows"]:
+            row.pop("impacted_stock_count", None)
+
+        snapshot_path.write_text(json.dumps(legacy_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        algo_index_manager.reset()
+
+        stocks_response = self.client.get(
+            "/api/algo/risk-radar/stocks",
+            params={"import_run_id": self.run["id"], "top_n": 20},
+            headers=self._auth_headers(self.token),
+        )
+        self.assertEqual(stocks_response.status_code, 200, stocks_response.text)
+        self.assertTrue(stocks_response.json()["rows"])
+
+        rewritten_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        self.assertEqual(rewritten_payload["schema_version"], "stock-v1")
+        self.assertIn("stock_code", rewritten_payload["events"][0])
+        self.assertNotIn("instrument_code", rewritten_payload["events"][0])
 
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
@@ -249,3 +320,5 @@ from app.core.database import get_session_factory  # noqa: E402
 
 if __name__ == "__main__":
     unittest.main()
+
+

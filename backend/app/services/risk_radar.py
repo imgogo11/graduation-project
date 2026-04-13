@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from bisect import bisect_right
 from datetime import date
@@ -8,7 +8,7 @@ from app.services.algo_indexes import (
     RISK_RADAR_EVENT_WINDOW_SIZES,
     RISK_RADAR_LOCAL_PEAK_RADIUS,
     AlgoIndexNotReadyError,
-    InstrumentAlgoIndex,
+    StockAlgoIndex,
     RiskRadarIndexCache,
     algo_index_manager,
 )
@@ -20,7 +20,7 @@ from app.schemas.trading import (
     TradingRiskRadarEventContextRead,
     TradingRiskRadarEventListRead,
     TradingRiskRadarEventRead,
-    TradingRiskRadarInstrumentListRead,
+    TradingRiskRadarStockListRead,
     TradingRiskRadarOverviewRead,
     TradingRiskRadarWindowRead,
 )
@@ -44,7 +44,7 @@ class RiskRadarService:
         *,
         start_date: date | None = None,
         end_date: date | None = None,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         severity: str | None = None,
         top_n: int | None = None,
     ) -> TradingRiskRadarEventListRead:
@@ -57,31 +57,31 @@ class RiskRadarService:
             cache.events,
             start_date=start_date,
             end_date=end_date,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             severity=severity,
         )
         if top_n is not None:
             rows = rows[:top_n]
         return TradingRiskRadarEventListRead(import_run_id=import_run_id, rows=rows)
 
-    def list_instruments(
+    def list_stocks(
         self,
         import_run_id: int,
         *,
         severity: str | None = None,
         top_n: int | None = None,
-    ) -> TradingRiskRadarInstrumentListRead:
+    ) -> TradingRiskRadarStockListRead:
         if top_n is not None and top_n <= 0:
             raise RiskRadarValidationError("top_n must be a positive integer")
         cache = algo_index_manager.get_cache(import_run_id)
         if severity is None:
-            rows = cache.instrument_profiles
+            rows = cache.stock_profiles
         else:
-            filtered_codes = {item.instrument_code for item in cache.events if item.severity == severity}
-            rows = [item for item in cache.instrument_profiles if item.instrument_code in filtered_codes]
+            filtered_codes = {item.stock_code for item in cache.events if item.severity == severity}
+            rows = [item for item in cache.stock_profiles if item.stock_code in filtered_codes]
         if top_n is not None:
             rows = rows[:top_n]
-        return TradingRiskRadarInstrumentListRead(import_run_id=import_run_id, rows=rows)
+        return TradingRiskRadarStockListRead(import_run_id=import_run_id, rows=rows)
 
     def list_calendar(
         self,
@@ -104,31 +104,31 @@ class RiskRadarService:
         self,
         import_run_id: int,
         *,
-        instrument_code: str,
+        stock_code: str,
         trade_date: date,
     ) -> TradingRiskRadarEventContextRead:
         cache = algo_index_manager.get_cache(import_run_id)
-        event = self._find_event(cache, instrument_code=instrument_code, trade_date=trade_date)
-        instrument_index = cache.instruments.get(instrument_code)
-        if instrument_index is None:
-            raise RiskRadarNotFoundError("Instrument index not found for the requested event")
-        event_index = instrument_index.date_to_index.get(trade_date)
+        event = self._find_event(cache, stock_code=stock_code, trade_date=trade_date)
+        stock_index = cache.stocks.get(stock_code)
+        if stock_index is None:
+            raise RiskRadarNotFoundError("Stock index not found for the requested event")
+        event_index = stock_index.date_to_index.get(trade_date)
         if event_index is None:
-            raise RiskRadarNotFoundError("Trade date not found for the requested instrument")
+            raise RiskRadarNotFoundError("Trade date not found for the requested stock")
 
         volume_windows = [
-            self._build_window_read(instrument_index.volume_values, instrument_index.volume_tree, event_index, window_days)
+            self._build_window_read(stock_index.volume_values, stock_index.volume_tree, event_index, window_days)
             for window_days in RISK_RADAR_EVENT_WINDOW_SIZES
         ]
         amplitude_windows = [
-            self._build_window_read(instrument_index.amplitude_values, instrument_index.amplitude_tree, event_index, window_days)
+            self._build_window_read(stock_index.amplitude_values, stock_index.amplitude_tree, event_index, window_days)
             for window_days in RISK_RADAR_EVENT_WINDOW_SIZES
         ]
         distribution_changes = [
-            self._build_distribution_change("volume", instrument_index.volume_values, event_index, 20),
-            self._build_distribution_change("amplitude", instrument_index.amplitude_values, event_index, 20),
+            self._build_distribution_change("volume", stock_index.volume_values, event_index, 20),
+            self._build_distribution_change("amplitude", stock_index.amplitude_values, event_index, 20),
         ]
-        local_amount_peak = self._build_local_amount_peak(instrument_index, event_index)
+        local_amount_peak = self._build_local_amount_peak(stock_index, event_index)
 
         return TradingRiskRadarEventContextRead(
             import_run_id=import_run_id,
@@ -145,7 +145,7 @@ class RiskRadarService:
         *,
         start_date: date | None = None,
         end_date: date | None = None,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         severity: str | None = None,
     ) -> list[TradingRiskRadarEventRead]:
         rows = events
@@ -153,15 +153,15 @@ class RiskRadarService:
             rows = [item for item in rows if item.trade_date >= start_date]
         if end_date:
             rows = [item for item in rows if item.trade_date <= end_date]
-        if instrument_code:
-            rows = [item for item in rows if item.instrument_code == instrument_code]
+        if stock_code:
+            rows = [item for item in rows if item.stock_code == stock_code]
         if severity:
             rows = [item for item in rows if item.severity == severity]
         return rows
 
-    def _find_event(self, cache: RiskRadarIndexCache, *, instrument_code: str, trade_date: date) -> TradingRiskRadarEventRead:
+    def _find_event(self, cache: RiskRadarIndexCache, *, stock_code: str, trade_date: date) -> TradingRiskRadarEventRead:
         for event in cache.events:
-            if event.instrument_code == instrument_code and event.trade_date == trade_date:
+            if event.stock_code == stock_code and event.trade_date == trade_date:
                 return event
         raise RiskRadarNotFoundError("Risk radar event not found")
 
@@ -216,20 +216,20 @@ class RiskRadarService:
 
     def _build_local_amount_peak(
         self,
-        instrument_index: InstrumentAlgoIndex,
+        stock_index: StockAlgoIndex,
         event_index: int,
     ) -> TradingRiskRadarAmountPeakRead | None:
-        if instrument_index.amount_tree is None:
+        if stock_index.amount_tree is None:
             return None
         left = max(0, event_index - RISK_RADAR_LOCAL_PEAK_RADIUS)
-        right = min(len(instrument_index.trade_dates) - 1, event_index + RISK_RADAR_LOCAL_PEAK_RADIUS)
-        result = instrument_index.amount_tree.query_inclusive(left, right)
+        right = min(len(stock_index.trade_dates) - 1, event_index + RISK_RADAR_LOCAL_PEAK_RADIUS)
+        result = stock_index.amount_tree.query_inclusive(left, right)
         return TradingRiskRadarAmountPeakRead(
-            start_date=instrument_index.trade_dates[left],
-            end_date=instrument_index.trade_dates[right],
+            start_date=stock_index.trade_dates[left],
+            end_date=stock_index.trade_dates[right],
             peak_amount=round(float(result.max_value_scaled) / 10000.0, 4),
             peak_dates=[
-                TradingRangeMaxMatchRead(trade_date=instrument_index.trade_dates[index], series_index=index)
+                TradingRangeMaxMatchRead(trade_date=stock_index.trade_dates[index], series_index=index)
                 for index in list(result.matched_indices)
             ],
         )
@@ -258,3 +258,5 @@ __all__ = [
     "RiskRadarValidationError",
     "risk_radar_service",
 ]
+
+

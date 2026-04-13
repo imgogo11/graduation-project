@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 
@@ -39,7 +39,7 @@ def _ensure_run_visible(session: Session, *, import_run_id: int, current_user: U
 @router.get("/range-max-amount", response_model=TradingRangeMaxAmountRead)
 def get_range_max_amount(
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     start_date: date,
     end_date: date,
     current_user: User = Depends(get_current_user),
@@ -50,7 +50,7 @@ def get_range_max_amount(
         return service.query_range_max_amount(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -91,7 +91,7 @@ def get_joint_anomaly_ranking(
 @router.get("/range-kth-volume", response_model=TradingRangeKthVolumeRead)
 def get_range_kth_volume(
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     start_date: date,
     end_date: date,
     k: int,
@@ -104,7 +104,7 @@ def get_range_kth_volume(
         return service.query_range_kth_volume(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
             k=k,
@@ -116,3 +116,4 @@ def get_range_kth_volume(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except TradingAlgoQueryNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+

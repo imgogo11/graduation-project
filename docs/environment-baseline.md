@@ -22,13 +22,13 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 
 The project defaults to host port `15432` instead of `5432`, because some Windows environments reserve the range containing `5432` and reject local binds.
 
-## Frontend development defaults
+## Web development defaults
 
 - `VITE_BACKEND_TARGET=http://127.0.0.1:8200`
 - `VITE_DEV_HOST=127.0.0.1`
 - `VITE_DEV_PORT=4173`
 
-The frontend dev server defaults to `4173` instead of `5173`, because some Windows environments reserve the `5173` port range and reject local binds.
+The web dev server defaults to `4173` instead of `5173`, because some Windows environments reserve the `5173` port range and reject local binds.
 
 ## Initialization order
 
@@ -36,9 +36,9 @@ The frontend dev server defaults to `4173` instead of `5173`, because some Windo
 2. apply Alembic migrations
 3. initialize the admin account
 4. start the backend
-5. start the frontend
+5. start the web app
 
-After startup, the frontend is expected at `http://127.0.0.1:4173`.
+After startup, the web app is expected at `http://127.0.0.1:4173`.
 
 ## Upload storage
 

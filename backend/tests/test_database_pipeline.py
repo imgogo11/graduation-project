@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from io import BytesIO
 import os
@@ -27,8 +27,8 @@ def build_trading_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "instrument_code": "600519.SH",
-                "instrument_name": "Kweichow Moutai",
+                "stock_code": "600519.SH",
+                "stock_name": "Kweichow Moutai",
                 "trade_date": "2026-01-02",
                 "open": 1520.15,
                 "high": 1535.80,
@@ -38,8 +38,8 @@ def build_trading_frame() -> pd.DataFrame:
                 "amount": 19639040,
             },
             {
-                "instrument_code": "600519.SH",
-                "instrument_name": "Kweichow Moutai",
+                "stock_code": "600519.SH",
+                "stock_name": "Kweichow Moutai",
                 "trade_date": "2026-01-03",
                 "open": 1534.30,
                 "high": 1548.20,
@@ -49,8 +49,8 @@ def build_trading_frame() -> pd.DataFrame:
                 "amount": 20274816,
             },
             {
-                "instrument_code": "000858.SZ",
-                "instrument_name": "Wuliangye Yibin",
+                "stock_code": "000858.SZ",
+                "stock_name": "Wuliangye Yibin",
                 "trade_date": "2026-01-02",
                 "open": 168.32,
                 "high": 170.15,
@@ -66,8 +66,8 @@ def build_trading_frame() -> pd.DataFrame:
 def build_alias_frame(*, include_amount: bool = True) -> pd.DataFrame:
     frame = build_trading_frame().rename(
         columns={
-            "instrument_code": "代码",
-            "instrument_name": "名称",
+            "stock_code": "代码",
+            "stock_name": "名称",
             "trade_date": "日期",
             "open": "开盘",
             "high": "最高",
@@ -216,7 +216,7 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(alice_stats.json()["completed_runs"], 3)
 
         instruments = self.client.get(
-            "/api/trading/instruments",
+            "/api/trading/stocks",
             params={"import_run_id": alice_csv_run["id"]},
             headers=self._auth_headers(alice_token),
         )
@@ -225,14 +225,14 @@ class DatabasePipelineTests(unittest.TestCase):
 
         records = self.client.get(
             "/api/trading/records",
-            params={"import_run_id": alice_csv_run["id"], "instrument_code": "600519.SH"},
+            params={"import_run_id": alice_csv_run["id"], "stock_code": "600519.SH"},
             headers=self._auth_headers(alice_token),
         )
         self.assertEqual(records.status_code, 200)
         self.assertEqual(len(records.json()), 2)
 
         forbidden_to_bob = self.client.get(
-            "/api/trading/instruments",
+            "/api/trading/stocks",
             params={"import_run_id": alice_csv_run["id"]},
             headers=self._auth_headers(bob_token),
         )
@@ -275,7 +275,7 @@ class DatabasePipelineTests(unittest.TestCase):
 
         deleted_records = self.client.get(
             "/api/trading/records",
-            params={"import_run_id": alice_csv_run["id"], "instrument_code": "600519.SH"},
+            params={"import_run_id": alice_csv_run["id"], "stock_code": "600519.SH"},
             headers=self._auth_headers(alice_token),
         )
         self.assertEqual(deleted_records.status_code, 404)
@@ -289,7 +289,7 @@ class DatabasePipelineTests(unittest.TestCase):
         )
 
         instruments = self.client.get(
-            "/api/trading/instruments",
+            "/api/trading/stocks",
             params={"import_run_id": alias_run["id"]},
             headers=self._auth_headers(token),
         )
@@ -298,12 +298,12 @@ class DatabasePipelineTests(unittest.TestCase):
 
         records = self.client.get(
             "/api/trading/records",
-            params={"import_run_id": alias_run["id"], "instrument_code": "600519.SH"},
+            params={"import_run_id": alias_run["id"], "stock_code": "600519.SH"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(records.status_code, 200, records.text)
         body = records.json()
-        self.assertEqual(body[0]["instrument_name"], "Kweichow Moutai")
+        self.assertEqual(body[0]["stock_name"], "Kweichow Moutai")
         self.assertIsNone(body[0]["amount"])
 
     def test_upload_supports_optional_turnover_without_conflicting_with_amount(self) -> None:
@@ -316,7 +316,7 @@ class DatabasePipelineTests(unittest.TestCase):
 
         records = self.client.get(
             "/api/trading/records",
-            params={"import_run_id": turnover_run["id"], "instrument_code": "600519.SH"},
+            params={"import_run_id": turnover_run["id"], "stock_code": "600519.SH"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(records.status_code, 200, records.text)
@@ -383,7 +383,7 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(missing_code_response.status_code, 400)
         self.assertIn("导入失败，数据不符合格式", missing_code_response.json()["detail"])
 
-        duplicate_alias_frame = build_trading_frame().rename(columns={"instrument_code": "code"})
+        duplicate_alias_frame = build_trading_frame().rename(columns={"stock_code": "code"})
         duplicate_alias_frame["symbol"] = duplicate_alias_frame["code"]
         duplicate_response = self.client.post(
             "/api/imports/trading",
@@ -402,7 +402,7 @@ class DatabasePipelineTests(unittest.TestCase):
 
     def test_failed_uploads_are_hidden_allow_name_reuse_and_block_data_access(self) -> None:
         token = self._register_and_login("failed_upload_user", "password123")
-        invalid_frame = build_trading_frame().drop(columns=["instrument_code"])
+        invalid_frame = build_trading_frame().drop(columns=["stock_code"])
 
         failed_response = self.client.post(
             "/api/imports/trading",
@@ -426,7 +426,7 @@ class DatabasePipelineTests(unittest.TestCase):
         failed_run_id = self._find_run_id(dataset_name="sample2", status="failed")
 
         blocked_instruments = self.client.get(
-            "/api/trading/instruments",
+            "/api/trading/stocks",
             params={"import_run_id": failed_run_id},
             headers=self._auth_headers(token),
         )
@@ -538,3 +538,4 @@ class DatabasePipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

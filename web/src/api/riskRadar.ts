@@ -1,10 +1,10 @@
-import { getJson, postJson } from "@/api/http";
+﻿import { getJson, postJson } from "@/api/http";
 import type {
   AlgoIndexStatusRead,
   TradingRiskRadarCalendarRead,
   TradingRiskRadarEventContextRead,
   TradingRiskRadarEventListRead,
-  TradingRiskRadarInstrumentListRead,
+  TradingRiskRadarStockListRead,
   TradingRiskRadarOverviewRead,
 } from "@/api/types";
 
@@ -16,12 +16,12 @@ export interface AlgoIndexParams {
 export interface RiskRadarEventsParams extends AlgoIndexParams {
   start_date?: string;
   end_date?: string;
-  instrument_code?: string;
+  stock_code?: string;
   severity?: string;
   top_n?: number;
 }
 
-export interface RiskRadarInstrumentParams extends AlgoIndexParams {
+export interface RiskRadarStockParams extends AlgoIndexParams {
   severity?: string;
   top_n?: number;
 }
@@ -32,7 +32,7 @@ export interface RiskRadarCalendarParams extends AlgoIndexParams {
 }
 
 export interface RiskRadarEventContextParams extends AlgoIndexParams {
-  instrument_code: string;
+  stock_code: string;
   trade_date: string;
 }
 
@@ -52,8 +52,8 @@ export function fetchRiskRadarEvents(params: RiskRadarEventsParams) {
   return getJson<TradingRiskRadarEventListRead>("/api/algo/risk-radar/events", params);
 }
 
-export function fetchRiskRadarInstruments(params: RiskRadarInstrumentParams) {
-  return getJson<TradingRiskRadarInstrumentListRead>("/api/algo/risk-radar/instruments", params);
+export function fetchRiskRadarStocks(params: RiskRadarStockParams) {
+  return getJson<TradingRiskRadarStockListRead>("/api/algo/risk-radar/stocks", params);
 }
 
 export function fetchRiskRadarCalendar(params: RiskRadarCalendarParams) {
@@ -63,3 +63,5 @@ export function fetchRiskRadarCalendar(params: RiskRadarCalendarParams) {
 export function fetchRiskRadarEventContext(params: RiskRadarEventContextParams) {
   return getJson<TradingRiskRadarEventContextRead>("/api/algo/risk-radar/event-context", params);
 }
+
+

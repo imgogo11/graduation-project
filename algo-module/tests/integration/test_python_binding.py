@@ -62,6 +62,10 @@ def load_algo_module() -> AlgoModuleProtocol:
 def main() -> int:
     if len(sys.argv) > 1:
         module_dir = Path(sys.argv[1]).resolve()
+    else:
+        module_dir = Path(__file__).resolve().parents[2] / "build" / "python"
+
+    if module_dir.exists():
         sys.path.insert(0, str(module_dir))
 
     configure_windows_dll_search_paths()

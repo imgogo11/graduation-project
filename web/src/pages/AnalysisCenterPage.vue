@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 
 import type { EChartsOption } from "echarts";
@@ -8,14 +8,13 @@ import {
   fetchTradingCorrelation,
   fetchTradingCrossSection,
   fetchTradingIndicators,
-  fetchTradingJointAnomalyRanking,
   fetchTradingQuality,
   fetchTradingRisk,
   fetchTradingScopeComparison,
   fetchTradingSummary,
 } from "@/api/analysis";
 import { fetchImportRuns } from "@/api/imports";
-import { fetchTradingInstruments } from "@/api/trading";
+import { fetchTradingStocks } from "@/api/trading";
 import type {
   ImportRunRead,
   TradingAnomalyReportRead,
@@ -24,8 +23,7 @@ import type {
   TradingCrossSectionRead,
   TradingIndicatorPointRead,
   TradingIndicatorSeriesRead,
-  TradingInstrumentRead,
-  TradingJointAnomalyRankingRead,
+  TradingStockRead,
   TradingQualityReportRead,
   TradingRiskMetricsRead,
   TradingScopeComparisonRead,
@@ -35,6 +33,7 @@ import EChartPanel from "@/components/EChartPanel.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
 import StatCard from "@/components/StatCard.vue";
+import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
 import {
   formatCompact,
@@ -55,16 +54,16 @@ interface PanelState {
 
 interface AnalysisFilters {
   importRunId: number | undefined;
-  instrumentCode: string;
+  stockCode: string;
   startDate: string;
   endDate: string;
   crossMetric: string;
   topNInput: string;
   compareRunId: number | undefined;
-  compareInstrumentCode: string;
+  compareStockCode: string;
   compareStartDate: string;
   compareEndDate: string;
-  correlationInstrumentCodes: string[];
+  correlationStockCodes: string[];
 }
 
 function createPanelState(): PanelState {
@@ -77,33 +76,33 @@ function createPanelState(): PanelState {
 function createDefaultFilters(): AnalysisFilters {
   return {
     importRunId: undefined,
-    instrumentCode: "",
+    stockCode: "",
     startDate: "",
     endDate: "",
     crossMetric: "total_return",
     topNInput: "10",
     compareRunId: undefined,
-    compareInstrumentCode: "",
+    compareStockCode: "",
     compareStartDate: "",
     compareEndDate: "",
-    correlationInstrumentCodes: [],
+    correlationStockCodes: [],
   };
 }
 
 const runtime = useRuntimeStore();
+const datasetContext = useDatasetContextStore();
 const loadingRuns = ref(false);
 const loadingAnalysis = ref(false);
 const error = ref("");
 const importRuns = ref<ImportRunRead[]>([]);
-const instruments = ref<TradingInstrumentRead[]>([]);
-const compareInstruments = ref<TradingInstrumentRead[]>([]);
+const stocks = ref<TradingStockRead[]>([]);
+const compareStocks = ref<TradingStockRead[]>([]);
 
 const summary = ref<TradingSummaryRead | null>(null);
 const quality = ref<TradingQualityReportRead | null>(null);
 const indicators = ref<TradingIndicatorSeriesRead | null>(null);
 const risk = ref<TradingRiskMetricsRead | null>(null);
 const anomalies = ref<TradingAnomalyReportRead | null>(null);
-const jointAnomalies = ref<TradingJointAnomalyRankingRead | null>(null);
 const crossSection = ref<TradingCrossSectionRead | null>(null);
 const correlation = ref<TradingCorrelationMatrixRead | null>(null);
 const comparison = ref<TradingScopeComparisonRead | null>(null);
@@ -120,12 +119,11 @@ const panelStates = reactive({
   crossSection: createPanelState(),
   correlation: createPanelState(),
   comparison: createPanelState(),
-  jointAnomalies: createPanelState(),
 });
 
 const compareRunOptions = computed(() => importRuns.value);
-const correlationHint = "仅从当前批次中选取，基于重叠日期收益率计算，不是跨批次公共标的。";
-const comparisonHint = "支持与当前相同批次做基线校验；对比标的留空时表示对比范围内全部标的。";
+const correlationHint = "仅从当前批次中选取，基于重叠日期收益率计算，不是跨批次公共股票。";
+const comparisonHint = "支持与当前相同批次做基线校验；对比股票留空时表示对比范围内全部股票。";
 
 const crossMetricOptions = [
   { label: "区间收益率", value: "total_return" },
@@ -278,9 +276,9 @@ const correlationTableRows = computed(() => {
     return [];
   }
 
-  return correlation.value.instrument_codes.map((instrumentCode, rowIndex) => {
-    const row: Record<string, string | number | null> = { instrument_code: instrumentCode };
-    correlation.value?.instrument_codes.forEach((code, columnIndex) => {
+  return correlation.value.stock_codes.map((stockCode, rowIndex) => {
+    const row: Record<string, string | number | null> = { stock_code: stockCode };
+    correlation.value?.stock_codes.forEach((code, columnIndex) => {
       row[code] = correlation.value?.matrix[rowIndex]?.[columnIndex] ?? null;
     });
     return row;
@@ -302,8 +300,12 @@ const comparisonMismatchRows = computed(() => {
   ];
 });
 
-const jointAnomalyRows = computed(() => jointAnomalies.value?.rows ?? []);
 const hasUnappliedChanges = computed(() => serializeFilters(snapshotFilters()) !== serializeFilters(appliedFilters.value));
+const contextPills = computed(() => [
+  `当前批次：${formatImportRunDisplayLabel(draftForm.importRunId)}`,
+  `当前股票：${draftForm.stockCode || "--"}`,
+  `日期范围：${draftForm.startDate || "起始不限"} ~ ${draftForm.endDate || "结束不限"}`,
+]);
 
 function panelHint(state: PanelState, idleText: string) {
   if (state.loading) {
@@ -352,16 +354,16 @@ function parseTopN(rawInput: string) {
 function snapshotFilters(source: AnalysisFilters = draftForm): AnalysisFilters {
   return {
     importRunId: source.importRunId,
-    instrumentCode: source.instrumentCode,
+    stockCode: source.stockCode,
     startDate: source.startDate,
     endDate: source.endDate,
     crossMetric: source.crossMetric,
     topNInput: source.topNInput,
     compareRunId: source.compareRunId,
-    compareInstrumentCode: source.compareInstrumentCode,
+    compareStockCode: source.compareStockCode,
     compareStartDate: source.compareStartDate,
     compareEndDate: source.compareEndDate,
-    correlationInstrumentCodes: [...source.correlationInstrumentCodes],
+    correlationStockCodes: [...source.correlationStockCodes],
   };
 }
 
@@ -370,29 +372,29 @@ function serializeFilters(source: AnalysisFilters | null) {
 }
 
 function buildScopeParams(filters: AnalysisFilters) {
-  if (!filters.importRunId || !filters.instrumentCode) {
-    throw new Error("请先选择主分析范围的批次和标的。");
+  if (!filters.importRunId || !filters.stockCode) {
+    throw new Error("请先选择主分析范围的批次和股票。");
   }
 
   return {
     import_run_id: filters.importRunId,
-    instrument_code: filters.instrumentCode,
+    stock_code: filters.stockCode,
     start_date: filters.startDate || undefined,
     end_date: filters.endDate || undefined,
   };
 }
 
-function defaultCorrelationCodes(rows: TradingInstrumentRead[], preferredCode: string) {
+function defaultCorrelationCodes(rows: TradingStockRead[], preferredCode: string) {
   const selectedCodes: string[] = [];
-  if (preferredCode && rows.some((item) => item.instrument_code === preferredCode)) {
+  if (preferredCode && rows.some((item) => item.stock_code === preferredCode)) {
     selectedCodes.push(preferredCode);
   }
 
   rows.forEach((item) => {
-    if (selectedCodes.length >= 6 || selectedCodes.includes(item.instrument_code)) {
+    if (selectedCodes.length >= 6 || selectedCodes.includes(item.stock_code)) {
       return;
     }
-    selectedCodes.push(item.instrument_code);
+    selectedCodes.push(item.stock_code);
   });
   return selectedCodes;
 }
@@ -405,11 +407,11 @@ function formatImportRunDisplayLabel(runId: number | null | undefined) {
   return `#${displayId ?? runId}`;
 }
 
-function formatScopeInstrumentLabel(scope: TradingComparisonScopeRead) {
-  if (!scope.instrument_code) {
-    return "全部标的";
+function formatScopeStockLabel(scope: TradingComparisonScopeRead) {
+  if (!scope.stock_code) {
+    return "全部股票";
   }
-  return `${scope.instrument_code}${scope.instrument_name ? ` · ${scope.instrument_name}` : ""}`;
+  return `${scope.stock_code}${scope.stock_name ? ` · ${scope.stock_name}` : ""}`;
 }
 
 function formatScopeRequestedRange(scope: TradingComparisonScopeRead) {
@@ -435,33 +437,33 @@ function syncCompareRunSelection() {
   draftForm.compareRunId = defaultRunId;
 }
 
-function syncCorrelationSelection(rows: TradingInstrumentRead[], preferDefault = false) {
+function syncCorrelationSelection(rows: TradingStockRead[], preferDefault = false) {
   if (!rows.length) {
-    draftForm.correlationInstrumentCodes = [];
+    draftForm.correlationStockCodes = [];
     return;
   }
 
-  const validCurrentCodes = draftForm.correlationInstrumentCodes.filter((code) =>
-    rows.some((item) => item.instrument_code === code)
+  const validCurrentCodes = draftForm.correlationStockCodes.filter((code) =>
+    rows.some((item) => item.stock_code === code)
   );
   if (!validCurrentCodes.length || preferDefault) {
-    draftForm.correlationInstrumentCodes = defaultCorrelationCodes(rows, draftForm.instrumentCode);
+    draftForm.correlationStockCodes = defaultCorrelationCodes(rows, draftForm.stockCode);
     return;
   }
 
   const mergedCodes = [
-    draftForm.instrumentCode,
-    ...validCurrentCodes.filter((code) => code !== draftForm.instrumentCode),
+    draftForm.stockCode,
+    ...validCurrentCodes.filter((code) => code !== draftForm.stockCode),
   ].filter(Boolean);
 
   rows.forEach((item) => {
-    if (mergedCodes.length >= 6 || mergedCodes.includes(item.instrument_code)) {
+    if (mergedCodes.length >= 6 || mergedCodes.includes(item.stock_code)) {
       return;
     }
-    mergedCodes.push(item.instrument_code);
+    mergedCodes.push(item.stock_code);
   });
 
-  draftForm.correlationInstrumentCodes = mergedCodes.slice(0, Math.min(6, rows.length));
+  draftForm.correlationStockCodes = mergedCodes.slice(0, Math.min(6, rows.length));
 }
 
 async function loadRuns(preferredRunId?: number) {
@@ -473,17 +475,22 @@ async function loadRuns(preferredRunId?: number) {
     if (!rows.length) {
       Object.assign(draftForm, createDefaultFilters());
       appliedFilters.value = null;
-      instruments.value = [];
-      compareInstruments.value = [];
+      stocks.value = [];
+      compareStocks.value = [];
       clearAnalysisResults();
       return;
     }
 
-    const fallbackRunId = preferredRunId && rows.some((row) => row.id === preferredRunId) ? preferredRunId : rows[0].id;
+    const fallbackRunId =
+      preferredRunId && rows.some((row) => row.id === preferredRunId)
+        ? preferredRunId
+        : draftForm.importRunId && rows.some((row) => row.id === draftForm.importRunId)
+          ? draftForm.importRunId
+          : rows[0].id;
     draftForm.importRunId = fallbackRunId;
     syncCompareRunSelection();
-    await loadInstruments(true);
-    if (draftForm.instrumentCode) {
+    await loadStocks(true);
+    if (draftForm.stockCode) {
       await applyFilters();
     }
   } catch (err) {
@@ -493,67 +500,67 @@ async function loadRuns(preferredRunId?: number) {
   }
 }
 
-async function loadInstruments(preferDefaults = false) {
+async function loadStocks(preferDefaults = false) {
   if (!draftForm.importRunId) {
-    instruments.value = [];
-    draftForm.instrumentCode = "";
-    draftForm.correlationInstrumentCodes = [];
-    compareInstruments.value = [];
-    draftForm.compareInstrumentCode = "";
+    stocks.value = [];
+    draftForm.stockCode = "";
+    draftForm.correlationStockCodes = [];
+    compareStocks.value = [];
+    draftForm.compareStockCode = "";
     return;
   }
 
   try {
-    const rows = await fetchTradingInstruments(draftForm.importRunId);
-    instruments.value = rows;
+    const rows = await fetchTradingStocks(draftForm.importRunId);
+    stocks.value = rows;
     if (!rows.length) {
-      draftForm.instrumentCode = "";
-      draftForm.correlationInstrumentCodes = [];
-      compareInstruments.value = [];
-      draftForm.compareInstrumentCode = "";
+      draftForm.stockCode = "";
+      draftForm.correlationStockCodes = [];
+      compareStocks.value = [];
+      draftForm.compareStockCode = "";
       appliedFilters.value = null;
       clearAnalysisResults();
       return;
     }
 
-    if (!rows.some((row) => row.instrument_code === draftForm.instrumentCode)) {
-      draftForm.instrumentCode = rows[0].instrument_code;
+    if (!rows.some((row) => row.stock_code === draftForm.stockCode)) {
+      draftForm.stockCode = rows[0].stock_code;
     }
 
     syncCompareRunSelection();
     syncCorrelationSelection(rows, preferDefaults);
-    await loadCompareInstruments(preferDefaults);
+    await loadCompareStocks(preferDefaults);
   } catch (err) {
     error.value = getErrorMessage(err);
   }
 }
 
-async function loadCompareInstruments(preferDefaults = false) {
+async function loadCompareStocks(preferDefaults = false) {
   if (!draftForm.compareRunId) {
-    compareInstruments.value = [];
-    draftForm.compareInstrumentCode = "";
+    compareStocks.value = [];
+    draftForm.compareStockCode = "";
     return;
   }
 
   try {
     const rows =
-      draftForm.compareRunId === draftForm.importRunId ? instruments.value : await fetchTradingInstruments(draftForm.compareRunId);
-    compareInstruments.value = rows;
+      draftForm.compareRunId === draftForm.importRunId ? stocks.value : await fetchTradingStocks(draftForm.compareRunId);
+    compareStocks.value = rows;
     if (!rows.length) {
-      draftForm.compareInstrumentCode = "";
+      draftForm.compareStockCode = "";
       return;
     }
 
-    if (!draftForm.compareInstrumentCode) {
-      if (preferDefaults && rows.some((item) => item.instrument_code === draftForm.instrumentCode)) {
-        draftForm.compareInstrumentCode = draftForm.instrumentCode;
+    if (!draftForm.compareStockCode) {
+      if (preferDefaults && rows.some((item) => item.stock_code === draftForm.stockCode)) {
+        draftForm.compareStockCode = draftForm.stockCode;
       }
       return;
     }
 
-    if (!rows.some((item) => item.instrument_code === draftForm.compareInstrumentCode)) {
-      draftForm.compareInstrumentCode = rows.some((item) => item.instrument_code === draftForm.instrumentCode)
-        ? draftForm.instrumentCode
+    if (!rows.some((item) => item.stock_code === draftForm.compareStockCode)) {
+      draftForm.compareStockCode = rows.some((item) => item.stock_code === draftForm.stockCode)
+        ? draftForm.stockCode
         : "";
     }
   } catch (err) {
@@ -562,16 +569,16 @@ async function loadCompareInstruments(preferDefaults = false) {
 }
 
 async function handleBaseRunChange() {
-  await loadInstruments(true);
+  await loadStocks(true);
 }
 
-async function handleBaseInstrumentChange() {
-  syncCorrelationSelection(instruments.value, true);
-  await loadCompareInstruments(true);
+async function handleBaseStockChange() {
+  syncCorrelationSelection(stocks.value, true);
+  await loadCompareStocks(true);
 }
 
 async function handleCompareRunChange() {
-  await loadCompareInstruments(false);
+  await loadCompareStocks(false);
 }
 
 function clearAnalysisResults() {
@@ -580,7 +587,6 @@ function clearAnalysisResults() {
   indicators.value = null;
   risk.value = null;
   anomalies.value = null;
-  jointAnomalies.value = null;
   crossSection.value = null;
   correlation.value = null;
   comparison.value = null;
@@ -614,7 +620,7 @@ async function loadPanel<T>(
 }
 
 async function loadAnalysis(filters: AnalysisFilters) {
-  if (!filters.importRunId || !filters.instrumentCode) {
+  if (!filters.importRunId || !filters.stockCode) {
     clearAnalysisResults();
     return;
   }
@@ -626,8 +632,8 @@ async function loadAnalysis(filters: AnalysisFilters) {
   try {
     const scopeParams = buildScopeParams(filters);
     const topN = parseTopN(filters.topNInput);
-    const correlationCodes = filters.correlationInstrumentCodes.length
-      ? filters.correlationInstrumentCodes.join(",")
+    const correlationCodes = filters.correlationStockCodes.length
+      ? filters.correlationStockCodes.join(",")
       : undefined;
 
     const results = await Promise.all([
@@ -646,19 +652,6 @@ async function loadAnalysis(filters: AnalysisFilters) {
       loadPanel(panelStates.anomalies, () => fetchTradingAnomalies(scopeParams), (value) => {
         anomalies.value = value;
       }),
-      loadPanel(
-        panelStates.jointAnomalies,
-        () =>
-          fetchTradingJointAnomalyRanking({
-            import_run_id: filters.importRunId!,
-            start_date: filters.startDate || undefined,
-            end_date: filters.endDate || undefined,
-            top_n: topN,
-          }),
-        (value) => {
-          jointAnomalies.value = value;
-        }
-      ),
       loadPanel(
         panelStates.crossSection,
         () =>
@@ -680,7 +673,7 @@ async function loadAnalysis(filters: AnalysisFilters) {
             import_run_id: filters.importRunId!,
             start_date: filters.startDate || undefined,
             end_date: filters.endDate || undefined,
-            instrument_codes: correlationCodes,
+            stock_codes: correlationCodes,
           }),
         (value) => {
           correlation.value = value;
@@ -691,11 +684,11 @@ async function loadAnalysis(filters: AnalysisFilters) {
         () =>
           fetchTradingScopeComparison({
             base_run_id: filters.importRunId!,
-            base_instrument_code: filters.instrumentCode,
+            base_stock_code: filters.stockCode,
             base_start_date: filters.startDate || undefined,
             base_end_date: filters.endDate || undefined,
             target_run_id: filters.compareRunId ?? filters.importRunId!,
-            target_instrument_code: filters.compareInstrumentCode || undefined,
+            target_stock_code: filters.compareStockCode || undefined,
             target_start_date: filters.compareStartDate || undefined,
             target_end_date: filters.compareEndDate || undefined,
           }),
@@ -719,11 +712,21 @@ async function loadAnalysis(filters: AnalysisFilters) {
 async function applyFilters() {
   const nextFilters = snapshotFilters();
   parseTopN(nextFilters.topNInput);
+  datasetContext.applyScope({
+    importRunId: nextFilters.importRunId,
+    stockCode: nextFilters.stockCode,
+    startDate: nextFilters.startDate,
+    endDate: nextFilters.endDate,
+  });
   appliedFilters.value = nextFilters;
   await loadAnalysis(nextFilters);
 }
 
 onMounted(async () => {
+  draftForm.importRunId = datasetContext.state.importRunId;
+  draftForm.stockCode = datasetContext.state.stockCode;
+  draftForm.startDate = datasetContext.state.startDate;
+  draftForm.endDate = datasetContext.state.endDate;
   await loadRuns();
 });
 </script>
@@ -732,10 +735,10 @@ onMounted(async () => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Analysis</div>
-        <h2 class="page__title">交易分析中心</h2>
+        <div class="page__eyebrow">Analysis Center / 分析中心</div>
+        <h2 class="page__title">围绕当前数据集展开基础分析、指标分析与范围比较</h2>
         <p class="page__subtitle">
-          页面按“单标的分析、批次内多标的分析、范围对比”三种作用域拆分，筛选编辑后统一点击按钮应用。
+          这里默认继承总览页选中的当前数据集上下文，你可以继续微调筛选范围，并把结果同步给整个系统的分析工作流。
         </p>
       </div>
       <div class="page__actions">
@@ -753,10 +756,16 @@ onMounted(async () => {
       :closable="false"
     />
 
-    <PanelCard title="分析筛选器" description="三类分析范围独立编辑，但统一点击上方按钮后生效。">
+    <PanelCard title="共享数据集上下文" description="主分析范围默认继承自 Overview，可在此页微调后重新应用。">
+      <div class="analysis-tags">
+        <span v-for="item in contextPills" :key="item" class="pill">{{ item }}</span>
+      </div>
+    </PanelCard>
+
+    <PanelCard title="分析筛选器" description="基础分析、多股票分析和范围对比分区编辑，但统一点击上方按钮后生效。">
       <div class="analysis-stack">
         <div>
-          <div class="analysis-subtitle">主分析范围</div>
+          <div class="analysis-subtitle">摘要与基础范围</div>
           <el-form class="analysis-filters" label-position="top">
             <el-form-item label="当前批次">
               <el-select
@@ -775,47 +784,49 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
 
-            <el-form-item label="分析标的">
+            <el-form-item label="分析股票">
               <el-select
-                v-model="draftForm.instrumentCode"
-                placeholder="选择标的"
+                v-model="draftForm.stockCode"
+                placeholder="选择股票"
                 filterable
                 class="analysis-filters__control"
-                @change="handleBaseInstrumentChange"
+                @change="handleBaseStockChange"
               >
                 <el-option
-                  v-for="item in instruments"
-                  :key="item.instrument_code"
-                  :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
-                  :value="item.instrument_code"
+                  v-for="item in stocks"
+                  :key="item.stock_code"
+                  :label="`${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ''}`"
+                  :value="item.stock_code"
                 />
               </el-select>
             </el-form-item>
 
-            <el-form-item label="开始日期">
-              <el-date-picker
-                v-model="draftForm.startDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="开始日期"
-                class="analysis-filters__control"
-              />
-            </el-form-item>
+            <div class="date-range-group">
+              <el-form-item label="开始日期">
+                <el-date-picker
+                  v-model="draftForm.startDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="开始日期"
+                  class="analysis-filters__control"
+                />
+              </el-form-item>
 
-            <el-form-item label="结束日期">
-              <el-date-picker
-                v-model="draftForm.endDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="结束日期"
-                class="analysis-filters__control"
-              />
-            </el-form-item>
+              <el-form-item label="结束日期">
+                <el-date-picker
+                  v-model="draftForm.endDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="结束日期"
+                  class="analysis-filters__control"
+                />
+              </el-form-item>
+            </div>
           </el-form>
         </div>
 
         <div>
-          <div class="analysis-subtitle">批次内多标的分析</div>
+          <div class="analysis-subtitle">技术指标与多股票分析</div>
           <el-form class="analysis-filters" label-position="top">
             <el-form-item label="横截面指标">
               <el-select v-model="draftForm.crossMetric" placeholder="横截面指标" class="analysis-filters__control">
@@ -832,20 +843,20 @@ onMounted(async () => {
               <el-input v-model="draftForm.topNInput" placeholder="Top N" class="analysis-filters__control" />
             </el-form-item>
 
-            <el-form-item label="相关性分析标的" class="analysis-filters__item analysis-filters__item--wide">
+            <el-form-item label="相关性分析股票" class="analysis-filters__item analysis-filters__item--wide">
               <el-select
-                v-model="draftForm.correlationInstrumentCodes"
+                v-model="draftForm.correlationStockCodes"
                 multiple
                 collapse-tags
                 collapse-tags-tooltip
-                placeholder="相关性分析标的"
+                placeholder="相关性分析股票"
                 class="analysis-filters__control"
               >
                 <el-option
-                  v-for="item in instruments"
-                  :key="`corr-${item.instrument_code}`"
-                  :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
-                  :value="item.instrument_code"
+                  v-for="item in stocks"
+                  :key="`corr-${item.stock_code}`"
+                  :label="`${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ''}`"
+                  :value="item.stock_code"
                 />
               </el-select>
               <div class="analysis-filters__hint">{{ correlationHint }}</div>
@@ -873,42 +884,44 @@ onMounted(async () => {
               </el-select>
             </el-form-item>
 
-            <el-form-item label="对比标的">
+            <el-form-item label="对比股票">
               <el-select
-                v-model="draftForm.compareInstrumentCode"
-                placeholder="留空表示全部标的"
+                v-model="draftForm.compareStockCode"
+                placeholder="留空表示全部股票"
                 clearable
                 filterable
                 class="analysis-filters__control"
               >
                 <el-option
-                  v-for="item in compareInstruments"
-                  :key="`compare-instrument-${item.instrument_code}`"
-                  :label="`${item.instrument_code}${item.instrument_name ? ` · ${item.instrument_name}` : ''}`"
-                  :value="item.instrument_code"
+                  v-for="item in compareStocks"
+                  :key="`compare-stock-${item.stock_code}`"
+                  :label="`${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ''}`"
+                  :value="item.stock_code"
                 />
               </el-select>
             </el-form-item>
 
-            <el-form-item label="对比开始日期">
-              <el-date-picker
-                v-model="draftForm.compareStartDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="对比开始日期"
-                class="analysis-filters__control"
-              />
-            </el-form-item>
+            <div class="date-range-group">
+              <el-form-item label="对比开始日期">
+                <el-date-picker
+                  v-model="draftForm.compareStartDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="对比开始日期"
+                  class="analysis-filters__control"
+                />
+              </el-form-item>
 
-            <el-form-item label="对比结束日期">
-              <el-date-picker
-                v-model="draftForm.compareEndDate"
-                type="date"
-                value-format="YYYY-MM-DD"
-                placeholder="对比结束日期"
-                class="analysis-filters__control"
-              />
-            </el-form-item>
+              <el-form-item label="对比结束日期">
+                <el-date-picker
+                  v-model="draftForm.compareEndDate"
+                  type="date"
+                  value-format="YYYY-MM-DD"
+                  placeholder="对比结束日期"
+                  class="analysis-filters__control"
+                />
+              </el-form-item>
+            </div>
           </el-form>
           <div class="analysis-filters__hint">{{ comparisonHint }}</div>
         </div>
@@ -926,11 +939,11 @@ onMounted(async () => {
       />
     </section>
 
-    <PanelCard title="摘要" description="展示当前标的在筛选区间内的核心成交与价格摘要。">
+    <PanelCard title="摘要" description="展示当前股票在筛选区间内的核心成交与价格摘要。">
       <div v-if="summary" class="analysis-summary">
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="标的">
-            {{ summary.instrument_code }}{{ summary.instrument_name ? ` · ${summary.instrument_name}` : "" }}
+          <el-descriptions-item label="股票">
+            {{ summary.stock_code }}{{ summary.stock_name ? ` · ${summary.stock_name}` : "" }}
           </el-descriptions-item>
           <el-descriptions-item label="区间">{{ summary.start_date }} ~ {{ summary.end_date }}</el-descriptions-item>
           <el-descriptions-item label="记录数">{{ summary.record_count }}</el-descriptions-item>
@@ -946,7 +959,7 @@ onMounted(async () => {
       <EmptyState
         v-else
         :title="emptyStateTitle(panelStates.summary, '暂无摘要', '正在加载摘要')"
-        :description="emptyStateDescription(panelStates.summary, '选择一个有数据的批次和标的后，这里会展示区间摘要。')"
+        :description="emptyStateDescription(panelStates.summary, '选择一个有数据的批次和股票后，这里会展示区间摘要。')"
       />
     </PanelCard>
 
@@ -1040,13 +1053,13 @@ onMounted(async () => {
       />
     </PanelCard>
 
-    <PanelCard title="横截面 / 相关性" description="仅在当前批次与当前日期范围内执行多标的排序和收益率相关性矩阵分析。">
+    <PanelCard title="横截面 / 相关性" description="仅在当前批次与当前日期范围内执行多股票排序和收益率相关性矩阵分析。">
       <div class="analysis-stack">
         <div>
           <div class="analysis-subtitle">横截面排序</div>
           <el-table v-if="crossSection?.rows.length" :data="crossSection.rows" stripe class="data-table" max-height="420">
-            <el-table-column prop="instrument_code" label="Code" min-width="130" />
-            <el-table-column prop="instrument_name" label="Name" min-width="180" />
+            <el-table-column prop="stock_code" label="Code" min-width="130" />
+            <el-table-column prop="stock_name" label="Name" min-width="180" />
             <el-table-column label="Return" min-width="120">
               <template #default="{ row }">
                 {{ formatPercent(row.total_return, 2) }}
@@ -1071,16 +1084,16 @@ onMounted(async () => {
           <EmptyState
             v-else
             :title="emptyStateTitle(panelStates.crossSection, '暂无横截面结果', '正在加载横截面分析')"
-            :description="emptyStateDescription(panelStates.crossSection, '这里会展示同一批次内多标的的区间排序结果。')"
+            :description="emptyStateDescription(panelStates.crossSection, '这里会展示同一批次内多股票的区间排序结果。')"
           />
         </div>
 
         <div>
           <div class="analysis-subtitle">相关性矩阵</div>
           <el-table v-if="correlationTableRows.length" :data="correlationTableRows" stripe class="data-table" max-height="420">
-            <el-table-column prop="instrument_code" label="Code" width="120" fixed />
+            <el-table-column prop="stock_code" label="Code" width="120" fixed />
             <el-table-column
-              v-for="code in correlation?.instrument_codes || []"
+              v-for="code in correlation?.stock_codes || []"
               :key="`corr-col-${code}`"
               :prop="code"
               :label="code"
@@ -1094,7 +1107,7 @@ onMounted(async () => {
           <EmptyState
             v-else
             :title="emptyStateTitle(panelStates.correlation, '暂无相关性结果', '正在加载相关性矩阵')"
-            :description="emptyStateDescription(panelStates.correlation, '相关性需要至少两个标的且存在重叠收益率样本。')"
+            :description="emptyStateDescription(panelStates.correlation, '相关性需要至少两只股票且存在重叠收益率样本。')"
           />
         </div>
       </div>
@@ -1151,11 +1164,11 @@ onMounted(async () => {
               <el-descriptions-item label="对比范围批次">
                 {{ formatImportRunDisplayLabel(comparison.target_scope.import_run_id) }}
               </el-descriptions-item>
-              <el-descriptions-item label="当前范围标的">
-                {{ formatScopeInstrumentLabel(comparison.base_scope) }}
+              <el-descriptions-item label="当前范围股票">
+                {{ formatScopeStockLabel(comparison.base_scope) }}
               </el-descriptions-item>
-              <el-descriptions-item label="对比范围标的">
-                {{ formatScopeInstrumentLabel(comparison.target_scope) }}
+              <el-descriptions-item label="对比范围股票">
+                {{ formatScopeStockLabel(comparison.target_scope) }}
               </el-descriptions-item>
               <el-descriptions-item label="当前筛选区间">
                 {{ formatScopeRequestedRange(comparison.base_scope) }}
@@ -1171,8 +1184,8 @@ onMounted(async () => {
               </el-descriptions-item>
               <el-descriptions-item label="当前范围记录数">{{ comparison.base_scope.record_count }}</el-descriptions-item>
               <el-descriptions-item label="对比范围记录数">{{ comparison.target_scope.record_count }}</el-descriptions-item>
-              <el-descriptions-item label="当前范围标的数">{{ comparison.base_scope.instrument_count }}</el-descriptions-item>
-              <el-descriptions-item label="对比范围标的数">{{ comparison.target_scope.instrument_count }}</el-descriptions-item>
+              <el-descriptions-item label="当前范围股票数">{{ comparison.base_scope.stock_count }}</el-descriptions-item>
+              <el-descriptions-item label="对比范围股票数">{{ comparison.target_scope.stock_count }}</el-descriptions-item>
               <el-descriptions-item label="当前范围成交额">
                 {{ formatCompact(comparison.base_scope.total_amount, 2) }}
               </el-descriptions-item>
@@ -1203,16 +1216,16 @@ onMounted(async () => {
               <StatCard
                 label="范围独有记录"
                 :value="String(comparison.record_overlap.base_only_record_count + comparison.record_overlap.target_only_record_count)"
-                hint="两边无法按标的+日期配对的记录"
+                hint="两边无法按股票+日期配对的记录"
                 tone="neutral"
               />
             </section>
 
             <div>
-              <div class="analysis-compare__label">共同标的</div>
+              <div class="analysis-compare__label">共同股票</div>
               <div class="analysis-tags">
                 <span
-                  v-for="item in comparison.instrument_overlap.shared_instruments"
+                  v-for="item in comparison.stock_overlap.shared_stocks"
                   :key="`shared-${item}`"
                   class="pill"
                 >
@@ -1222,10 +1235,10 @@ onMounted(async () => {
             </div>
 
             <div>
-              <div class="analysis-compare__label">当前范围独有标的</div>
+              <div class="analysis-compare__label">当前范围独有股票</div>
               <div class="analysis-tags">
                 <span
-                  v-for="item in comparison.instrument_overlap.base_only_instruments"
+                  v-for="item in comparison.stock_overlap.base_only_stocks"
                   :key="`base-only-${item}`"
                   class="pill"
                 >
@@ -1235,10 +1248,10 @@ onMounted(async () => {
             </div>
 
             <div>
-              <div class="analysis-compare__label">对比范围独有标的</div>
+              <div class="analysis-compare__label">对比范围独有股票</div>
               <div class="analysis-tags">
                 <span
-                  v-for="item in comparison.instrument_overlap.target_only_instruments"
+                  v-for="item in comparison.stock_overlap.target_only_stocks"
                   :key="`target-only-${item}`"
                   class="pill"
                 >
@@ -1258,7 +1271,7 @@ onMounted(async () => {
             <div v-if="comparison.mismatch_samples.length">
               <div class="analysis-compare__label">不一致样例</div>
               <el-table :data="comparison.mismatch_samples" stripe class="data-table" max-height="420">
-                <el-table-column prop="instrument_code" label="标的" min-width="120" />
+                <el-table-column prop="stock_code" label="股票" min-width="120" />
                 <el-table-column prop="trade_date" label="交易日" min-width="120" />
                 <el-table-column label="不一致字段" min-width="180">
                   <template #default="{ row }">
@@ -1295,7 +1308,7 @@ onMounted(async () => {
               title="没有共同交易记录"
               type="info"
               :closable="false"
-              description="当前只展示两边范围的摘要和标的差异，因为没有可按标的+日期配对的共同记录。"
+              description="当前只展示两边范围的摘要和股票差异，因为没有可按股票+日期配对的共同记录。"
             />
           </div>
           <EmptyState
@@ -1305,48 +1318,6 @@ onMounted(async () => {
           />
         </div>
       </div>
-    </PanelCard>
-    <PanelCard title="CDQ Joint Anomalies" description="Across all instruments, rank days by joint return shock and volume expansion using historical CDQ dominance counts.">
-      <el-table v-if="jointAnomalyRows.length" :data="jointAnomalyRows" stripe class="data-table" max-height="420">
-        <el-table-column prop="trade_date" label="Trade Date" width="120" />
-        <el-table-column prop="instrument_code" label="Code" min-width="120" />
-        <el-table-column prop="instrument_name" label="Name" min-width="180" />
-        <el-table-column label="Severity" width="110">
-          <template #default="{ row }">
-            <el-tag :type="toStatusTagType(row.severity)" effect="plain">{{ row.severity }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="Daily Return" min-width="120">
-          <template #default="{ row }">
-            {{ formatPercent(row.daily_return, 2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Return Z20" min-width="120">
-          <template #default="{ row }">
-            {{ formatNumberish(row.return_z20, 2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Volume Ratio20" min-width="130">
-          <template #default="{ row }">
-            {{ formatNumberish(row.volume_ratio20, 2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Joint Percentile" min-width="140">
-          <template #default="{ row }">
-            {{ formatPercent(row.joint_percentile, 2) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Dominated / History" min-width="150">
-          <template #default="{ row }">
-            {{ row.historical_dominated_count }} / {{ row.historical_sample_count }}
-          </template>
-        </el-table-column>
-      </el-table>
-      <EmptyState
-        v-else
-        :title="emptyStateTitle(panelStates.jointAnomalies, '暂无联合异常结果', '正在加载联合异常')"
-        :description="emptyStateDescription(panelStates.jointAnomalies, '该排名需要足够的 20 日历史样本，且事件达到中等级以上阈值后才会出现。')"
-      />
     </PanelCard>
   </div>
 </template>
@@ -1375,6 +1346,13 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.date-range-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+  grid-column: 1 / -1;
 }
 
 .analysis-stack {
@@ -1409,4 +1387,14 @@ onMounted(async () => {
   color: var(--text-secondary);
   font-weight: 700;
 }
+
+@media (max-width: 768px) {
+  .date-range-group {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
+
+
+
+

@@ -1,4 +1,4 @@
-# 毕业论文目录结构
+﻿# 毕业论文目录结构
 
 ## 论文题目
 
@@ -46,7 +46,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 - 构建支持注册登录、权限隔离和交易文件导入的数据管理系统
 - 实现八大分析面板：摘要、质量、指标、风险、异常、横截面、相关性、范围对比
 - 设计 C++ 算法引擎并通过 pybind11 集成：区间最大成交额、区间第 K 大成交量（精确 + 近似双方案）、联合异常排序
-- 构建三维风险雷达：索引构建、快照缓存、异常事件总览/榜单/标的画像/日期聚合/事件钻取
+- 构建三维风险雷达：索引构建、快照缓存、异常事件总览/榜单/股票画像/日期聚合/事件钻取
 - 通过自动化测试与对比实验验证系统正确性与算法效果
 
 #### 1.4 技术路线与研究方法
@@ -119,7 +119,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 
 - 3.2.1 用户鉴权需求（注册、登录、当前用户信息）
 - 3.2.2 数据导入管理需求（CSV/XLSX 上传、数据集命名、导入历史、统计、软删除）
-- 3.2.3 交易记录查询需求（标的列表、记录列表、分页）
+- 3.2.3 交易记录查询需求（股票列表、记录列表、分页）
 - 3.2.4 分析中心需求（八大分析面板）
   - 交易摘要分析
   - 数据质量分析
@@ -128,7 +128,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
   - 异常检测分析（放量异常、收益率异常、振幅异常、突破前高/前低）
   - 横截面排序分析
   - 收益率相关性矩阵分析
-  - 范围对比分析（同批次/跨批次、同标的/多标的、不同日期范围）
+  - 范围对比分析（同批次/跨批次、同股票/多股票、不同日期范围）
 - 3.2.5 C++ 算法增强需求
   - 区间最大成交额查询
   - 区间第 K 大成交量查询（精确解 + 近似解）
@@ -136,7 +136,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 - 3.2.6 风险雷达需求
   - 索引状态管理与重建
   - 异常事件总览与分级
-  - 事件榜单与标的风险画像
+  - 事件榜单与股票风险画像
   - 日期聚合与日历视图
   - 事件上下文钻取（窗口分位、分布变化、局部成交额峰值）
 
@@ -225,7 +225,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 - 4.5.3 交易查询接口组（instruments / records）
 - 4.5.4 分析中心接口组（summary / quality / indicators / risk / anomalies / cross-section / correlation / compare-scopes）
 - 4.5.5 算法接口组（range-max-amount / range-kth-volume / joint-anomaly-ranking）
-- 4.5.6 风险雷达接口组（索引状态 / 重建 / 总览 / 事件列表 / 标的列表 / 日期聚合 / 事件上下文）
+- 4.5.6 风险雷达接口组（索引状态 / 重建 / 总览 / 事件列表 / 股票列表 / 日期聚合 / 事件上下文）
 
 > 每组说明：输入参数、输出结构、访问控制规则、错误响应场景。
 
@@ -245,8 +245,8 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 #### 4.7 风险雷达索引与缓存设计
 
 - 4.7.1 索引生命周期状态机（pending → building → ready / failed）
-- 4.7.2 InstrumentAlgoIndex 对象结构（含 RangeMax/RangeKth 线段树、t-digest 分块索引）
-- 4.7.3 RiskRadarIndexCache 对象结构（概览、事件、标的画像、日历、标的索引）
+- 4.7.2 StockAlgoIndex 对象结构（含 RangeMax/RangeKth 线段树、t-digest 分块索引）
+- 4.7.3 RiskRadarIndexCache 对象结构（概览、事件、股票画像、日历、股票索引）
 - 4.7.4 快照写入与加载复用机制
 - 4.7.5 三维 CDQ 支配计数在事件分级中的应用
 - 4.7.6 事件上下文解释生成（窗口分位、分布变化、局部成交额峰值）
@@ -275,7 +275,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 #### 5.3 交易记录查询与统计总览实现
 
 - 5.3.1 批次列表查询与统计信息生成
-- 5.3.2 标的列表与交易记录查询
+- 5.3.2 股票列表与交易记录查询
 - 5.3.3 总览页面：健康状态、按月导入趋势、最近导入记录
 
 #### 5.4 交易分析中心实现
@@ -287,7 +287,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 - 5.4.5 异常检测分析（放量异常 2× 基线、收益率异常 3σ、振幅异常 2× 基线、突破前高/前低）
 - 5.4.6 横截面排序分析（按 total_return / volatility / total_volume / total_amount / average_amplitude 多指标排序）
 - 5.4.7 收益率相关性矩阵分析
-- 5.4.8 范围对比分析（标的重叠、记录重叠、逐字段不一致检测与样例展示）
+- 5.4.8 范围对比分析（股票重叠、记录重叠、逐字段不一致检测与样例展示）
 
 #### 5.5 C++ 算法查询实现
 
@@ -320,7 +320,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 
 ##### 5.6.1 索引构建实现
 
-- 每标的数据加载与序列化
+- 每股票数据加载与序列化
 - RangeMaxSegmentTree（成交额）构建
 - RangeKthPersistentSegmentTree（成交量/振幅）构建
 - RangeKthTDigestBlockIndex（成交量/振幅）构建
@@ -334,9 +334,9 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 
 ##### 5.6.3 总览与事件查询实现
 
-- 总览计数（total_events / impacted_instrument_count / medium/high/critical）
-- 事件列表多维过滤（日期范围/标的/严重度/Top-N）
-- 标的风险画像排序
+- 总览计数（total_events / impacted_stock_count / medium/high/critical）
+- 事件列表多维过滤（日期范围/股票/严重度/Top-N）
+- 股票风险画像排序
 - 日历聚合视图
 
 ##### 5.6.4 事件上下文钻取实现
@@ -352,7 +352,7 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 - 5.7.2 系统总览页实现（统计卡片、健康状态、月度趋势、最近导入）
 - 5.7.3 交易数据管理页实现（文件上传、批次管理、区间算法卡片、算法切换）
 - 5.7.4 分析中心页实现（六大区域联动：摘要/指标/风险/异常/横截面相关性/质量对比）
-- 5.7.5 风险雷达页实现（异常散点图、事件榜单、标的画像、日历热力图、事件钻取面板）
+- 5.7.5 风险雷达页实现（异常散点图、事件榜单、股票画像、日历热力图、事件钻取面板）
 
 ---
 
@@ -529,3 +529,4 @@ Design and Implementation of a Stock Trading Data Management and Analysis System
 5. 风险雷达和联合异常排序是系统特色，建议在第 5.6 章充分展开
 6. 已退场的旧分支（电商、爬虫、synthetic 数据）仅在必要处简要说明不纳入研究范围
 7. 若需压缩篇幅，优先压缩绪论和研究现状铺陈，不压缩第 5 章和第 6 章核心内容
+

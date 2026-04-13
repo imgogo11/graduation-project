@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
@@ -18,7 +18,7 @@ from app.schemas.trading import (
     TradingCrossSectionRowRead,
     TradingIndicatorPointRead,
     TradingIndicatorSeriesRead,
-    TradingInstrumentOverlapRead,
+    TradingStockOverlapRead,
     TradingMismatchSampleRead,
     TradingMismatchSummaryRead,
     TradingQualityReportRead,
@@ -62,14 +62,14 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> TradingSummaryRead:
         frame = self._load_frame(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -77,12 +77,12 @@ class TradingAnalysisService:
 
         return TradingSummaryRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
-            instrument_name=self._instrument_name(enriched) if instrument_code else None,
+            stock_code=stock_code,
+            stock_name=self._stock_name(enriched) if stock_code else None,
             start_date=self._first_trade_date(enriched),
             end_date=self._last_trade_date(enriched),
             record_count=int(len(enriched)),
-            instrument_count=int(enriched["instrument_code"].nunique()),
+            stock_count=int(enriched["stock_code"].nunique()),
             high_price=self._float(enriched["high"].max()),
             low_price=self._float(enriched["low"].min()),
             average_close=self._float(enriched["close"].mean()),
@@ -98,14 +98,14 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> TradingQualityReportRead:
         scope_frame = self._load_frame(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -146,8 +146,8 @@ class TradingAnalysisService:
 
         return TradingQualityReportRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
-            instrument_name=self._instrument_name(scope_frame) if instrument_code else None,
+            stock_code=stock_code,
+            stock_name=self._stock_name(scope_frame) if stock_code else None,
             start_date=self._first_trade_date(scope_frame),
             end_date=self._last_trade_date(scope_frame),
             record_count=int(len(scope_frame)),
@@ -167,14 +167,14 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> TradingIndicatorSeriesRead:
         frame = self._load_frame(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -207,8 +207,8 @@ class TradingAnalysisService:
 
         return TradingIndicatorSeriesRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
-            instrument_name=self._instrument_name(enriched),
+            stock_code=stock_code,
+            stock_name=self._stock_name(enriched),
             start_date=self._first_trade_date(enriched),
             end_date=self._last_trade_date(enriched),
             points=points,
@@ -219,14 +219,14 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> TradingRiskMetricsRead:
         frame = self._load_frame(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -237,8 +237,8 @@ class TradingAnalysisService:
 
         return TradingRiskMetricsRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
-            instrument_name=self._instrument_name(enriched),
+            stock_code=stock_code,
+            stock_name=self._stock_name(enriched),
             start_date=self._first_trade_date(enriched),
             end_date=self._last_trade_date(enriched),
             record_count=int(len(enriched)),
@@ -257,14 +257,14 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> TradingAnomalyReportRead:
         frame = self._load_frame(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -345,8 +345,8 @@ class TradingAnalysisService:
 
         return TradingAnomalyReportRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
-            instrument_name=self._instrument_name(enriched),
+            stock_code=stock_code,
+            stock_name=self._stock_name(enriched),
             start_date=self._first_trade_date(enriched),
             end_date=self._last_trade_date(enriched),
             anomalies=anomalies,
@@ -376,13 +376,13 @@ class TradingAnalysisService:
             end_date=end_date,
         )
         rows: list[TradingCrossSectionRowRead] = []
-        for instrument_key, group in frame.groupby("instrument_code", sort=True):
+        for stock_key, group in frame.groupby("stock_code", sort=True):
             enriched = self._enrich_frame(group.reset_index(drop=True))
             returns = enriched["daily_return"].dropna()
             rows.append(
                 TradingCrossSectionRowRead(
-                    instrument_code=str(instrument_key),
-                    instrument_name=self._instrument_name(enriched),
+                    stock_code=str(stock_key),
+                    stock_name=self._stock_name(enriched),
                     start_date=self._first_trade_date(enriched),
                     end_date=self._last_trade_date(enriched),
                     record_count=int(len(enriched)),
@@ -417,7 +417,7 @@ class TradingAnalysisService:
         import_run_id: int,
         start_date: date | None = None,
         end_date: date | None = None,
-        instrument_codes: list[str] | None = None,
+        stock_codes: list[str] | None = None,
     ) -> TradingCorrelationMatrixRead:
         frame = self._load_frame(
             session,
@@ -425,18 +425,18 @@ class TradingAnalysisService:
             start_date=start_date,
             end_date=end_date,
         )
-        if instrument_codes:
-            frame = frame[frame["instrument_code"].isin(instrument_codes)].reset_index(drop=True)
+        if stock_codes:
+            frame = frame[frame["stock_code"].isin(stock_codes)].reset_index(drop=True)
             if frame.empty:
                 raise TradingAnalysisDataUnavailableError(
-                    build_data_unavailable_message("所选标的没有可用于相关性分析的收盘价数据")
+                    build_data_unavailable_message("所选股票没有可用于相关性分析的收盘价数据")
                 )
 
-        if frame["instrument_code"].nunique() < 2:
-            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("相关性分析至少需要 2 个标的"))
+        if frame["stock_code"].nunique() < 2:
+            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("相关性分析至少需要 2 只股票"))
 
         pivot = (
-            frame.pivot_table(index="trade_date", columns="instrument_code", values="close", aggfunc="last")
+            frame.pivot_table(index="trade_date", columns="stock_code", values="close", aggfunc="last")
             .sort_index()
             .pct_change(fill_method=None)
             .dropna(how="all")
@@ -458,7 +458,7 @@ class TradingAnalysisService:
             import_run_id=import_run_id,
             start_date=frame["trade_date"].min().date(),
             end_date=frame["trade_date"].max().date(),
-            instrument_codes=codes,
+            stock_codes=codes,
             matrix=matrix,
         )
 
@@ -480,8 +480,8 @@ class TradingAnalysisService:
             target_run_id=target_run_id,
             base_record_count=scope_comparison.base_scope.record_count,
             target_record_count=scope_comparison.target_scope.record_count,
-            base_instrument_count=scope_comparison.base_scope.instrument_count,
-            target_instrument_count=scope_comparison.target_scope.instrument_count,
+            base_stock_count=scope_comparison.base_scope.stock_count,
+            target_stock_count=scope_comparison.target_scope.stock_count,
             base_total_volume=scope_comparison.base_scope.total_volume,
             target_total_volume=scope_comparison.target_scope.total_volume,
             base_total_amount=scope_comparison.base_scope.total_amount,
@@ -490,9 +490,9 @@ class TradingAnalysisService:
             base_end_date=scope_comparison.base_scope.actual_end_date,
             target_start_date=scope_comparison.target_scope.actual_start_date,
             target_end_date=scope_comparison.target_scope.actual_end_date,
-            shared_instruments=scope_comparison.instrument_overlap.shared_instruments,
-            added_instruments=scope_comparison.instrument_overlap.target_only_instruments,
-            removed_instruments=scope_comparison.instrument_overlap.base_only_instruments,
+            shared_stocks=scope_comparison.stock_overlap.shared_stocks,
+            added_stocks=scope_comparison.stock_overlap.target_only_stocks,
+            removed_stocks=scope_comparison.stock_overlap.base_only_stocks,
         )
 
     def compare_scopes(
@@ -501,8 +501,8 @@ class TradingAnalysisService:
         *,
         base_run_id: int,
         target_run_id: int,
-        base_instrument_code: str | None = None,
-        target_instrument_code: str | None = None,
+        base_stock_code: str | None = None,
+        target_stock_code: str | None = None,
         base_start_date: date | None = None,
         base_end_date: date | None = None,
         target_start_date: date | None = None,
@@ -511,7 +511,7 @@ class TradingAnalysisService:
         base_rows = self._load_scope_rows(
             session,
             import_run_id=base_run_id,
-            instrument_code=base_instrument_code,
+            stock_code=base_stock_code,
             start_date=base_start_date,
             end_date=base_end_date,
             scope_label="当前范围",
@@ -519,7 +519,7 @@ class TradingAnalysisService:
         target_rows = self._load_scope_rows(
             session,
             import_run_id=target_run_id,
-            instrument_code=target_instrument_code,
+            stock_code=target_stock_code,
             start_date=target_start_date,
             end_date=target_end_date,
             scope_label="对比范围",
@@ -527,11 +527,11 @@ class TradingAnalysisService:
 
         base_frame = self._rows_to_frame(base_rows)
         target_frame = self._rows_to_frame(target_rows)
-        base_codes = {str(item) for item in base_frame["instrument_code"].unique().tolist()}
-        target_codes = {str(item) for item in target_frame["instrument_code"].unique().tolist()}
+        base_codes = {str(item) for item in base_frame["stock_code"].unique().tolist()}
+        target_codes = {str(item) for item in target_frame["stock_code"].unique().tolist()}
 
-        base_lookup = {(str(item.instrument_code), item.trade_date): item for item in base_rows}
-        target_lookup = {(str(item.instrument_code), item.trade_date): item for item in target_rows}
+        base_lookup = {(str(item.stock_code), item.trade_date): item for item in base_rows}
+        target_lookup = {(str(item.stock_code), item.trade_date): item for item in target_rows}
         shared_keys = sorted(base_lookup.keys() & target_lookup.keys(), key=lambda item: (item[0], item[1]))
 
         mismatch_field_counts = {
@@ -545,9 +545,9 @@ class TradingAnalysisService:
         mismatch_samples: list[TradingMismatchSampleRead] = []
         mismatched_record_count = 0
 
-        for instrument_code, trade_day in shared_keys:
-            base_row = base_lookup[(instrument_code, trade_day)]
-            target_row = target_lookup[(instrument_code, trade_day)]
+        for stock_code, trade_day in shared_keys:
+            base_row = base_lookup[(stock_code, trade_day)]
+            target_row = target_lookup[(stock_code, trade_day)]
             mismatched_fields = [
                 field_name
                 for field_name in mismatch_field_counts
@@ -562,7 +562,7 @@ class TradingAnalysisService:
             if len(mismatch_samples) < 20:
                 mismatch_samples.append(
                     TradingMismatchSampleRead(
-                        instrument_code=instrument_code,
+                        stock_code=stock_code,
                         trade_date=trade_day,
                         mismatched_fields=mismatched_fields,
                         base_values=self._build_comparison_value(base_row),
@@ -574,21 +574,21 @@ class TradingAnalysisService:
             base_scope=self._build_scope_summary(
                 base_frame,
                 import_run_id=base_run_id,
-                instrument_code=base_instrument_code,
+                stock_code=base_stock_code,
                 requested_start_date=base_start_date,
                 requested_end_date=base_end_date,
             ),
             target_scope=self._build_scope_summary(
                 target_frame,
                 import_run_id=target_run_id,
-                instrument_code=target_instrument_code,
+                stock_code=target_stock_code,
                 requested_start_date=target_start_date,
                 requested_end_date=target_end_date,
             ),
-            instrument_overlap=TradingInstrumentOverlapRead(
-                shared_instruments=sorted(base_codes & target_codes),
-                base_only_instruments=sorted(base_codes - target_codes),
-                target_only_instruments=sorted(target_codes - base_codes),
+            stock_overlap=TradingStockOverlapRead(
+                shared_stocks=sorted(base_codes & target_codes),
+                base_only_stocks=sorted(base_codes - target_codes),
+                target_only_stocks=sorted(target_codes - base_codes),
             ),
             record_overlap=TradingRecordOverlapRead(
                 shared_trade_date_count=len({trade_day for _, trade_day in shared_keys}),
@@ -614,17 +614,17 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> pd.DataFrame:
         rows = self._load_scope_rows(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
-            scope_label=instrument_code or "当前批次",
+            scope_label=stock_code or "当前批次",
         )
         return self._rows_to_frame(rows)
 
@@ -633,7 +633,7 @@ class TradingAnalysisService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
         scope_label: str,
@@ -644,15 +644,15 @@ class TradingAnalysisService:
         rows = TradingRepository.list_records(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
         if rows:
             return rows
 
-        if instrument_code:
-            detail = f"{scope_label}中的 {instrument_code} 在当前筛选条件下没有交易记录"
+        if stock_code:
+            detail = f"{scope_label}中的 {stock_code} 在当前筛选条件下没有交易记录"
         else:
             detail = f"{scope_label} 在当前筛选条件下没有交易记录"
         raise TradingAnalysisDataUnavailableError(build_data_unavailable_message(detail))
@@ -661,8 +661,8 @@ class TradingAnalysisService:
         frame = pd.DataFrame(
             [
                 {
-                    "instrument_code": item.instrument_code,
-                    "instrument_name": item.instrument_name,
+                    "stock_code": item.stock_code,
+                    "stock_name": item.stock_name,
                     "trade_date": pd.Timestamp(item.trade_date),
                     "open": float(item.open),
                     "high": float(item.high),
@@ -674,27 +674,27 @@ class TradingAnalysisService:
                 for item in rows
             ]
         )
-        return frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+        return frame.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
     def _build_scope_summary(
         self,
         frame: pd.DataFrame,
         *,
         import_run_id: int,
-        instrument_code: str | None,
+        stock_code: str | None,
         requested_start_date: date | None,
         requested_end_date: date | None,
     ) -> TradingComparisonScopeRead:
         return TradingComparisonScopeRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
-            instrument_name=self._instrument_name(frame) if instrument_code else None,
+            stock_code=stock_code,
+            stock_name=self._stock_name(frame) if stock_code else None,
             requested_start_date=requested_start_date,
             requested_end_date=requested_end_date,
             actual_start_date=self._first_trade_date(frame),
             actual_end_date=self._last_trade_date(frame),
             record_count=int(len(frame)),
-            instrument_count=int(frame["instrument_code"].nunique()),
+            stock_count=int(frame["stock_code"].nunique()),
             total_volume=self._float(frame["volume"].sum()),
             total_amount=self._series_sum_or_none(frame["amount"]),
         )
@@ -777,8 +777,8 @@ class TradingAnalysisService:
     def _last_trade_date(self, frame: pd.DataFrame) -> date:
         return frame["trade_date"].max().date()
 
-    def _instrument_name(self, frame: pd.DataFrame) -> str | None:
-        values = [item for item in frame["instrument_name"].dropna().tolist() if item]
+    def _stock_name(self, frame: pd.DataFrame) -> str | None:
+        values = [item for item in frame["stock_name"].dropna().tolist() if item]
         return str(values[0]) if values else None
 
     def _drawdown_duration(self, drawdown: pd.Series) -> int:
@@ -827,3 +827,4 @@ class TradingAnalysisService:
             return not pd.isna(value)
         except TypeError:
             return True
+

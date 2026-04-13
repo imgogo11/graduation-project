@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -42,7 +42,7 @@ class ImportStatsRead(BaseModel):
     completed_runs: int
     failed_runs: int
     total_records: int
-    active_datasets: int
+    available_datasets: int
     monthly_imports: list[ImportMonthlyStatRead]
     owner_summaries: list[ImportOwnerSummaryRead]
 
@@ -52,9 +52,9 @@ class DeleteImportRunResponse(BaseModel):
     status: str
 
 
-class TradingInstrumentRead(BaseModel):
-    instrument_code: str
-    instrument_name: str | None
+class TradingStockRead(BaseModel):
+    stock_code: str
+    stock_name: str | None
     first_trade_date: date | None
     last_trade_date: date | None
     record_count: int
@@ -65,8 +65,8 @@ class TradingRecordRead(BaseModel):
 
     id: int
     import_run_id: int
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     trade_date: date
     open: Decimal
     high: Decimal
@@ -83,7 +83,7 @@ class TradingRangeMaxMatchRead(BaseModel):
 
 class TradingRangeMaxAmountRead(BaseModel):
     import_run_id: int
-    instrument_code: str
+    stock_code: str
     start_date: date
     end_date: date
     max_amount: Decimal
@@ -92,7 +92,7 @@ class TradingRangeMaxAmountRead(BaseModel):
 
 class TradingRangeKthVolumeRead(BaseModel):
     import_run_id: int
-    instrument_code: str
+    stock_code: str
     start_date: date
     end_date: date
     k: int
@@ -104,8 +104,8 @@ class TradingRangeKthVolumeRead(BaseModel):
 
 
 class TradingJointAnomalyRowRead(BaseModel):
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     trade_date: date
     daily_return: float
     return_z20: float
@@ -129,15 +129,15 @@ class AlgoIndexStatusRead(BaseModel):
     build_started_at: datetime | None
     build_completed_at: datetime | None
     build_duration_ms: int | None
-    instrument_count: int | None
+    stock_count: int | None
     event_count: int | None
     reuse_count: int
     last_error: str | None
 
 
 class TradingRiskRadarEventRead(BaseModel):
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     trade_date: date
     daily_return: float
     return_z20: float
@@ -150,9 +150,9 @@ class TradingRiskRadarEventRead(BaseModel):
     cause_label: str
 
 
-class TradingInstrumentRiskProfileRead(BaseModel):
-    instrument_code: str
-    instrument_name: str | None
+class TradingStockRiskProfileRead(BaseModel):
+    stock_code: str
+    stock_name: str | None
     event_count: int
     medium_count: int
     high_count: int
@@ -167,7 +167,7 @@ class TradingInstrumentRiskProfileRead(BaseModel):
 class TradingRiskRadarCalendarDayRead(BaseModel):
     trade_date: date
     event_count: int
-    impacted_instrument_count: int
+    impacted_stock_count: int
     medium_count: int
     high_count: int
     critical_count: int
@@ -179,11 +179,11 @@ class TradingRiskRadarOverviewRead(BaseModel):
     lookback_window: int
     generated_at: datetime | None
     total_events: int
-    impacted_instrument_count: int
+    impacted_stock_count: int
     medium_count: int
     high_count: int
     critical_count: int
-    top_instruments: list[TradingInstrumentRiskProfileRead]
+    top_stocks: list[TradingStockRiskProfileRead]
     busiest_dates: list[TradingRiskRadarCalendarDayRead]
 
 
@@ -192,9 +192,9 @@ class TradingRiskRadarEventListRead(BaseModel):
     rows: list[TradingRiskRadarEventRead]
 
 
-class TradingRiskRadarInstrumentListRead(BaseModel):
+class TradingRiskRadarStockListRead(BaseModel):
     import_run_id: int
-    rows: list[TradingInstrumentRiskProfileRead]
+    rows: list[TradingStockRiskProfileRead]
 
 
 class TradingRiskRadarCalendarRead(BaseModel):
@@ -242,12 +242,12 @@ class TradingRiskRadarEventContextRead(BaseModel):
 
 class TradingSummaryRead(BaseModel):
     import_run_id: int
-    instrument_code: str | None
-    instrument_name: str | None
+    stock_code: str | None
+    stock_name: str | None
     start_date: date
     end_date: date
     record_count: int
-    instrument_count: int
+    stock_count: int
     high_price: float
     low_price: float
     average_close: float
@@ -260,8 +260,8 @@ class TradingSummaryRead(BaseModel):
 
 class TradingQualityReportRead(BaseModel):
     import_run_id: int
-    instrument_code: str | None
-    instrument_name: str | None
+    stock_code: str | None
+    stock_name: str | None
     start_date: date
     end_date: date
     record_count: int
@@ -300,8 +300,8 @@ class TradingIndicatorPointRead(BaseModel):
 
 class TradingIndicatorSeriesRead(BaseModel):
     import_run_id: int
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     start_date: date
     end_date: date
     points: list[TradingIndicatorPointRead]
@@ -309,8 +309,8 @@ class TradingIndicatorSeriesRead(BaseModel):
 
 class TradingRiskMetricsRead(BaseModel):
     import_run_id: int
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     start_date: date
     end_date: date
     record_count: int
@@ -336,16 +336,16 @@ class TradingAnomalyRead(BaseModel):
 
 class TradingAnomalyReportRead(BaseModel):
     import_run_id: int
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     start_date: date
     end_date: date
     anomalies: list[TradingAnomalyRead]
 
 
 class TradingCrossSectionRowRead(BaseModel):
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     start_date: date
     end_date: date
     record_count: int
@@ -369,28 +369,28 @@ class TradingCorrelationMatrixRead(BaseModel):
     import_run_id: int
     start_date: date
     end_date: date
-    instrument_codes: list[str]
+    stock_codes: list[str]
     matrix: list[list[float | None]]
 
 
 class TradingComparisonScopeRead(BaseModel):
     import_run_id: int
-    instrument_code: str | None
-    instrument_name: str | None
+    stock_code: str | None
+    stock_name: str | None
     requested_start_date: date | None
     requested_end_date: date | None
     actual_start_date: date
     actual_end_date: date
     record_count: int
-    instrument_count: int
+    stock_count: int
     total_volume: float
     total_amount: float | None
 
 
-class TradingInstrumentOverlapRead(BaseModel):
-    shared_instruments: list[str]
-    base_only_instruments: list[str]
-    target_only_instruments: list[str]
+class TradingStockOverlapRead(BaseModel):
+    shared_stocks: list[str]
+    base_only_stocks: list[str]
+    target_only_stocks: list[str]
 
 
 class TradingRecordOverlapRead(BaseModel):
@@ -421,7 +421,7 @@ class TradingMismatchSummaryRead(BaseModel):
 
 
 class TradingMismatchSampleRead(BaseModel):
-    instrument_code: str
+    stock_code: str
     trade_date: date
     mismatched_fields: list[str]
     base_values: TradingComparisonValueRead
@@ -431,7 +431,7 @@ class TradingMismatchSampleRead(BaseModel):
 class TradingScopeComparisonRead(BaseModel):
     base_scope: TradingComparisonScopeRead
     target_scope: TradingComparisonScopeRead
-    instrument_overlap: TradingInstrumentOverlapRead
+    stock_overlap: TradingStockOverlapRead
     record_overlap: TradingRecordOverlapRead
     mismatch_summary: TradingMismatchSummaryRead
     mismatch_samples: list[TradingMismatchSampleRead]
@@ -442,8 +442,8 @@ class TradingRunComparisonRead(BaseModel):
     target_run_id: int
     base_record_count: int
     target_record_count: int
-    base_instrument_count: int
-    target_instrument_count: int
+    base_stock_count: int
+    target_stock_count: int
     base_total_volume: float
     target_total_volume: float
     base_total_amount: float | None
@@ -452,6 +452,8 @@ class TradingRunComparisonRead(BaseModel):
     base_end_date: date
     target_start_date: date
     target_end_date: date
-    shared_instruments: list[str]
-    added_instruments: list[str]
-    removed_instruments: list[str]
+    shared_stocks: list[str]
+    added_stocks: list[str]
+    removed_stocks: list[str]
+
+

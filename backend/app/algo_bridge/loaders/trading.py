@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
@@ -17,7 +17,7 @@ SIGNAL_SCALE = Decimal("1000000")
 @dataclass(frozen=True, slots=True)
 class TradingAmountSeries:
     import_run_id: int
-    instrument_code: str
+    stock_code: str
     trade_dates: list[date]
     amounts_scaled: list[int]
 
@@ -25,7 +25,7 @@ class TradingAmountSeries:
 @dataclass(frozen=True, slots=True)
 class TradingVolumeSeries:
     import_run_id: int
-    instrument_code: str
+    stock_code: str
     trade_dates: list[date]
     volumes_scaled: list[int]
 
@@ -33,8 +33,8 @@ class TradingVolumeSeries:
 @dataclass(frozen=True, slots=True)
 class TradingJointAnomalyEvent:
     import_run_id: int
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     trade_date: date
     daily_return: float
     return_z20: float
@@ -46,8 +46,8 @@ class TradingJointAnomalyEvent:
 @dataclass(frozen=True, slots=True)
 class TradingRiskRadarEvent:
     import_run_id: int
-    instrument_code: str
-    instrument_name: str | None
+    stock_code: str
+    stock_name: str | None
     trade_date: date
     daily_return: float
     return_z20: float
@@ -81,14 +81,14 @@ def scale_signal_metric(metric_value: float) -> int:
 def build_trading_amount_series(
     *,
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     rows: Sequence[tuple[date, Decimal]],
 ) -> TradingAmountSeries:
     trade_dates = [trade_date for trade_date, _ in rows]
     amounts_scaled = [scale_amount(amount) for _, amount in rows]
     return TradingAmountSeries(
         import_run_id=import_run_id,
-        instrument_code=instrument_code,
+        stock_code=stock_code,
         trade_dates=trade_dates,
         amounts_scaled=amounts_scaled,
     )
@@ -97,14 +97,14 @@ def build_trading_amount_series(
 def build_trading_volume_series(
     *,
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     rows: Sequence[tuple[date, Decimal]],
 ) -> TradingVolumeSeries:
     trade_dates = [trade_date for trade_date, _ in rows]
     volumes_scaled = [scale_volume(volume) for _, volume in rows]
     return TradingVolumeSeries(
         import_run_id=import_run_id,
-        instrument_code=instrument_code,
+        stock_code=stock_code,
         trade_dates=trade_dates,
         volumes_scaled=volumes_scaled,
     )
@@ -122,19 +122,19 @@ def build_trading_joint_anomaly_events(
     frame = pd.DataFrame(
         [
             {
-                "instrument_code": instrument_code,
-                "instrument_name": instrument_name,
+                "stock_code": stock_code,
+                "stock_name": stock_name,
                 "trade_date": pd.Timestamp(trade_date),
                 "close": float(close_value),
                 "volume": float(volume_value),
             }
-            for instrument_code, instrument_name, trade_date, close_value, volume_value in rows
+            for stock_code, stock_name, trade_date, close_value, volume_value in rows
         ]
     )
-    frame = frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+    frame = frame.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
     event_frames: list[pd.DataFrame] = []
-    for instrument_code, group in frame.groupby("instrument_code", sort=True):
+    for stock_code, group in frame.groupby("stock_code", sort=True):
         enriched = group.sort_values("trade_date").reset_index(drop=True).copy()
         enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
         enriched["previous_return_std20"] = (
@@ -170,7 +170,7 @@ def build_trading_joint_anomaly_events(
         if valid_rows.empty:
             continue
 
-        valid_rows["instrument_code"] = instrument_code
+        valid_rows["stock_code"] = stock_code
         event_frames.append(valid_rows)
 
     if not event_frames:
@@ -178,15 +178,15 @@ def build_trading_joint_anomaly_events(
 
     combined = (
         pd.concat(event_frames, ignore_index=True)
-        .sort_values(["trade_date", "instrument_code"])
+        .sort_values(["trade_date", "stock_code"])
         .reset_index(drop=True)
     )
 
     return [
         TradingJointAnomalyEvent(
             import_run_id=import_run_id,
-            instrument_code=str(row.instrument_code),
-            instrument_name=str(row.instrument_name) if pd.notna(row.instrument_name) and row.instrument_name else None,
+            stock_code=str(row.stock_code),
+            stock_name=str(row.stock_name) if pd.notna(row.stock_name) and row.stock_name else None,
             trade_date=row.trade_date.date(),
             daily_return=float(row.daily_return),
             return_z20=float(row.return_z20),
@@ -210,8 +210,8 @@ def build_trading_risk_radar_events(
     frame = pd.DataFrame(
         [
             {
-                "instrument_code": instrument_code,
-                "instrument_name": instrument_name,
+                "stock_code": stock_code,
+                "stock_name": stock_name,
                 "trade_date": pd.Timestamp(trade_date),
                 "open": float(open_value),
                 "high": float(high_value),
@@ -220,13 +220,13 @@ def build_trading_risk_radar_events(
                 "volume": float(volume_value),
                 "amount": float(amount_value) if amount_value is not None else math.nan,
             }
-            for instrument_code, instrument_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
+            for stock_code, stock_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
         ]
     )
-    frame = frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+    frame = frame.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
     event_frames: list[pd.DataFrame] = []
-    for instrument_code, group in frame.groupby("instrument_code", sort=True):
+    for stock_code, group in frame.groupby("stock_code", sort=True):
         enriched = group.sort_values("trade_date").reset_index(drop=True).copy()
         enriched["amplitude"] = (enriched["high"] - enriched["low"]) / enriched["open"].replace(0.0, pd.NA)
         enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
@@ -274,7 +274,7 @@ def build_trading_risk_radar_events(
         if valid_rows.empty:
             continue
 
-        valid_rows["instrument_code"] = instrument_code
+        valid_rows["stock_code"] = stock_code
         event_frames.append(valid_rows)
 
     if not event_frames:
@@ -282,15 +282,15 @@ def build_trading_risk_radar_events(
 
     combined = (
         pd.concat(event_frames, ignore_index=True)
-        .sort_values(["trade_date", "instrument_code"])
+        .sort_values(["trade_date", "stock_code"])
         .reset_index(drop=True)
     )
 
     return [
         TradingRiskRadarEvent(
             import_run_id=import_run_id,
-            instrument_code=str(row.instrument_code),
-            instrument_name=str(row.instrument_name) if pd.notna(row.instrument_name) and row.instrument_name else None,
+            stock_code=str(row.stock_code),
+            stock_name=str(row.stock_name) if pd.notna(row.stock_name) and row.stock_name else None,
             trade_date=row.trade_date.date(),
             daily_return=float(row.daily_return),
             return_z20=float(row.return_z20),
@@ -302,3 +302,4 @@ def build_trading_risk_radar_events(
         )
         for row in combined.itertuples(index=False)
     ]
+

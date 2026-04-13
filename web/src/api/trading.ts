@@ -1,6 +1,6 @@
-import { getJson } from "@/api/http";
+﻿import { getJson } from "@/api/http";
 import type {
-  TradingInstrumentRead,
+  TradingStockRead,
   TradingRangeKthVolumeRead,
   TradingRangeMaxAmountRead,
   TradingRecordRead,
@@ -9,7 +9,7 @@ import type {
 
 export interface ListTradingRecordsParams {
   import_run_id: number;
-  instrument_code?: string;
+  stock_code?: string;
   start_date?: string;
   end_date?: string;
   limit?: number;
@@ -17,22 +17,22 @@ export interface ListTradingRecordsParams {
 
 export interface RangeMaxAmountParams {
   import_run_id: number;
-  instrument_code: string;
+  stock_code: string;
   start_date: string;
   end_date: string;
 }
 
 export interface RangeKthVolumeParams {
   import_run_id: number;
-  instrument_code: string;
+  stock_code: string;
   start_date: string;
   end_date: string;
   k: number;
   method?: "persistent_segment_tree" | "t_digest";
 }
 
-export function fetchTradingInstruments(importRunId: number) {
-  return getJson<TradingInstrumentRead[]>("/api/trading/instruments", {
+export function fetchTradingStocks(importRunId: number) {
+  return getJson<TradingStockRead[]>("/api/trading/stocks", {
     import_run_id: importRunId,
   });
 }
@@ -48,3 +48,5 @@ export function fetchTradingRangeMaxAmount(params: RangeMaxAmountParams) {
 export function fetchTradingRangeKthVolume(params: RangeKthVolumeParams) {
   return getJson<TradingRangeKthVolumeRead>("/api/algo/trading/range-kth-volume", params);
 }
+
+

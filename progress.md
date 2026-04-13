@@ -1,6 +1,6 @@
-# 项目进度
+﻿# 项目进度
 
-更新时间：2026-04-10
+更新时间：2026-04-13
 
 ## 当前项目定位
 
@@ -10,7 +10,7 @@
 
 当前真实业务链路为：
 
-`用户注册/登录 -> 上传 CSV/XLSX 交易文件 -> 生成导入批次 / manifest / artifact / trading_records -> 按权限查询批次与标的 -> 执行摘要 / 质量 / 指标 / 风险 / 异常 / 横截面 / 相关性 / 范围对比分析 -> 调用 C++ / Python 混合算法接口完成区间最大成交额、区间第 K 大成交量与联合异常排序`
+`用户注册/登录 -> 上传 CSV/XLSX 交易文件 -> 生成导入批次 / manifest / artifact / trading_records -> 按权限查询批次与股票 -> 执行摘要 / 质量 / 指标 / 风险 / 异常 / 横截面 / 相关性 / 范围对比分析 -> 调用 C++ / Python 混合算法接口完成区间最大成交额、区间第 K 大成交量与联合异常排序`
 
 已经退出主链、只剩历史痕迹或文档痕迹的旧方向包括：
 
@@ -65,13 +65,13 @@
 
 ```text
 graduation-project/
-├─ frontend/                         Vue 前端工程，已完成交易页与分析页联调
+├─ web/                              Vue Web 前端工程，已重构为三页工作流
 │  ├─ src/
 │  │  ├─ api/                        前端 API 封装（auth / imports / health / trading / analysis）
 │  │  ├─ components/                 AppShell、统计卡片、空状态、图表面板等组件
-│  │  ├─ pages/                      Login / Register / Overview / Trading / Analysis 页面
+│  │  ├─ pages/                      Login / Register / Overview / Analysis Center / Algo Radar 页面
 │  │  ├─ router/                     前端路由与登录守卫
-│  │  ├─ stores/                     auth / runtime 状态管理
+│  │  ├─ stores/                     auth / runtime / datasetContext 状态管理
 │  │  ├─ utils/                      格式化与错误信息处理
 │  │  ├─ App.vue
 │  │  └─ main.ts
@@ -87,8 +87,9 @@ graduation-project/
 │  │  │  └─ routes/
 │  │  │     ├─ health.py             健康检查
 │  │  │     ├─ auth.py               注册 / 登录 / 当前用户
+│  │  │     ├─ admin_users.py        管理员用户管理（编辑 / 启停 / 删除）
 │  │  │     ├─ imports.py            上传导入、导入历史、统计、软删除
-│  │  │     ├─ trading.py            标的列表与交易记录查询
+│  │  │     ├─ trading.py            股票列表与交易记录查询
 │  │  │     ├─ trading_analysis.py   摘要 / 质量 / 指标 / 风险 / 异常 / 横截面 / 相关性 / 范围对比
 │  │  │     └─ algo/trading.py       区间最大成交额 / 第 K 大成交量 / 联合异常排序
 │  │  ├─ core/
@@ -106,10 +107,12 @@ graduation-project/
 │  │  │  └─ trading.py
 │  │  ├─ schemas/
 │  │  │  ├─ auth.py
+│  │  │  ├─ admin_users.py
 │  │  │  ├─ api.py
 │  │  │  └─ trading.py
 │  │  ├─ services/
 │  │  │  ├─ auth.py
+│  │  │  ├─ admin_users.py
 │  │  │  ├─ imports.py
 │  │  │  ├─ trading_analysis.py
 │  │  │  └─ algo_trading.py
@@ -184,11 +187,16 @@ graduation-project/
 - 已完成 `/api/auth/register`
 - 已完成 `/api/auth/login`
 - 已完成 `/api/auth/me`
+- 已完成 `/api/admin/users`
+- 已完成 `/api/admin/users/{user_id}` 编辑
+- 已完成 `/api/admin/users/{user_id}/disable`
+- 已完成 `/api/admin/users/{user_id}/enable`
+- 已完成 `/api/admin/users/{user_id}` 删除（仅无业务数据用户）
 - 已完成 `/api/imports/runs`
 - 已完成 `/api/imports/stats`
 - 已完成 `/api/imports/trading`
 - 已完成 `/api/imports/runs/{run_id}` 软删除
-- 已完成 `/api/trading/instruments`
+- 已完成 `/api/trading/stocks`
 - 已完成 `/api/trading/records`
 - 已完成 `/api/trading/analysis/summary`
 - 已完成 `/api/trading/analysis/quality`
@@ -213,25 +221,28 @@ graduation-project/
 - 导入模板已固定为：
 
 ```text
-instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
+stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 ```
 
 - 导入后会记录批次、manifest、artifact 和交易明细
 - 普通用户只能看自己的导入批次
 - 管理员可以查看全站可见批次，并按用户过滤
-- 数据已经能够支撑单标的分析、多标的横截面分析、相关性分析与范围对比分析
+- 数据已经能够支撑单股票分析、多股票横截面分析、相关性分析与范围对比分析
 
 ### 4. 前端不是空壳，已经完成基础联调界面
 
 - 已完成登录页
 - 已完成注册页
 - 已完成系统总览页
-- 已完成交易上传与批次管理页
+- 已完成总览页中的上传、批次管理与当前数据集工作台
 - 已完成独立分析中心页
+- 已完成独立算法雷达页
 - 已完成登录守卫
 - 已完成本地 Token 持久化
 - 已完成导入历史、统计、图表、算法结果展示
-- 已完成摘要、质量、指标、风险、异常、横截面、相关性、范围对比与联合异常榜单展示
+- 已完成摘要、质量、指标、风险、异常、横截面、相关性、范围对比展示
+- 已完成区间算法、联合异常榜单与风险雷达结果整合展示
+- 已完成管理员用户管理面板（普通用户不可见）
 - 已接入 Element Plus 与 ECharts
 
 ### 5. 算法链路已真实接通
@@ -244,6 +255,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - 后端已能把数据库中的成交额序列送入 C++ 引擎做区间最大值查询
 - 后端已能把数据库中的成交量序列送入精确第 K 大查询，或走 `t_digest` 近似查询链路
 - 后端已能把联合异常事件序列送入 CDQ 历史支配计数算法，并返回排序结果
+- 风险雷达快照已兼容历史 `instrument_*` 字段，并可自动重写为 `stock_*`
 - 前端已经可以切换精确 / 近似算法方式，并展示命中日期或近似说明
 
 ## 部分完成或仍需补强
@@ -273,7 +285,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 
 - “frontend 还是空目录”
 - “项目仍以股票抓取和电商演示为主线”
-- “系统只有 Trading 页面，没有独立 Analysis 页面”
+- “系统仍保留 Trading 独立页面”
 - “后端只有基础导入接口，没有分析接口”
 - “算法模块只有占位结构”
 - “系统还没有用户注册登录”
@@ -285,22 +297,27 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 本轮在当前仓库中重新核对并验证了以下内容：
 
 - `backend/tests/test_database_pipeline.py` 通过，共 2 个测试
+- `backend/tests/test_admin_users.py` 通过，共 2 个测试
 - `backend/tests/test_algo_trading.py` 通过，共 14 个测试
 - `backend/tests/test_trading_analysis.py` 通过，共 3 个测试
+- `backend/tests/test_risk_radar.py` 通过，共 3 个测试
 - `backend/tests/test_tdigest_range_kth.py` 通过，共 2 个测试
-- `ctest --test-dir algo-module/build --output-on-failure` 通过，共 4 个测试
-- `frontend` 执行 `npm run build` 成功
+- `ctest --test-dir algo-module/build --output-on-failure` 通过，共 5 个测试
+- `web` 执行 `npm run build` 成功
 
 本轮额外观察到：
 
 - 前端构建存在 chunk 体积告警，但不影响当前构建成功
 - `algo_module_python_smoke` 已通过，说明 pybind11 绑定产物可被 Python 正常加载
 - `algo-module/build/` 已存在可用构建产物，C++ 单元测试与 Python smoke test 均可运行
+- 旧风险雷达快照中的 `instrument_*` 字段已能自动兼容，不再导致算法雷达页 500
 
 ## 一句话结论
 
 当前项目的真实状态已经是：
 
-`一个具备前端界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化、交易分析中心，以及 C++ / Python 混合算法能力（区间最大成交额、区间第 K 大成交量、联合异常排序）的全栈 MVP。`
+`一个具备 Web 界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化、三页式分析工作流，以及 C++ / Python 混合算法能力（区间最大成交额、区间第 K 大成交量、联合异常排序、风险雷达）的全栈 MVP。`
 
 它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“基于 C++ 算法模块的股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
+
+

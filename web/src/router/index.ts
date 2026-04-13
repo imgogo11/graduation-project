@@ -37,25 +37,17 @@ const router = createRouter({
       },
     },
     {
-      path: "/trading",
-      name: "trading",
-      component: () => import("@/pages/TradingPage.vue"),
+      path: "/analysis-center",
+      name: "analysis-center",
+      component: () => import("@/pages/AnalysisCenterPage.vue"),
       meta: {
         requiresAuth: true,
       },
     },
     {
-      path: "/analysis",
-      name: "analysis",
-      component: () => import("@/pages/AnalysisPage.vue"),
-      meta: {
-        requiresAuth: true,
-      },
-    },
-    {
-      path: "/risk-radar",
-      name: "risk-radar",
-      component: () => import("@/pages/RiskRadarPage.vue"),
+      path: "/algo-radar",
+      name: "algo-radar",
+      component: () => import("@/pages/AlgoRadarPage.vue"),
       meta: {
         requiresAuth: true,
       },

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import csv
@@ -49,13 +49,13 @@ SQL_BASELINE_QUERY = text(
     """
     WITH ordered AS (
         SELECT
-            instrument_code,
-            COALESCE(instrument_name, instrument_code) AS instrument_name,
+            stock_code,
+            COALESCE(stock_name, stock_code) AS stock_name,
             trade_date,
             close::double precision AS close_value,
             volume::double precision AS volume_value,
             lag(close::double precision) OVER (
-                PARTITION BY instrument_code
+                PARTITION BY stock_code
                 ORDER BY trade_date
             ) AS previous_close
         FROM trading_records
@@ -63,8 +63,8 @@ SQL_BASELINE_QUERY = text(
     ),
     signals AS (
         SELECT
-            instrument_code,
-            instrument_name,
+            stock_code,
+            stock_name,
             trade_date,
             (close_value - previous_close) / NULLIF(previous_close, 0.0) AS daily_return,
             volume_value
@@ -72,27 +72,27 @@ SQL_BASELINE_QUERY = text(
     ),
     windowed AS (
         SELECT
-            instrument_code,
-            instrument_name,
+            stock_code,
+            stock_name,
             trade_date,
             daily_return,
             stddev_pop(daily_return) OVER (
-                PARTITION BY instrument_code
+                PARTITION BY stock_code
                 ORDER BY trade_date
                 ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING
             ) AS previous_return_std20,
             count(daily_return) OVER (
-                PARTITION BY instrument_code
+                PARTITION BY stock_code
                 ORDER BY trade_date
                 ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING
             ) AS previous_return_count,
             avg(volume_value) OVER (
-                PARTITION BY instrument_code
+                PARTITION BY stock_code
                 ORDER BY trade_date
                 ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING
             ) AS previous_volume_mean20,
             count(volume_value) OVER (
-                PARTITION BY instrument_code
+                PARTITION BY stock_code
                 ORDER BY trade_date
                 ROWS BETWEEN 20 PRECEDING AND 1 PRECEDING
             ) AS previous_volume_count,
@@ -101,13 +101,13 @@ SQL_BASELINE_QUERY = text(
     ),
     events AS (
         SELECT
-            instrument_code,
-            instrument_name,
+            stock_code,
+            stock_name,
             trade_date,
             daily_return,
             abs(daily_return) / NULLIF(previous_return_std20, 0.0) AS return_z20,
             volume_value / NULLIF(previous_volume_mean20, 0.0) AS volume_ratio20,
-            row_number() OVER (ORDER BY trade_date, instrument_code) - 1 AS event_index
+            row_number() OVER (ORDER BY trade_date, stock_code) - 1 AS event_index
         FROM windowed
         WHERE daily_return IS NOT NULL
           AND previous_return_std20 IS NOT NULL
@@ -175,8 +175,8 @@ def build_synthetic_trading_rows(*, instruments: int, days: int, seed: int) -> l
     rows: list[dict[str, object]] = []
 
     for instrument_index in range(instruments):
-        instrument_code = f"SYM{instrument_index:05d}"
-        instrument_name = f"Synthetic {instrument_index:05d}"
+        stock_code = f"SYM{instrument_index:05d}"
+        stock_name = f"Synthetic {instrument_index:05d}"
         previous_close = 40.0 + (instrument_index % 200) * 0.35
         volume_base = 50_000.0 + instrument_index * 25.0
         move_pattern = [0.0030, -0.0012, 0.0024, 0.0008, -0.0016, 0.0018]
@@ -203,8 +203,8 @@ def build_synthetic_trading_rows(*, instruments: int, days: int, seed: int) -> l
             amount_value = close_value * volume_value
             rows.append(
                 {
-                    "instrument_code": instrument_code,
-                    "instrument_name": instrument_name,
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
                     "trade_date": trade_day,
                     "open": Decimal(f"{open_value:.4f}"),
                     "high": Decimal(f"{high_value:.4f}"),
@@ -444,3 +444,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

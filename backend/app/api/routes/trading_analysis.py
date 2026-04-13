@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 
@@ -58,7 +58,7 @@ def _handle_analysis_error(exc: Exception) -> HTTPException:
 @router.get("/summary", response_model=TradingSummaryRead)
 def get_trading_summary(
     import_run_id: int,
-    instrument_code: str | None = None,
+    stock_code: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     current_user: User = Depends(get_current_user),
@@ -69,7 +69,7 @@ def get_trading_summary(
         return service.build_summary(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -80,7 +80,7 @@ def get_trading_summary(
 @router.get("/quality", response_model=TradingQualityReportRead)
 def get_trading_quality_report(
     import_run_id: int,
-    instrument_code: str | None = None,
+    stock_code: str | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     current_user: User = Depends(get_current_user),
@@ -91,7 +91,7 @@ def get_trading_quality_report(
         return service.build_quality_report(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -102,7 +102,7 @@ def get_trading_quality_report(
 @router.get("/indicators", response_model=TradingIndicatorSeriesRead)
 def get_trading_indicators(
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     start_date: date | None = None,
     end_date: date | None = None,
     current_user: User = Depends(get_current_user),
@@ -113,7 +113,7 @@ def get_trading_indicators(
         return service.build_indicator_series(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -124,7 +124,7 @@ def get_trading_indicators(
 @router.get("/risk", response_model=TradingRiskMetricsRead)
 def get_trading_risk_metrics(
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     start_date: date | None = None,
     end_date: date | None = None,
     current_user: User = Depends(get_current_user),
@@ -135,7 +135,7 @@ def get_trading_risk_metrics(
         return service.build_risk_metrics(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -146,7 +146,7 @@ def get_trading_risk_metrics(
 @router.get("/anomalies", response_model=TradingAnomalyReportRead)
 def get_trading_anomalies(
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     start_date: date | None = None,
     end_date: date | None = None,
     current_user: User = Depends(get_current_user),
@@ -157,7 +157,7 @@ def get_trading_anomalies(
         return service.list_anomalies(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
         )
@@ -194,19 +194,19 @@ def get_trading_correlation_matrix(
     import_run_id: int,
     start_date: date | None = None,
     end_date: date | None = None,
-    instrument_codes: str | None = None,
+    stock_codes: str | None = None,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> TradingCorrelationMatrixRead:
     _ensure_run_visible(session, import_run_id=import_run_id, current_user=current_user)
-    selected_codes = [item.strip() for item in instrument_codes.split(",") if item.strip()] if instrument_codes else None
+    selected_codes = [item.strip() for item in stock_codes.split(",") if item.strip()] if stock_codes else None
     try:
         return service.build_correlation_matrix(
             session,
             import_run_id=import_run_id,
             start_date=start_date,
             end_date=end_date,
-            instrument_codes=selected_codes,
+            stock_codes=selected_codes,
         )
     except Exception as exc:  # noqa: BLE001
         raise _handle_analysis_error(exc) from exc
@@ -231,8 +231,8 @@ def compare_trading_runs(
 def compare_trading_scopes(
     base_run_id: int,
     target_run_id: int,
-    base_instrument_code: str | None = None,
-    target_instrument_code: str | None = None,
+    base_stock_code: str | None = None,
+    target_stock_code: str | None = None,
     base_start_date: date | None = None,
     base_end_date: date | None = None,
     target_start_date: date | None = None,
@@ -247,8 +247,8 @@ def compare_trading_scopes(
             session,
             base_run_id=base_run_id,
             target_run_id=target_run_id,
-            base_instrument_code=base_instrument_code,
-            target_instrument_code=target_instrument_code,
+            base_stock_code=base_stock_code,
+            target_stock_code=target_stock_code,
             base_start_date=base_start_date,
             base_end_date=base_end_date,
             target_start_date=target_start_date,
@@ -256,3 +256,4 @@ def compare_trading_scopes(
         )
     except Exception as exc:  # noqa: BLE001
         raise _handle_analysis_error(exc) from exc
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -100,14 +100,14 @@ class ImportArtifactRecord(Base):
 class TradingRecord(Base):
     __tablename__ = "trading_records"
     __table_args__ = (
-        UniqueConstraint("import_run_id", "instrument_code", "trade_date", name="uq_trading_records_run_code_date"),
-        Index("ix_trading_records_run_code_date", "import_run_id", "instrument_code", "trade_date"),
+        UniqueConstraint("import_run_id", "stock_code", "trade_date", name="uq_trading_records_run_stock_code_date"),
+        Index("ix_trading_records_run_stock_code_date", "import_run_id", "stock_code", "trade_date"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     import_run_id: Mapped[int] = mapped_column(ForeignKey("import_runs.id", ondelete="CASCADE"), index=True)
-    instrument_code: Mapped[str] = mapped_column(String(64), index=True)
-    instrument_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stock_code: Mapped[str] = mapped_column(String(64), index=True)
+    stock_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     open: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     high: Mapped[Decimal] = mapped_column(Numeric(18, 4))
@@ -115,3 +115,4 @@ class TradingRecord(Base):
     close: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     volume: Mapped[Decimal] = mapped_column(Numeric(20, 4))
     amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+

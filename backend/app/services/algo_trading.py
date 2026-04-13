@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from datetime import date
@@ -79,7 +79,7 @@ class TradingAlgoService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
         start_date: date,
         end_date: date,
     ) -> TradingRangeMaxAmountRead:
@@ -89,16 +89,16 @@ class TradingAlgoService:
         rows = TradingRepository.list_amount_series(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
         )
         if not rows:
             raise TradingAlgoQueryDataUnavailableError(
-                build_algo_data_unavailable_message(f"{instrument_code} 缺少成交额列或成交额数据")
+                build_algo_data_unavailable_message(f"{stock_code} 缺少成交额列或成交额数据")
             )
 
         series = build_trading_amount_series(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             rows=rows,
         )
         left, right_exclusive = self._resolve_interval(
@@ -114,7 +114,7 @@ class TradingAlgoService:
 
         return TradingRangeMaxAmountRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
             max_amount=unscale_amount(result.max_value_scaled),
@@ -126,7 +126,7 @@ class TradingAlgoService:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
         start_date: date,
         end_date: date,
         k: int,
@@ -144,16 +144,16 @@ class TradingAlgoService:
         rows = TradingRepository.list_volume_series(
             session,
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
         )
         if not rows:
             raise TradingAlgoQueryNotFoundError(
-                f"No volume series found for import_run_id={import_run_id} instrument_code={instrument_code}"
+                f"No volume series found for import_run_id={import_run_id} stock_code={stock_code}"
             )
 
         series = build_trading_volume_series(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             rows=rows,
         )
         left, right_exclusive = self._resolve_interval(
@@ -182,7 +182,7 @@ class TradingAlgoService:
 
         return TradingRangeKthVolumeRead(
             import_run_id=import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             start_date=start_date,
             end_date=end_date,
             k=k,
@@ -247,8 +247,8 @@ class TradingAlgoService:
 
             ranked_rows.append(
                 TradingJointAnomalyRowRead(
-                    instrument_code=event.instrument_code,
-                    instrument_name=event.instrument_name,
+                    stock_code=event.stock_code,
+                    stock_name=event.stock_name,
                     trade_date=event.trade_date,
                     daily_return=round(event.daily_return, 6),
                     return_z20=round(event.return_z20, 6),
@@ -285,3 +285,4 @@ class TradingAlgoService:
         if joint_percentile >= 0.90:
             return "medium"
         return None
+

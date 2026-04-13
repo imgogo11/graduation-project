@@ -1,4 +1,4 @@
-export type NumericLike = string | number | null;
+﻿export type NumericLike = string | number | null;
 
 export interface HealthResponse {
   status: string;
@@ -20,6 +20,21 @@ export interface AuthTokenRead {
   access_token: string;
   token_type: string;
   user: UserRead;
+}
+
+export interface AdminManagedUserRead {
+  id: number;
+  username: string;
+  role: string;
+  is_active: boolean;
+  created_at: string;
+  last_login_at: string | null;
+  has_business_data: boolean;
+}
+
+export interface AdminManagedUserDeleteResponse {
+  id: number;
+  status: string;
 }
 
 export interface ImportRunRead {
@@ -58,7 +73,7 @@ export interface ImportStatsRead {
   completed_runs: number;
   failed_runs: number;
   total_records: number;
-  active_datasets: number;
+  available_datasets: number;
   monthly_imports: ImportMonthlyStatRead[];
   owner_summaries: ImportOwnerSummaryRead[];
 }
@@ -68,9 +83,9 @@ export interface DeleteImportRunResponse {
   status: string;
 }
 
-export interface TradingInstrumentRead {
-  instrument_code: string;
-  instrument_name: string | null;
+export interface TradingStockRead {
+  stock_code: string;
+  stock_name: string | null;
   first_trade_date: string | null;
   last_trade_date: string | null;
   record_count: number;
@@ -79,8 +94,8 @@ export interface TradingInstrumentRead {
 export interface TradingRecordRead {
   id: number;
   import_run_id: number;
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   trade_date: string;
   open: NumericLike;
   high: NumericLike;
@@ -97,7 +112,7 @@ export interface TradingRangeMaxMatchRead {
 
 export interface TradingRangeMaxAmountRead {
   import_run_id: number;
-  instrument_code: string;
+  stock_code: string;
   start_date: string;
   end_date: string;
   max_amount: NumericLike;
@@ -106,7 +121,7 @@ export interface TradingRangeMaxAmountRead {
 
 export interface TradingRangeKthVolumeRead {
   import_run_id: number;
-  instrument_code: string;
+  stock_code: string;
   start_date: string;
   end_date: string;
   k: number;
@@ -118,8 +133,8 @@ export interface TradingRangeKthVolumeRead {
 }
 
 export interface TradingJointAnomalyRowRead {
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   trade_date: string;
   daily_return: NumericLike;
   return_z20: NumericLike;
@@ -143,15 +158,15 @@ export interface AlgoIndexStatusRead {
   build_started_at: string | null;
   build_completed_at: string | null;
   build_duration_ms: number | null;
-  instrument_count: number | null;
+  stock_count: number | null;
   event_count: number | null;
   reuse_count: number;
   last_error: string | null;
 }
 
 export interface TradingRiskRadarEventRead {
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   trade_date: string;
   daily_return: NumericLike;
   return_z20: NumericLike;
@@ -164,9 +179,9 @@ export interface TradingRiskRadarEventRead {
   cause_label: string;
 }
 
-export interface TradingInstrumentRiskProfileRead {
-  instrument_code: string;
-  instrument_name: string | null;
+export interface TradingStockRiskProfileRead {
+  stock_code: string;
+  stock_name: string | null;
   event_count: number;
   medium_count: number;
   high_count: number;
@@ -181,7 +196,7 @@ export interface TradingInstrumentRiskProfileRead {
 export interface TradingRiskRadarCalendarDayRead {
   trade_date: string;
   event_count: number;
-  impacted_instrument_count: number;
+  impacted_stock_count: number;
   medium_count: number;
   high_count: number;
   critical_count: number;
@@ -193,11 +208,11 @@ export interface TradingRiskRadarOverviewRead {
   lookback_window: number;
   generated_at: string | null;
   total_events: number;
-  impacted_instrument_count: number;
+  impacted_stock_count: number;
   medium_count: number;
   high_count: number;
   critical_count: number;
-  top_instruments: TradingInstrumentRiskProfileRead[];
+  top_stocks: TradingStockRiskProfileRead[];
   busiest_dates: TradingRiskRadarCalendarDayRead[];
 }
 
@@ -206,9 +221,9 @@ export interface TradingRiskRadarEventListRead {
   rows: TradingRiskRadarEventRead[];
 }
 
-export interface TradingRiskRadarInstrumentListRead {
+export interface TradingRiskRadarStockListRead {
   import_run_id: number;
-  rows: TradingInstrumentRiskProfileRead[];
+  rows: TradingStockRiskProfileRead[];
 }
 
 export interface TradingRiskRadarCalendarRead {
@@ -256,12 +271,12 @@ export interface TradingRiskRadarEventContextRead {
 
 export interface TradingSummaryRead {
   import_run_id: number;
-  instrument_code: string | null;
-  instrument_name: string | null;
+  stock_code: string | null;
+  stock_name: string | null;
   start_date: string;
   end_date: string;
   record_count: number;
-  instrument_count: number;
+  stock_count: number;
   high_price: NumericLike;
   low_price: NumericLike;
   average_close: NumericLike;
@@ -274,8 +289,8 @@ export interface TradingSummaryRead {
 
 export interface TradingQualityReportRead {
   import_run_id: number;
-  instrument_code: string | null;
-  instrument_name: string | null;
+  stock_code: string | null;
+  stock_name: string | null;
   start_date: string;
   end_date: string;
   record_count: number;
@@ -314,8 +329,8 @@ export interface TradingIndicatorPointRead {
 
 export interface TradingIndicatorSeriesRead {
   import_run_id: number;
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   start_date: string;
   end_date: string;
   points: TradingIndicatorPointRead[];
@@ -323,8 +338,8 @@ export interface TradingIndicatorSeriesRead {
 
 export interface TradingRiskMetricsRead {
   import_run_id: number;
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   start_date: string;
   end_date: string;
   record_count: number;
@@ -350,16 +365,16 @@ export interface TradingAnomalyRead {
 
 export interface TradingAnomalyReportRead {
   import_run_id: number;
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   start_date: string;
   end_date: string;
   anomalies: TradingAnomalyRead[];
 }
 
 export interface TradingCrossSectionRowRead {
-  instrument_code: string;
-  instrument_name: string | null;
+  stock_code: string;
+  stock_name: string | null;
   start_date: string;
   end_date: string;
   record_count: number;
@@ -383,28 +398,28 @@ export interface TradingCorrelationMatrixRead {
   import_run_id: number;
   start_date: string;
   end_date: string;
-  instrument_codes: string[];
+  stock_codes: string[];
   matrix: Array<Array<number | null>>;
 }
 
 export interface TradingComparisonScopeRead {
   import_run_id: number;
-  instrument_code: string | null;
-  instrument_name: string | null;
+  stock_code: string | null;
+  stock_name: string | null;
   requested_start_date: string | null;
   requested_end_date: string | null;
   actual_start_date: string;
   actual_end_date: string;
   record_count: number;
-  instrument_count: number;
+  stock_count: number;
   total_volume: NumericLike;
   total_amount: NumericLike;
 }
 
-export interface TradingInstrumentOverlapRead {
-  shared_instruments: string[];
-  base_only_instruments: string[];
-  target_only_instruments: string[];
+export interface TradingStockOverlapRead {
+  shared_stocks: string[];
+  base_only_stocks: string[];
+  target_only_stocks: string[];
 }
 
 export interface TradingRecordOverlapRead {
@@ -435,7 +450,7 @@ export interface TradingMismatchSummaryRead {
 }
 
 export interface TradingMismatchSampleRead {
-  instrument_code: string;
+  stock_code: string;
   trade_date: string;
   mismatched_fields: string[];
   base_values: TradingComparisonValueRead;
@@ -445,7 +460,7 @@ export interface TradingMismatchSampleRead {
 export interface TradingScopeComparisonRead {
   base_scope: TradingComparisonScopeRead;
   target_scope: TradingComparisonScopeRead;
-  instrument_overlap: TradingInstrumentOverlapRead;
+  stock_overlap: TradingStockOverlapRead;
   record_overlap: TradingRecordOverlapRead;
   mismatch_summary: TradingMismatchSummaryRead;
   mismatch_samples: TradingMismatchSampleRead[];
@@ -456,8 +471,8 @@ export interface TradingRunComparisonRead {
   target_run_id: number;
   base_record_count: number;
   target_record_count: number;
-  base_instrument_count: number;
-  target_instrument_count: number;
+  base_stock_count: number;
+  target_stock_count: number;
   base_total_volume: NumericLike;
   target_total_volume: NumericLike;
   base_total_amount: NumericLike;
@@ -466,7 +481,10 @@ export interface TradingRunComparisonRead {
   base_end_date: string;
   target_start_date: string;
   target_end_date: string;
-  shared_instruments: string[];
-  added_instruments: string[];
-  removed_instruments: string[];
+  shared_stocks: string[];
+  added_stocks: string[];
+  removed_stocks: string[];
 }
+
+
+

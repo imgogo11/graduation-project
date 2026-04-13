@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from pathlib import Path
@@ -27,8 +27,8 @@ def build_algo_frame() -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "instrument_code": "600519.SH",
-                "instrument_name": "Kweichow Moutai",
+                "stock_code": "600519.SH",
+                "stock_name": "Kweichow Moutai",
                 "trade_date": "2026-01-02",
                 "open": 520.15,
                 "high": 525.80,
@@ -38,8 +38,8 @@ def build_algo_frame() -> pd.DataFrame:
                 "amount": 6711040,
             },
             {
-                "instrument_code": "600519.SH",
-                "instrument_name": "Kweichow Moutai",
+                "stock_code": "600519.SH",
+                "stock_name": "Kweichow Moutai",
                 "trade_date": "2026-01-03",
                 "open": 524.30,
                 "high": 529.20,
@@ -49,8 +49,8 @@ def build_algo_frame() -> pd.DataFrame:
                 "amount": 6936544,
             },
             {
-                "instrument_code": "600519.SH",
-                "instrument_name": "Kweichow Moutai",
+                "stock_code": "600519.SH",
+                "stock_name": "Kweichow Moutai",
                 "trade_date": "2026-01-04",
                 "open": 528.70,
                 "high": 531.00,
@@ -60,8 +60,8 @@ def build_algo_frame() -> pd.DataFrame:
                 "amount": 6936544,
             },
             {
-                "instrument_code": "600519.SH",
-                "instrument_name": "Kweichow Moutai",
+                "stock_code": "600519.SH",
+                "stock_name": "Kweichow Moutai",
                 "trade_date": "2026-01-05",
                 "open": 529.10,
                 "high": 530.40,
@@ -111,7 +111,7 @@ def build_joint_anomaly_frame() -> pd.DataFrame:
     }
 
     rows: list[dict[str, object]] = []
-    for instrument_code, config in configs.items():
+    for stock_code, config in configs.items():
         previous_close = float(config["base_close"])
         for index, trade_day in enumerate(dates):
             if index == 0:
@@ -128,8 +128,8 @@ def build_joint_anomaly_frame() -> pd.DataFrame:
 
             rows.append(
                 {
-                    "instrument_code": instrument_code,
-                    "instrument_name": str(config["name"]),
+                    "stock_code": stock_code,
+                    "stock_name": str(config["name"]),
                     "trade_date": trade_day.strftime("%Y-%m-%d"),
                     "open": round(open_value, 4),
                     "high": round(high_value, 4),
@@ -141,7 +141,7 @@ def build_joint_anomaly_frame() -> pd.DataFrame:
             )
             previous_close = close_value
 
-    return pd.DataFrame(rows).sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
 
 def build_expected_joint_anomaly_rows(
@@ -158,7 +158,7 @@ def build_expected_joint_anomaly_rows(
     working["volume"] = pd.to_numeric(working["volume"])
 
     events: list[dict[str, object]] = []
-    for instrument_code, group in working.groupby("instrument_code", sort=True):
+    for stock_code, group in working.groupby("stock_code", sort=True):
         enriched = group.sort_values("trade_date").reset_index(drop=True).copy()
         enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
         enriched["previous_return_std20"] = (
@@ -186,8 +186,8 @@ def build_expected_joint_anomaly_rows(
         for row in valid.itertuples(index=False):
             events.append(
                 {
-                    "instrument_code": str(instrument_code),
-                    "instrument_name": str(row.instrument_name) if row.instrument_name else None,
+                    "stock_code": str(stock_code),
+                    "stock_name": str(row.stock_name) if row.stock_name else None,
                     "trade_date": row.trade_date.date().isoformat(),
                     "daily_return": float(row.daily_return),
                     "return_z20": float(row.return_z20),
@@ -195,7 +195,7 @@ def build_expected_joint_anomaly_rows(
                 }
             )
 
-    events.sort(key=lambda item: (item["trade_date"], item["instrument_code"]))
+    events.sort(key=lambda item: (item["trade_date"], item["stock_code"]))
 
     def classify(percentile: float) -> str | None:
         if percentile >= 0.99:
@@ -304,7 +304,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
             },
@@ -313,7 +313,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["instrument_code"], "600519.SH")
+        self.assertEqual(body["stock_code"], "600519.SH")
         self.assertEqual(body["max_amount"], "6936544.0000")
         self.assertEqual([item["trade_date"] for item in body["matches"]], ["2026-01-03", "2026-01-04"])
         self.assertEqual([item["series_index"] for item in body["matches"]], [1, 2])
@@ -323,7 +323,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-05",
                 "end_date": "2026-01-02",
             },
@@ -336,7 +336,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2025-01-01",
                 "end_date": "2025-01-31",
             },
@@ -355,7 +355,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
             },
@@ -369,7 +369,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -379,7 +379,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["instrument_code"], "600519.SH")
+        self.assertEqual(body["stock_code"], "600519.SH")
         self.assertEqual(body["k"], 2)
         self.assertEqual(body["value"], "13120.0000")
         self.assertEqual(body["method"], "persistent_segment_tree")
@@ -392,7 +392,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 5,
@@ -406,7 +406,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -417,7 +417,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["instrument_code"], "600519.SH")
+        self.assertEqual(body["stock_code"], "600519.SH")
         self.assertEqual(body["k"], 2)
         self.assertEqual(body["value"], "13120.0000")
         self.assertEqual(body["method"], "t_digest")
@@ -431,7 +431,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 1,
@@ -446,7 +446,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 4,
@@ -462,7 +462,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-03",
                 "end_date": "2026-01-04",
                 "k": 1,
@@ -481,7 +481,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -521,8 +521,8 @@ class AlgoTradingRouteTests(unittest.TestCase):
         self.assertEqual(len(body["rows"]), len(expected_rows))
 
         for actual_row, expected_row in zip(body["rows"], expected_rows, strict=True):
-            self.assertEqual(actual_row["instrument_code"], expected_row["instrument_code"])
-            self.assertEqual(actual_row["instrument_name"], expected_row["instrument_name"])
+            self.assertEqual(actual_row["stock_code"], expected_row["stock_code"])
+            self.assertEqual(actual_row["stock_name"], expected_row["stock_name"])
             self.assertEqual(actual_row["trade_date"], expected_row["trade_date"])
             self.assertEqual(actual_row["severity"], expected_row["severity"])
             self.assertEqual(actual_row["historical_dominated_count"], expected_row["historical_dominated_count"])
@@ -564,7 +564,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 1,
@@ -577,7 +577,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 1,
@@ -595,7 +595,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -609,7 +609,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run["id"],
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
                 "k": 2,
@@ -646,7 +646,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
         self.assertEqual(allowed.json()["lookback_window"], 20)
 
     def test_failed_runs_are_hidden_from_algo_endpoints(self) -> None:
-        invalid_frame = build_algo_frame().drop(columns=["instrument_code"])
+        invalid_frame = build_algo_frame().drop(columns=["stock_code"])
 
         failed_response = self.client.post(
             "/api/imports/trading",
@@ -668,7 +668,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": failed_run_id,
-                "instrument_code": "600519.SH",
+                "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
             },
@@ -716,3 +716,4 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

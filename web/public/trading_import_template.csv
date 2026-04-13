@@ -1,4 +1,4 @@
-instrument_code,trade_date,open,high,low,close,volume,instrument_name,amount
+stock_code,trade_date,open,high,low,close,volume,stock_name,amount
 600519.SH,2026-01-02,1520.15,1535.80,1518.40,1534.30,12800,Kweichow Moutai,19639040
 600519.SH,2026-01-03,1534.30,1548.20,1529.50,1541.70,13120,Kweichow Moutai,20274816
 000858.SZ,2026-01-02,168.32,170.15,167.50,169.88,982,Wuliangye Yibin,166822.16

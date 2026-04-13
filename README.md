@@ -1,4 +1,4 @@
-# 基于 C++ 算法模块的股票交易数据管理与分析系统设计与实现（Stock Trading Data Management and Analysis System Based on C++ Algorithm Module）
+﻿# 基于 C++ 算法模块的股票交易数据管理与分析系统设计与实现（Stock Trading Data Management and Analysis System Based on C++ Algorithm Module）
 
 ## 项目简介
 
@@ -31,11 +31,11 @@
 ## 支持的上传模板
 
 ```text
-instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
+stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 ```
 
 - 支持文件格式：`.csv`、`.xlsx`
-- 当前系统仅处理股票交易数据，上传模板标准列头为 `instrument_code`、`trade_date`、`open`、`high`、`low`、`close`、`volume`，可选列为 `instrument_name`、`amount`
+- 当前系统仅处理股票交易数据，上传模板标准列头为 `stock_code`、`trade_date`、`open`、`high`、`low`、`close`、`volume`，可选列为 `stock_name`、`amount`
 - 数据集名称在“同一用户 + 未删除上传批次”范围内必须唯一；删除后名称可再次使用
 
 ## 当前主要能力
@@ -46,17 +46,19 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 - 按用户隔离的导入批次管理
 - 导入历史、导入统计、软删除
 - 原始交易记录查询
+- 管理员普通用户管理：用户名编辑、密码重置、启用/禁用、无业务数据用户删除
+- Web 前端已重构为 `Overview / Analysis Center / Algo Radar` 三页结构
 
 ### 数据分析
 
-- 标的级交易摘要
+- 股票级交易摘要
 - 数据质量分析
 - 技术指标分析：MA / EMA / MACD / RSI / Bollinger / ATR
 - 风险指标分析：区间收益率、波动率、最大回撤、上涨日占比等
 - 异常检测：放量异常、收益率异常、振幅异常、突破前高/前低
-- 横截面分析：多标的排序
-- 相关性分析：当前批次内多标的收益率相关性矩阵
-- 范围对比分析：支持同批次/跨批次、同标的/多标的、不同日期范围的一致性校验
+- 横截面分析：多股票排序
+- 相关性分析：当前批次内多股票收益率相关性矩阵
+- 范围对比分析：支持同批次/跨批次、同股票/多股票、不同日期范围的一致性校验
 
 ### C++ 算法能力
 
@@ -77,7 +79,7 @@ instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
 ```powershell
 uv venv .venv --python 3.13
 uv sync
-cd frontend
+cd web
 npm install
 cd ..
 ```
@@ -86,7 +88,7 @@ cd ..
 
 ```powershell
 Copy-Item .env.template .env
-Copy-Item .\frontend\.env.template .\frontend\.env
+Copy-Item .\web\.env.template .\web\.env
 ```
 
 启动前请检查以下变量：
@@ -97,9 +99,9 @@ Copy-Item .\frontend\.env.template .\frontend\.env
 - `ADMIN_PASSWORD`
 - `UPLOAD_ROOT`
 - `POSTGRES_PORT`（默认 `15432`）
-- `frontend/.env` 中的 `VITE_BACKEND_TARGET`
-- `frontend/.env` 中的 `VITE_DEV_HOST`
-- `frontend/.env` 中的 `VITE_DEV_PORT`
+- `web/.env` 中的 `VITE_BACKEND_TARGET`
+- `web/.env` 中的 `VITE_DEV_HOST`
+- `web/.env` 中的 `VITE_DEV_PORT`
 
 ### 3. 启动 PostgreSQL 并执行迁移
 
@@ -123,11 +125,11 @@ docker compose -f deploy/docker-compose.yml up -d postgres
 前端：
 
 ```powershell
-cd frontend
+cd web
 npm run dev
 ```
 
-前端开发服务器默认运行在 `http://127.0.0.1:4173`。这里刻意避开了 `5173`，因为部分 Windows 环境会对该端口段做系统保留；如需局域网访问，可在 `frontend/.env` 中将 `VITE_DEV_HOST` 改为 `0.0.0.0`。
+前端开发服务器默认运行在 `http://127.0.0.1:4173`。这里刻意避开了 `5173`，因为部分 Windows 环境会对该端口段做系统保留；如需局域网访问，可在 `web/.env` 中将 `VITE_DEV_HOST` 改为 `0.0.0.0`。
 
 ## 主要接口
 
@@ -136,6 +138,11 @@ npm run dev
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/auth/me`
+- `GET /api/admin/users`
+- `PATCH /api/admin/users/{user_id}`
+- `POST /api/admin/users/{user_id}/disable`
+- `POST /api/admin/users/{user_id}/enable`
+- `DELETE /api/admin/users/{user_id}`
 - `GET /api/health`
 
 ### 导入与交易查询
@@ -144,7 +151,7 @@ npm run dev
 - `GET /api/imports/stats`
 - `POST /api/imports/trading`
 - `DELETE /api/imports/runs/{run_id}`
-- `GET /api/trading/instruments`
+- `GET /api/trading/stocks`
 - `GET /api/trading/records`
 
 ### 交易分析接口
@@ -167,7 +174,7 @@ npm run dev
 其中 `GET /api/algo/trading/range-kth-volume` 支持查询参数：
 
 - `import_run_id`
-- `instrument_code`
+- `stock_code`
 - `start_date`
 - `end_date`
 - `k`
@@ -189,7 +196,7 @@ npm run dev
 从命令行导入本地交易文件：
 
 ```powershell
-.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\frontend\public\trading_import_template.csv --dataset-name demo_run
+.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\web\public\trading_import_template.csv --dataset-name demo_run
 ```
 
 导出兼容依赖：
@@ -204,14 +211,16 @@ npm run dev
 
 ```powershell
 .\.venv\Scripts\python.exe backend/tests/test_database_pipeline.py
+.\\.venv\\Scripts\\python.exe backend/tests/test_admin_users.py
 .\.venv\Scripts\python.exe backend/tests/test_algo_trading.py
 .\.venv\Scripts\python.exe backend/tests/test_trading_analysis.py
+.\\.venv\\Scripts\\python.exe backend/tests/test_risk_radar.py
 ```
 
 前端：
 
 ```powershell
-cd frontend
+cd web
 npm run build
 ```
 
@@ -255,3 +264,5 @@ $env:BENCHMARK_IMPORT_RUN_ID = "1"
 $env:BENCHMARK_SAMPLE = "smoke"
 python benchmarks/run_all.py --suite platform_quality --profile smoke
 ```
+
+

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from io import BytesIO
 import math
@@ -55,8 +55,8 @@ def _build_rows(
 
         rows.append(
             {
-                "instrument_code": code,
-                "instrument_name": name,
+                "stock_code": code,
+                "stock_name": name,
                 "trade_date": trade_day.strftime("%Y-%m-%d"),
                 "open": round(open_value, 4),
                 "high": round(high_value, 4),
@@ -158,7 +158,7 @@ def build_primary_frame() -> pd.DataFrame:
     rows.extend(_build_rows("BETA", "Beta Asset", dates, beta_close, volume_base=900, skip_indices={7}))
     rows.extend(_build_rows("GAMMA", "Gamma Asset", dates, gamma_close, volume_base=700))
     frame = pd.DataFrame(rows)
-    return frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+    return frame.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
 
 def build_compare_frame() -> pd.DataFrame:
@@ -171,7 +171,7 @@ def build_compare_frame() -> pd.DataFrame:
     rows.extend(_build_rows("GAMMA", "Gamma Asset", dates, gamma_close, volume_base=750))
     rows.extend(_build_rows("DELTA", "Delta Asset", dates, delta_close, volume_base=680))
     frame = pd.DataFrame(rows)
-    return frame.sort_values(["instrument_code", "trade_date"]).reset_index(drop=True)
+    return frame.sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
 
 def build_primary_frame_without_amount() -> pd.DataFrame:
@@ -179,7 +179,7 @@ def build_primary_frame_without_amount() -> pd.DataFrame:
 
 
 def build_expected_alpha_metrics(frame: pd.DataFrame) -> dict[str, float]:
-    alpha = frame.loc[frame["instrument_code"] == "ALPHA"].copy()
+    alpha = frame.loc[frame["stock_code"] == "ALPHA"].copy()
     alpha["close"] = pd.to_numeric(alpha["close"])
     alpha["high"] = pd.to_numeric(alpha["high"])
     alpha["low"] = pd.to_numeric(alpha["low"])
@@ -291,7 +291,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         indicator_response = self.client.get(
             "/api/trading/analysis/indicators",
-            params={"import_run_id": run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(indicator_response.status_code, 200, indicator_response.text)
@@ -304,7 +304,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         risk_response = self.client.get(
             "/api/trading/analysis/risk",
-            params={"import_run_id": run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(risk_response.status_code, 200, risk_response.text)
@@ -316,7 +316,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         anomaly_response = self.client.get(
             "/api/trading/analysis/anomalies",
-            params={"import_run_id": run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(anomaly_response.status_code, 200, anomaly_response.text)
@@ -344,7 +344,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         quality_response = self.client.get(
             "/api/trading/analysis/quality",
-            params={"import_run_id": primary_run["id"], "instrument_code": "BETA"},
+            params={"import_run_id": primary_run["id"], "stock_code": "BETA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(quality_response.status_code, 200, quality_response.text)
@@ -361,16 +361,16 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertEqual(cross_section_response.status_code, 200, cross_section_response.text)
         cross_rows = cross_section_response.json()["rows"]
         self.assertEqual(len(cross_rows), 2)
-        self.assertEqual(cross_rows[0]["instrument_code"], "ALPHA")
+        self.assertEqual(cross_rows[0]["stock_code"], "ALPHA")
 
         correlation_response = self.client.get(
             "/api/trading/analysis/correlation",
-            params={"import_run_id": primary_run["id"], "instrument_codes": "ALPHA,BETA,GAMMA"},
+            params={"import_run_id": primary_run["id"], "stock_codes": "ALPHA,BETA,GAMMA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(correlation_response.status_code, 200, correlation_response.text)
         correlation_body = correlation_response.json()
-        self.assertEqual(correlation_body["instrument_codes"], ["ALPHA", "BETA", "GAMMA"])
+        self.assertEqual(correlation_body["stock_codes"], ["ALPHA", "BETA", "GAMMA"])
         self.assertEqual(len(correlation_body["matrix"]), 3)
         for index in range(3):
             self.assertTrue(math.isclose(float(correlation_body["matrix"][index][index]), 1.0, abs_tol=1e-6))
@@ -382,9 +382,9 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         )
         self.assertEqual(compare_response.status_code, 200, compare_response.text)
         compare_body = compare_response.json()
-        self.assertEqual(compare_body["shared_instruments"], ["ALPHA", "GAMMA"])
-        self.assertEqual(compare_body["added_instruments"], ["DELTA"])
-        self.assertEqual(compare_body["removed_instruments"], ["BETA"])
+        self.assertEqual(compare_body["shared_stocks"], ["ALPHA", "GAMMA"])
+        self.assertEqual(compare_body["added_stocks"], ["DELTA"])
+        self.assertEqual(compare_body["removed_stocks"], ["BETA"])
 
     def test_compare_scopes_supports_same_run_partial_and_identical_ranges(self) -> None:
         token = self._register_and_login("scope_same_run_user", "password123")
@@ -399,8 +399,8 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             params={
                 "base_run_id": primary_run["id"],
                 "target_run_id": primary_run["id"],
-                "base_instrument_code": "ALPHA",
-                "target_instrument_code": "ALPHA",
+                "base_stock_code": "ALPHA",
+                "target_stock_code": "ALPHA",
                 "base_start_date": "2026-01-01",
                 "base_end_date": "2026-01-10",
                 "target_start_date": "2026-01-05",
@@ -418,8 +418,8 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             params={
                 "base_run_id": primary_run["id"],
                 "target_run_id": primary_run["id"],
-                "base_instrument_code": "ALPHA",
-                "target_instrument_code": "ALPHA",
+                "base_stock_code": "ALPHA",
+                "target_stock_code": "ALPHA",
             },
             headers=self._auth_headers(token),
         )
@@ -432,7 +432,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
     def test_compare_scopes_reports_mismatch_samples_for_shared_records(self) -> None:
         token = self._register_and_login("scope_mismatch_user", "password123")
         primary_frame = build_primary_frame()
-        mismatch_frame = primary_frame.loc[lambda frame: frame["instrument_code"] == "ALPHA"].copy().reset_index(drop=True)
+        mismatch_frame = primary_frame.loc[lambda frame: frame["stock_code"] == "ALPHA"].copy().reset_index(drop=True)
         mismatch_frame.loc[mismatch_frame["trade_date"] == "2026-01-10", "close"] = 150.0
         mismatch_frame.loc[mismatch_frame["trade_date"] == "2026-01-10", "volume"] = 9999.0
         mismatch_frame.loc[mismatch_frame["trade_date"] == "2026-01-10", "amount"] = 150.0 * 9999.0
@@ -453,8 +453,8 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             params={
                 "base_run_id": primary_run["id"],
                 "target_run_id": mismatch_run["id"],
-                "base_instrument_code": "ALPHA",
-                "target_instrument_code": "ALPHA",
+                "base_stock_code": "ALPHA",
+                "target_stock_code": "ALPHA",
             },
             headers=self._auth_headers(token),
         )
@@ -482,7 +482,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             dataset_name="scope_zero_overlap_dates",
             frame=build_compare_frame(),
         )
-        no_shared_instrument_frame = build_compare_frame().loc[lambda frame: frame["instrument_code"] == "DELTA"].reset_index(drop=True)
+        no_shared_instrument_frame = build_compare_frame().loc[lambda frame: frame["stock_code"] == "DELTA"].reset_index(drop=True)
         no_shared_instrument_run = self._upload_csv(
             token=token,
             dataset_name="scope_zero_overlap_instruments",
@@ -494,14 +494,14 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             params={
                 "base_run_id": primary_run["id"],
                 "target_run_id": compare_run["id"],
-                "base_instrument_code": "ALPHA",
-                "target_instrument_code": "ALPHA",
+                "base_stock_code": "ALPHA",
+                "target_stock_code": "ALPHA",
             },
             headers=self._auth_headers(token),
         )
         self.assertEqual(no_shared_dates_response.status_code, 200, no_shared_dates_response.text)
         no_shared_dates_body = no_shared_dates_response.json()
-        self.assertEqual(no_shared_dates_body["instrument_overlap"]["shared_instruments"], ["ALPHA"])
+        self.assertEqual(no_shared_dates_body["stock_overlap"]["shared_stocks"], ["ALPHA"])
         self.assertEqual(no_shared_dates_body["record_overlap"]["shared_record_count"], 0)
         self.assertEqual(no_shared_dates_body["mismatch_summary"]["mismatched_record_count"], 0)
 
@@ -515,9 +515,9 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         )
         self.assertEqual(no_shared_instrument_response.status_code, 200, no_shared_instrument_response.text)
         no_shared_instrument_body = no_shared_instrument_response.json()
-        self.assertEqual(no_shared_instrument_body["instrument_overlap"]["shared_instruments"], [])
+        self.assertEqual(no_shared_instrument_body["stock_overlap"]["shared_stocks"], [])
         self.assertEqual(no_shared_instrument_body["record_overlap"]["shared_record_count"], 0)
-        self.assertEqual(no_shared_instrument_body["instrument_overlap"]["target_only_instruments"], ["DELTA"])
+        self.assertEqual(no_shared_instrument_body["stock_overlap"]["target_only_stocks"], ["DELTA"])
 
     def test_analysis_endpoints_respect_visibility(self) -> None:
         alice_token = self._register_and_login("alice_user", "password123")
@@ -532,18 +532,18 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         forbidden = self.client.get(
             "/api/trading/analysis/summary",
-            params={"import_run_id": run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(bob_token),
         )
         self.assertEqual(forbidden.status_code, 404)
 
         allowed = self.client.get(
             "/api/trading/analysis/summary",
-            params={"import_run_id": run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(admin_token),
         )
         self.assertEqual(allowed.status_code, 200, allowed.text)
-        self.assertEqual(allowed.json()["instrument_code"], "ALPHA")
+        self.assertEqual(allowed.json()["stock_code"], "ALPHA")
 
     def test_analysis_supports_runs_without_amount_and_reports_insufficient_panels(self) -> None:
         token = self._register_and_login("no_amount_user", "password123")
@@ -560,7 +560,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         summary_response = self.client.get(
             "/api/trading/analysis/summary",
-            params={"import_run_id": primary_run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": primary_run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(summary_response.status_code, 200, summary_response.text)
@@ -568,7 +568,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         quality_response = self.client.get(
             "/api/trading/analysis/quality",
-            params={"import_run_id": primary_run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": primary_run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(quality_response.status_code, 200, quality_response.text)
@@ -576,7 +576,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         indicator_response = self.client.get(
             "/api/trading/analysis/indicators",
-            params={"import_run_id": primary_run["id"], "instrument_code": "ALPHA"},
+            params={"import_run_id": primary_run["id"], "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(indicator_response.status_code, 200, indicator_response.text)
@@ -602,7 +602,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
     def test_correlation_reports_data_insufficient_for_single_instrument_runs(self) -> None:
         token = self._register_and_login("single_instrument_user", "password123")
-        single_instrument_frame = build_primary_frame().loc[lambda frame: frame["instrument_code"] == "ALPHA"].reset_index(drop=True)
+        single_instrument_frame = build_primary_frame().loc[lambda frame: frame["stock_code"] == "ALPHA"].reset_index(drop=True)
         run = self._upload_csv(
             token=token,
             dataset_name="single_instrument",
@@ -611,7 +611,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         response = self.client.get(
             "/api/trading/analysis/correlation",
-            params={"import_run_id": run["id"], "instrument_codes": "ALPHA"},
+            params={"import_run_id": run["id"], "stock_codes": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(response.status_code, 400, response.text)
@@ -619,7 +619,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
     def test_failed_runs_are_hidden_from_analysis_endpoints(self) -> None:
         token = self._register_and_login("failed_analysis_user", "password123")
-        invalid_frame = build_primary_frame().drop(columns=["instrument_code"])
+        invalid_frame = build_primary_frame().drop(columns=["stock_code"])
 
         failed_response = self.client.post(
             "/api/imports/trading",
@@ -639,7 +639,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
         response = self.client.get(
             "/api/trading/analysis/summary",
-            params={"import_run_id": failed_run_id, "instrument_code": "ALPHA"},
+            params={"import_run_id": failed_run_id, "stock_code": "ALPHA"},
             headers=self._auth_headers(token),
         )
         self.assertEqual(response.status_code, 404)
@@ -703,3 +703,4 @@ class TradingAnalysisRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

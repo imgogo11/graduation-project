@@ -10,10 +10,9 @@ const router = useRouter();
 const auth = useAuthStore();
 const runtime = useRuntimeStore();
 const navItems = [
-  { label: "Overview", to: "/overview", subtitle: "Health / Imports / Stats" },
-  { label: "Trading", to: "/trading", subtitle: "Upload / Charts / Algo" },
-  { label: "Analysis Center", to: "/analysis", subtitle: "Indicators / Risk / Quality" },
-  { label: "Risk Radar", to: "/risk-radar", subtitle: "3D Anomalies / Context / Profiles" },
+  { label: "Overview / 系统总览", to: "/overview", subtitle: "Health / Upload / Dataset" },
+  { label: "Analysis Center / 分析中心", to: "/analysis-center", subtitle: "Indicators / Risk / Quality" },
+  { label: "Algo Radar / 算法雷达", to: "/algo-radar", subtitle: "Range Query / Joint Anomaly / Radar" },
 ];
 
 function logout() {

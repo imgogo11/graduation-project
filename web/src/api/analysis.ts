@@ -1,4 +1,4 @@
-import { getJson } from "@/api/http";
+﻿import { getJson } from "@/api/http";
 import type {
   TradingAnomalyReportRead,
   TradingCorrelationMatrixRead,
@@ -15,7 +15,7 @@ import type {
 
 export interface AnalysisScopeParams {
   import_run_id: number;
-  instrument_code?: string;
+  stock_code?: string;
   start_date?: string;
   end_date?: string;
 }
@@ -32,7 +32,7 @@ export interface CorrelationParams {
   import_run_id: number;
   start_date?: string;
   end_date?: string;
-  instrument_codes?: string;
+  stock_codes?: string;
 }
 
 export interface CompareRunsParams {
@@ -43,8 +43,8 @@ export interface CompareRunsParams {
 export interface CompareScopesParams {
   base_run_id: number;
   target_run_id: number;
-  base_instrument_code?: string;
-  target_instrument_code?: string;
+  base_stock_code?: string;
+  target_stock_code?: string;
   base_start_date?: string;
   base_end_date?: string;
   target_start_date?: string;
@@ -66,15 +66,15 @@ export function fetchTradingQuality(params: AnalysisScopeParams) {
   return getJson<TradingQualityReportRead>("/api/trading/analysis/quality", params);
 }
 
-export function fetchTradingIndicators(params: AnalysisScopeParams & { instrument_code: string }) {
+export function fetchTradingIndicators(params: AnalysisScopeParams & { stock_code: string }) {
   return getJson<TradingIndicatorSeriesRead>("/api/trading/analysis/indicators", params);
 }
 
-export function fetchTradingRisk(params: AnalysisScopeParams & { instrument_code: string }) {
+export function fetchTradingRisk(params: AnalysisScopeParams & { stock_code: string }) {
   return getJson<TradingRiskMetricsRead>("/api/trading/analysis/risk", params);
 }
 
-export function fetchTradingAnomalies(params: AnalysisScopeParams & { instrument_code: string }) {
+export function fetchTradingAnomalies(params: AnalysisScopeParams & { stock_code: string }) {
   return getJson<TradingAnomalyReportRead>("/api/trading/analysis/anomalies", params);
 }
 
@@ -97,3 +97,4 @@ export function fetchTradingRunComparison(params: CompareRunsParams) {
 export function fetchTradingScopeComparison(params: CompareScopesParams) {
   return getJson<TradingScopeComparisonRead>("/api/trading/analysis/compare-scopes", params);
 }
+

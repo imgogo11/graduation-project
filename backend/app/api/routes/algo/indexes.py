@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_admin_user, get_current_user
 from app.core.database import get_db_session
 from app.models import User
 from app.repositories.imports import ImportRunRepository
@@ -40,7 +40,7 @@ def get_algo_index_status(
 @router.post("/rebuild", response_model=AlgoIndexStatusRead)
 def rebuild_algo_index(
     import_run_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_admin_user),
     session: Session = Depends(get_db_session),
 ) -> AlgoIndexStatusRead:
     _ensure_run_visible(session, import_run_id=import_run_id, current_user=current_user)

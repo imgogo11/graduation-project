@@ -49,8 +49,8 @@ CORE_PACKAGES = [
 
 BACKEND_ENV_FILE = REPO_ROOT / ".env"
 BACKEND_ENV_TEMPLATE = REPO_ROOT / ".env.template"
-FRONTEND_ENV_FILE = REPO_ROOT / "frontend" / ".env"
-FRONTEND_ENV_TEMPLATE = REPO_ROOT / "frontend" / ".env.template"
+FRONTEND_ENV_FILE = REPO_ROOT / "web" / ".env"
+FRONTEND_ENV_TEMPLATE = REPO_ROOT / "web" / ".env.template"
 
 
 def _run_command(command: list[str]) -> tuple[bool, str]:
@@ -191,10 +191,10 @@ def main() -> int:
     print()
     print("Notes:")
     print("- version-description.txt stores the local machine/version checklist.")
-    print("- Use .env.template and frontend/.env.template as runtime templates.")
+    print("- Use .env.template and web/.env.template as runtime templates.")
     print("- Python 3.13 is the default project interpreter for the .venv workflow.")
     print("- The project now keeps only the user-upload trading workflow.")
-    print("- Default local ports are PostgreSQL 15432 and frontend dev server 4173.")
+    print("- Default local ports are PostgreSQL 15432 and web dev server 4173.")
 
     if args.strict and failures:
         return 1

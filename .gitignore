@@ -14,9 +14,9 @@ C++算法引擎与数据库协同优势详述.md
 .uv-cache/
 /build/
 algo-module/build/
-/frontend/node_modules/
-/frontend/dist/
-/frontend/.vite/
+/web/node_modules/
+/web/dist/
+/web/.vite/
 
 backend/.tmp-tests/
 __pycache__/

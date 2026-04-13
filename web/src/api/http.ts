@@ -95,6 +95,16 @@ export async function postJson<T>(path: string, body?: object) {
   });
 }
 
+export async function patchJson<T>(path: string, body?: object) {
+  return requestJson<T>(path, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
 export async function postForm<T>(path: string, formData: FormData) {
   const response = await fetch(buildUrl(path), {
     method: "POST",

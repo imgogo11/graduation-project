@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from collections import defaultdict
 
 
 revision = "20260411_02"
@@ -10,6 +11,7 @@ branch_labels = None
 depends_on = None
 
 
+MAX_DATASET_NAME_LENGTH = 128
 ACTIVE_UPLOAD_FILTER = (
     "owner_user_id IS NOT NULL "
     "AND deleted_at IS NULL "
@@ -48,6 +50,68 @@ def _active_duplicate_dataset_names(bind: sa.Connection) -> list[sa.Row]:
     )
 
 
+def _active_upload_rows(bind: sa.Connection) -> list[sa.RowMapping]:
+    return list(
+        bind.execute(
+            sa.text(
+                f"""
+                SELECT id, owner_user_id, dataset_name, started_at
+                FROM import_runs
+                WHERE {ACTIVE_UPLOAD_FILTER}
+                ORDER BY owner_user_id, dataset_name, started_at DESC, id DESC
+                """
+            )
+        ).mappings()
+    )
+
+
+def _build_renamed_dataset_name(dataset_name: str, run_id: int, existing_names: set[str]) -> str:
+    sequence = 0
+    while True:
+        suffix = f"__legacy_{run_id}" if sequence == 0 else f"__legacy_{run_id}_{sequence}"
+        available_length = MAX_DATASET_NAME_LENGTH - len(suffix)
+        normalized_base = dataset_name[:available_length] if available_length > 0 else ""
+        candidate = f"{normalized_base}{suffix}"
+        if candidate not in existing_names:
+            return candidate
+        sequence += 1
+
+
+def _rename_active_duplicate_dataset_names(bind: sa.Connection) -> None:
+    rows = _active_upload_rows(bind)
+    rows_by_group: dict[tuple[int, str], list[sa.RowMapping]] = defaultdict(list)
+    existing_names_by_owner: dict[int, set[str]] = defaultdict(set)
+
+    for row in rows:
+        owner_user_id = int(row["owner_user_id"])
+        dataset_name = str(row["dataset_name"])
+        rows_by_group[(owner_user_id, dataset_name)].append(row)
+        existing_names_by_owner[owner_user_id].add(dataset_name)
+
+    for (owner_user_id, _dataset_name), grouped_rows in rows_by_group.items():
+        if len(grouped_rows) <= 1:
+            continue
+
+        owner_existing_names = existing_names_by_owner[owner_user_id]
+        for row in grouped_rows[1:]:
+            original_name = str(row["dataset_name"])
+            new_name = _build_renamed_dataset_name(original_name, int(row["id"]), owner_existing_names)
+            bind.execute(
+                sa.text(
+                    """
+                    UPDATE import_runs
+                    SET dataset_name = :dataset_name
+                    WHERE id = :run_id
+                    """
+                ),
+                {
+                    "dataset_name": new_name,
+                    "run_id": int(row["id"]),
+                },
+            )
+            owner_existing_names.add(new_name)
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
@@ -56,14 +120,7 @@ def upgrade() -> None:
 
     duplicates = _active_duplicate_dataset_names(bind)
     if duplicates:
-        preview = ", ".join(
-            f"owner_user_id={row.owner_user_id} dataset_name={row.dataset_name!r} count={row.row_count}"
-            for row in duplicates[:5]
-        )
-        raise RuntimeError(
-            "Cannot enforce active dataset-name uniqueness until duplicate upload runs are cleaned up: "
-            f"{preview}"
-        )
+        _rename_active_duplicate_dataset_names(bind)
 
     index_names = _index_names(inspector, "import_runs")
     if "ix_import_runs_asset_class" in index_names:

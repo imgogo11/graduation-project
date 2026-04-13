@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import threading
 from typing import Any
+from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.core.database import get_session_factory
@@ -23,7 +24,7 @@ from app.models import ImportRun, utc_now
 from app.repositories.trading import TradingRepository
 from app.schemas.trading import (
     AlgoIndexStatusRead,
-    TradingInstrumentRiskProfileRead,
+    TradingStockRiskProfileRead,
     TradingRiskRadarCalendarDayRead,
     TradingRiskRadarEventRead,
     TradingRiskRadarOverviewRead,
@@ -31,6 +32,7 @@ from app.schemas.trading import (
 
 
 ALGO_INDEX_METADATA_KEY = "algo_index"
+RISK_RADAR_SNAPSHOT_VERSION = "stock-v1"
 ALGO_INDEX_STATUS_PENDING = "pending"
 ALGO_INDEX_STATUS_BUILDING = "building"
 ALGO_INDEX_STATUS_READY = "ready"
@@ -46,9 +48,9 @@ class AlgoIndexNotReadyError(RuntimeError):
 
 
 @dataclass(slots=True)
-class InstrumentAlgoIndex:
-    instrument_code: str
-    instrument_name: str | None
+class StockAlgoIndex:
+    stock_code: str
+    stock_name: str | None
     trade_dates: list[date]
     close_values: list[float]
     volume_values: list[float]
@@ -72,9 +74,9 @@ class RiskRadarIndexCache:
     lookback_window: int
     events: list[TradingRiskRadarEventRead]
     overview: TradingRiskRadarOverviewRead
-    instrument_profiles: list[TradingInstrumentRiskProfileRead]
+    stock_profiles: list[TradingStockRiskProfileRead]
     calendar_rows: list[TradingRiskRadarCalendarDayRead]
-    instruments: dict[str, InstrumentAlgoIndex]
+    stocks: dict[str, StockAlgoIndex]
     reuse_count: int = 0
 
 
@@ -93,7 +95,7 @@ class AlgoIndexManager:
                 "build_started_at": None,
                 "build_completed_at": None,
                 "build_duration_ms": None,
-                "instrument_count": None,
+                "stock_count": None,
                 "event_count": None,
                 "last_error": None,
             },
@@ -151,10 +153,22 @@ class AlgoIndexManager:
                     raise AlgoIndexNotReadyError("算法索引重建失败，请稍后重试。")
                 rebuilt.reuse_count += 1
                 return rebuilt
-        cache = self._load_cache_from_snapshot(import_run_id, snapshot_path)
+        try:
+            cache, needs_rewrite = self._load_cache_from_snapshot(import_run_id, snapshot_path)
+        except (ValidationError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            snapshot_path.unlink(missing_ok=True)
+            self.build_for_run(import_run_id, force=True)
+            with self._lock:
+                rebuilt = self._cache.get(import_run_id)
+                if rebuilt is None:
+                    raise AlgoIndexNotReadyError("算法索引重建失败，请稍后重试。")
+                rebuilt.reuse_count += 1
+                return rebuilt
         with self._lock:
             cache.reuse_count += 1
             self._cache[import_run_id] = cache
+            if needs_rewrite:
+                self._write_snapshot(cache)
             return cache
 
     def build_for_run(self, import_run_id: int, force: bool = False) -> None:
@@ -185,7 +199,7 @@ class AlgoIndexManager:
                     "status": ALGO_INDEX_STATUS_READY,
                     "build_completed_at": finished_at.isoformat(),
                     "build_duration_ms": duration_ms,
-                    "instrument_count": len(cache.instruments),
+                    "stock_count": len(cache.stocks),
                     "event_count": len(cache.events),
                     "last_error": None,
                 },
@@ -213,7 +227,7 @@ class AlgoIndexManager:
         if not rows:
             raise ValueError(f"No trading rows found for import_run_id={import_run_id}")
 
-        instruments = self._build_instrument_indexes(rows)
+        stocks = self._build_stock_indexes(rows)
         events = build_trading_risk_radar_events(
             import_run_id=import_run_id,
             rows=rows,
@@ -238,8 +252,8 @@ class AlgoIndexManager:
                 continue
             event_rows.append(
                 TradingRiskRadarEventRead(
-                    instrument_code=event.instrument_code,
-                    instrument_name=event.instrument_name,
+                    stock_code=event.stock_code,
+                    stock_name=event.stock_name,
                     trade_date=event.trade_date,
                     daily_return=round(event.daily_return, 6),
                     return_z20=round(event.return_z20, 6),
@@ -267,7 +281,7 @@ class AlgoIndexManager:
             ),
             reverse=True,
         )
-        instrument_profiles = self._build_instrument_profiles(event_rows)
+        stock_profiles = self._build_stock_profiles(event_rows)
         calendar_rows = self._build_calendar_rows(event_rows)
         generated_at = utc_now()
         overview = TradingRiskRadarOverviewRead(
@@ -275,11 +289,11 @@ class AlgoIndexManager:
             lookback_window=RISK_RADAR_LOOKBACK_WINDOW,
             generated_at=generated_at,
             total_events=len(event_rows),
-            impacted_instrument_count=len(instrument_profiles),
+            impacted_stock_count=len(stock_profiles),
             medium_count=sum(1 for item in event_rows if item.severity == "medium"),
             high_count=sum(1 for item in event_rows if item.severity == "high"),
             critical_count=sum(1 for item in event_rows if item.severity == "critical"),
-            top_instruments=instrument_profiles[:RISK_RADAR_OVERVIEW_LIMIT],
+            top_stocks=stock_profiles[:RISK_RADAR_OVERVIEW_LIMIT],
             busiest_dates=sorted(
                 calendar_rows,
                 key=lambda item: (item.event_count, item.critical_count, item.max_joint_percentile, item.trade_date.toordinal()),
@@ -292,19 +306,19 @@ class AlgoIndexManager:
             lookback_window=RISK_RADAR_LOOKBACK_WINDOW,
             events=event_rows,
             overview=overview,
-            instrument_profiles=instrument_profiles,
+            stock_profiles=stock_profiles,
             calendar_rows=calendar_rows,
-            instruments=instruments,
+            stocks=stocks,
         )
 
-    def _build_instrument_indexes(self, rows: list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]) -> dict[str, InstrumentAlgoIndex]:
+    def _build_stock_indexes(self, rows: list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]) -> dict[str, StockAlgoIndex]:
         module = load_algo_module()
         grouped: dict[str, list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]] = {}
         for row in rows:
             grouped.setdefault(row[0], []).append(row)
 
-        indexes: dict[str, InstrumentAlgoIndex] = {}
-        for instrument_code, instrument_rows in grouped.items():
+        indexes: dict[str, StockAlgoIndex] = {}
+        for stock_code, stock_rows in grouped.items():
             trade_dates: list[date] = []
             close_values: list[float] = []
             volume_values: list[float] = []
@@ -314,9 +328,9 @@ class AlgoIndexManager:
             amplitudes_scaled: list[int] = []
             amounts_scaled: list[int] = []
             has_amount_data = False
-            instrument_name = instrument_rows[0][1]
+            stock_name = stock_rows[0][1]
 
-            for _, _, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in instrument_rows:
+            for _, _, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in stock_rows:
                 open_number = float(open_value)
                 high_number = float(high_value)
                 low_number = float(low_value)
@@ -338,9 +352,9 @@ class AlgoIndexManager:
                     amount_values.append(float(amount_value))
                     amounts_scaled.append(scale_amount(amount_value))
 
-            indexes[instrument_code] = InstrumentAlgoIndex(
-                instrument_code=instrument_code,
-                instrument_name=instrument_name,
+            indexes[stock_code] = StockAlgoIndex(
+                stock_code=stock_code,
+                stock_name=stock_name,
                 trade_dates=trade_dates,
                 close_values=close_values,
                 volume_values=volume_values,
@@ -358,24 +372,24 @@ class AlgoIndexManager:
             )
         return indexes
 
-    def _build_instrument_profiles(self, events: list[TradingRiskRadarEventRead]) -> list[TradingInstrumentRiskProfileRead]:
+    def _build_stock_profiles(self, events: list[TradingRiskRadarEventRead]) -> list[TradingStockRiskProfileRead]:
         grouped: dict[str, list[TradingRiskRadarEventRead]] = {}
         for event in events:
-            grouped.setdefault(event.instrument_code, []).append(event)
-        rows: list[TradingInstrumentRiskProfileRead] = []
-        for instrument_code, instrument_events in grouped.items():
-            top_event = max(instrument_events, key=lambda item: (item.joint_percentile, item.trade_date.toordinal()))
-            latest_event = max(instrument_events, key=lambda item: item.trade_date.toordinal())
+            grouped.setdefault(event.stock_code, []).append(event)
+        rows: list[TradingStockRiskProfileRead] = []
+        for stock_code, stock_events in grouped.items():
+            top_event = max(stock_events, key=lambda item: (item.joint_percentile, item.trade_date.toordinal()))
+            latest_event = max(stock_events, key=lambda item: item.trade_date.toordinal())
             rows.append(
-                TradingInstrumentRiskProfileRead(
-                    instrument_code=instrument_code,
-                    instrument_name=top_event.instrument_name,
-                    event_count=len(instrument_events),
-                    medium_count=sum(1 for item in instrument_events if item.severity == "medium"),
-                    high_count=sum(1 for item in instrument_events if item.severity == "high"),
-                    critical_count=sum(1 for item in instrument_events if item.severity == "critical"),
-                    max_joint_percentile=round(max(item.joint_percentile for item in instrument_events), 6),
-                    avg_joint_percentile=round(sum(item.joint_percentile for item in instrument_events) / float(len(instrument_events)), 6),
+                TradingStockRiskProfileRead(
+                    stock_code=stock_code,
+                    stock_name=top_event.stock_name,
+                    event_count=len(stock_events),
+                    medium_count=sum(1 for item in stock_events if item.severity == "medium"),
+                    high_count=sum(1 for item in stock_events if item.severity == "high"),
+                    critical_count=sum(1 for item in stock_events if item.severity == "critical"),
+                    max_joint_percentile=round(max(item.joint_percentile for item in stock_events), 6),
+                    avg_joint_percentile=round(sum(item.joint_percentile for item in stock_events) / float(len(stock_events)), 6),
                     latest_event_date=latest_event.trade_date,
                     top_event_date=top_event.trade_date,
                     top_event_severity=top_event.severity,
@@ -397,7 +411,7 @@ class AlgoIndexManager:
                 TradingRiskRadarCalendarDayRead(
                     trade_date=trade_day,
                     event_count=len(day_events),
-                    impacted_instrument_count=len({item.instrument_code for item in day_events}),
+                    impacted_stock_count=len({item.stock_code for item in day_events}),
                     medium_count=sum(1 for item in day_events if item.severity == "medium"),
                     high_count=sum(1 for item in day_events if item.severity == "high"),
                     critical_count=sum(1 for item in day_events if item.severity == "critical"),
@@ -410,15 +424,17 @@ class AlgoIndexManager:
         snapshot_dir = self._snapshot_dir(cache.import_run_id)
         snapshot_dir.mkdir(parents=True, exist_ok=True)
         payload = {
+            "schema_version": RISK_RADAR_SNAPSHOT_VERSION,
             "overview": cache.overview.model_dump(mode="json"),
             "events": [item.model_dump(mode="json") for item in cache.events],
-            "instrument_profiles": [item.model_dump(mode="json") for item in cache.instrument_profiles],
+            "stock_profiles": [item.model_dump(mode="json") for item in cache.stock_profiles],
             "calendar_rows": [item.model_dump(mode="json") for item in cache.calendar_rows],
         }
         self._snapshot_path(cache.import_run_id).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    def _load_cache_from_snapshot(self, import_run_id: int, snapshot_path: Path) -> RiskRadarIndexCache:
+    def _load_cache_from_snapshot(self, import_run_id: int, snapshot_path: Path) -> tuple[RiskRadarIndexCache, bool]:
         payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        payload, needs_rewrite = self._normalize_snapshot_payload(payload)
         session = get_session_factory()()
         try:
             rows = TradingRepository.list_risk_radar_rows(session, import_run_id=import_run_id)
@@ -430,10 +446,48 @@ class AlgoIndexManager:
             lookback_window=int(payload["overview"]["lookback_window"]),
             events=[TradingRiskRadarEventRead.model_validate(item) for item in payload["events"]],
             overview=TradingRiskRadarOverviewRead.model_validate(payload["overview"]),
-            instrument_profiles=[TradingInstrumentRiskProfileRead.model_validate(item) for item in payload["instrument_profiles"]],
+            stock_profiles=[TradingStockRiskProfileRead.model_validate(item) for item in payload["stock_profiles"]],
             calendar_rows=[TradingRiskRadarCalendarDayRead.model_validate(item) for item in payload["calendar_rows"]],
-            instruments=self._build_instrument_indexes(rows),
-        )
+            stocks=self._build_stock_indexes(rows),
+        ), needs_rewrite
+
+    def _normalize_snapshot_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        needs_rewrite = payload.get("schema_version") != RISK_RADAR_SNAPSHOT_VERSION
+
+        normalized = dict(payload)
+        if "stock_profiles" not in normalized and "instrument_profiles" in normalized:
+            normalized["stock_profiles"] = normalized["instrument_profiles"]
+            needs_rewrite = True
+
+        normalized["overview"] = self._normalize_snapshot_object(normalized.get("overview", {}))
+        normalized["events"] = [self._normalize_snapshot_object(item) for item in normalized.get("events", [])]
+        normalized["stock_profiles"] = [
+            self._normalize_snapshot_object(item) for item in normalized.get("stock_profiles", [])
+        ]
+        normalized["calendar_rows"] = [
+            self._normalize_snapshot_object(item) for item in normalized.get("calendar_rows", [])
+        ]
+        normalized["schema_version"] = RISK_RADAR_SNAPSHOT_VERSION
+        return normalized, needs_rewrite
+
+    def _normalize_snapshot_object(self, value: Any) -> Any:
+        if isinstance(value, list):
+            return [self._normalize_snapshot_object(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+
+        key_mapping = {
+            "instrument_code": "stock_code",
+            "instrument_name": "stock_name",
+            "instrument_count": "stock_count",
+            "impacted_instrument_count": "impacted_stock_count",
+            "top_instruments": "top_stocks",
+            "instrument_profiles": "stock_profiles",
+        }
+        normalized: dict[str, Any] = {}
+        for key, item in value.items():
+            normalized[key_mapping.get(key, key)] = self._normalize_snapshot_object(item)
+        return normalized
 
     def _update_status(self, import_run_id: int, fields: dict[str, Any]) -> None:
         session = get_session_factory()()
@@ -460,7 +514,7 @@ class AlgoIndexManager:
             build_started_at=self._parse_datetime(algo_metadata.get("build_started_at")),
             build_completed_at=self._parse_datetime(algo_metadata.get("build_completed_at")),
             build_duration_ms=self._parse_int(algo_metadata.get("build_duration_ms")),
-            instrument_count=self._parse_int(algo_metadata.get("instrument_count")),
+            stock_count=self._parse_int(algo_metadata.get("stock_count")),
             event_count=self._parse_int(algo_metadata.get("event_count")),
             reuse_count=reuse_count,
             last_error=self._parse_text(algo_metadata.get("last_error")),
@@ -514,3 +568,6 @@ class AlgoIndexManager:
 
 
 algo_index_manager = AlgoIndexManager()
+
+
+

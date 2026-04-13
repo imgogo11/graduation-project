@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 
@@ -13,7 +13,7 @@ from app.schemas.trading import (
     TradingRiskRadarCalendarRead,
     TradingRiskRadarEventContextRead,
     TradingRiskRadarEventListRead,
-    TradingRiskRadarInstrumentListRead,
+    TradingRiskRadarStockListRead,
     TradingRiskRadarOverviewRead,
 )
 from app.services.risk_radar import (
@@ -58,7 +58,7 @@ def list_risk_radar_events(
     import_run_id: int,
     start_date: date | None = None,
     end_date: date | None = None,
-    instrument_code: str | None = None,
+    stock_code: str | None = None,
     severity: str | None = None,
     top_n: int | None = None,
     current_user: User = Depends(get_current_user),
@@ -70,7 +70,7 @@ def list_risk_radar_events(
             import_run_id,
             start_date=start_date,
             end_date=end_date,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             severity=severity,
             top_n=top_n,
         )
@@ -80,17 +80,17 @@ def list_risk_radar_events(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.get("/instruments", response_model=TradingRiskRadarInstrumentListRead)
-def list_risk_radar_instruments(
+@router.get("/stocks", response_model=TradingRiskRadarStockListRead)
+def list_risk_radar_stocks(
     import_run_id: int,
     severity: str | None = None,
     top_n: int | None = None,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
-) -> TradingRiskRadarInstrumentListRead:
+) -> TradingRiskRadarStockListRead:
     _ensure_run_visible(session, import_run_id=import_run_id, current_user=current_user)
     try:
-        return risk_radar_service.list_instruments(import_run_id, severity=severity, top_n=top_n)
+        return risk_radar_service.list_stocks(import_run_id, severity=severity, top_n=top_n)
     except RiskRadarValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except AlgoIndexNotReadyError as exc:
@@ -117,7 +117,7 @@ def list_risk_radar_calendar(
 @router.get("/event-context", response_model=TradingRiskRadarEventContextRead)
 def get_risk_radar_event_context(
     import_run_id: int,
-    instrument_code: str,
+    stock_code: str,
     trade_date: date,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
@@ -126,7 +126,7 @@ def get_risk_radar_event_context(
     try:
         return risk_radar_service.get_event_context(
             import_run_id,
-            instrument_code=instrument_code,
+            stock_code=stock_code,
             trade_date=trade_date,
         )
     except RiskRadarValidationError as exc:
@@ -135,3 +135,4 @@ def get_risk_radar_event_context(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except AlgoIndexNotReadyError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+

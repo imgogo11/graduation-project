@@ -1,7 +1,7 @@
 {
   "version": "trading-head-v1",
   "required_columns": [
-    "instrument_code",
+    "stock_code",
     "trade_date",
     "open",
     "high",
@@ -10,18 +10,18 @@
     "volume"
   ],
   "optional_columns": [
-    "instrument_name",
+    "stock_name",
     "amount",
     "turnover"
   ],
   "columns": {
-    "instrument_code": {
+    "stock_code": {
       "aliases": [
+        "stock_code",
         "instrument_code",
         "code",
         "symbol",
         "ticker",
-        "stock_code",
         "sec_code",
         "ts_code",
         "股票代码",
@@ -29,11 +29,11 @@
         "代码"
       ]
     },
-    "instrument_name": {
+    "stock_name": {
       "aliases": [
+        "stock_name",
         "instrument_name",
         "name",
-        "stock_name",
         "security_name",
         "股票名称",
         "证券名称",
@@ -110,8 +110,8 @@
         "turnoverratio",
         "turnover_ratio",
         "volume_turnover",
-        "\u6362\u624b\u7387",
-        "\u6362\u624b"
+        "换手率",
+        "换手"
       ]
     }
   }

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
@@ -11,29 +11,29 @@ from app.models import TradingRecord
 
 class TradingRepository:
     @staticmethod
-    def list_instruments(session: Session, *, import_run_id: int) -> list[dict[str, object]]:
+    def list_stocks(session: Session, *, import_run_id: int) -> list[dict[str, object]]:
         stmt = (
             select(
-                TradingRecord.instrument_code,
-                func.max(TradingRecord.instrument_name).label("instrument_name"),
+                TradingRecord.stock_code,
+                func.max(TradingRecord.stock_name).label("stock_name"),
                 func.min(TradingRecord.trade_date).label("first_trade_date"),
                 func.max(TradingRecord.trade_date).label("last_trade_date"),
                 func.count(TradingRecord.id).label("record_count"),
             )
             .where(TradingRecord.import_run_id == import_run_id)
-            .group_by(TradingRecord.instrument_code)
-            .order_by(TradingRecord.instrument_code.asc())
+            .group_by(TradingRecord.stock_code)
+            .order_by(TradingRecord.stock_code.asc())
         )
         rows = session.execute(stmt).all()
         return [
             {
-                "instrument_code": instrument_code,
-                "instrument_name": instrument_name,
+                "stock_code": stock_code,
+                "stock_name": stock_name,
                 "first_trade_date": first_trade_date,
                 "last_trade_date": last_trade_date,
                 "record_count": record_count,
             }
-            for instrument_code, instrument_name, first_trade_date, last_trade_date, record_count in rows
+            for stock_code, stock_name, first_trade_date, last_trade_date, record_count in rows
         ]
 
     @staticmethod
@@ -41,7 +41,7 @@ class TradingRepository:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str | None = None,
+        stock_code: str | None = None,
         start_date: date | None = None,
         end_date: date | None = None,
         limit: int | None = None,
@@ -49,10 +49,10 @@ class TradingRepository:
         stmt = (
             select(TradingRecord)
             .where(TradingRecord.import_run_id == import_run_id)
-            .order_by(TradingRecord.trade_date.asc(), TradingRecord.instrument_code.asc())
+            .order_by(TradingRecord.trade_date.asc(), TradingRecord.stock_code.asc())
         )
-        if instrument_code:
-            stmt = stmt.where(TradingRecord.instrument_code == instrument_code)
+        if stock_code:
+            stmt = stmt.where(TradingRecord.stock_code == stock_code)
         if start_date:
             stmt = stmt.where(TradingRecord.trade_date >= start_date)
         if end_date:
@@ -66,12 +66,12 @@ class TradingRepository:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
     ) -> list[tuple[date, Decimal]]:
         stmt = (
             select(TradingRecord.trade_date, TradingRecord.amount)
             .where(TradingRecord.import_run_id == import_run_id)
-            .where(TradingRecord.instrument_code == instrument_code)
+            .where(TradingRecord.stock_code == stock_code)
             .where(TradingRecord.amount.is_not(None))
             .order_by(TradingRecord.trade_date.asc())
         )
@@ -83,12 +83,12 @@ class TradingRepository:
         session: Session,
         *,
         import_run_id: int,
-        instrument_code: str,
+        stock_code: str,
     ) -> list[tuple[date, Decimal]]:
         stmt = (
             select(TradingRecord.trade_date, TradingRecord.volume)
             .where(TradingRecord.import_run_id == import_run_id)
-            .where(TradingRecord.instrument_code == instrument_code)
+            .where(TradingRecord.stock_code == stock_code)
             .order_by(TradingRecord.trade_date.asc())
         )
         rows = session.execute(stmt).all()
@@ -102,19 +102,19 @@ class TradingRepository:
     ) -> list[tuple[str, str | None, date, Decimal, Decimal]]:
         stmt = (
             select(
-                TradingRecord.instrument_code,
-                TradingRecord.instrument_name,
+                TradingRecord.stock_code,
+                TradingRecord.stock_name,
                 TradingRecord.trade_date,
                 TradingRecord.close,
                 TradingRecord.volume,
             )
             .where(TradingRecord.import_run_id == import_run_id)
-            .order_by(TradingRecord.trade_date.asc(), TradingRecord.instrument_code.asc())
+            .order_by(TradingRecord.trade_date.asc(), TradingRecord.stock_code.asc())
         )
         rows = session.execute(stmt).all()
         return [
-            (instrument_code, instrument_name, trade_date, close_value, volume_value)
-            for instrument_code, instrument_name, trade_date, close_value, volume_value in rows
+            (stock_code, stock_name, trade_date, close_value, volume_value)
+            for stock_code, stock_name, trade_date, close_value, volume_value in rows
         ]
 
     @staticmethod
@@ -125,8 +125,8 @@ class TradingRepository:
     ) -> list[tuple[str, str | None, date, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal | None]]:
         stmt = (
             select(
-                TradingRecord.instrument_code,
-                TradingRecord.instrument_name,
+                TradingRecord.stock_code,
+                TradingRecord.stock_name,
                 TradingRecord.trade_date,
                 TradingRecord.open,
                 TradingRecord.high,
@@ -136,13 +136,13 @@ class TradingRepository:
                 TradingRecord.amount,
             )
             .where(TradingRecord.import_run_id == import_run_id)
-            .order_by(TradingRecord.instrument_code.asc(), TradingRecord.trade_date.asc())
+            .order_by(TradingRecord.stock_code.asc(), TradingRecord.trade_date.asc())
         )
         rows = session.execute(stmt).all()
         return [
             (
-                instrument_code,
-                instrument_name,
+                stock_code,
+                stock_name,
                 trade_date,
                 open_value,
                 high_value,
@@ -151,5 +151,6 @@ class TradingRepository:
                 volume_value,
                 amount_value,
             )
-            for instrument_code, instrument_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
+            for stock_code, stock_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
         ]
+

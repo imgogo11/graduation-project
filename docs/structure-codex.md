@@ -1,4 +1,4 @@
-# 毕业论文目录与写作提纲
+﻿# 毕业论文目录与写作提纲
 
 ## 文档用途
 
@@ -66,9 +66,10 @@
 本节可直接概括为以下几个目标：
 
 - 构建一个支持注册登录、权限隔离和交易文件导入的数据管理系统。
+- 为管理员提供普通用户账号管理能力，包括编辑、启用/禁用与受限删除。
 - 实现交易记录查询、指标分析、风险分析、异常检测、横截面与相关性分析。
 - 设计并集成 C++ 算法模块，支持区间最大成交额、区间第 K 大成交量和联合异常排序。
-- 构建风险雷达索引与可视化页面，实现异常事件总览、榜单、标的画像和事件钻取。
+- 构建风险雷达索引与可视化页面，实现异常事件总览、榜单、股票画像和事件钻取。
 - 通过测试与实验验证系统正确性、可用性和算法效果。
 
 #### 1.4 技术路线与研究方法
@@ -147,7 +148,7 @@
 可描述的典型业务场景：
 
 - 用户上传股票历史交易文件并形成导入批次。
-- 用户按批次和标的查看交易记录与指标分析。
+- 用户按批次和股票查看交易记录与指标分析。
 - 用户调用算法接口得到区间查询和异常排序结果。
 - 用户在风险雷达页面查看异常事件分布和事件上下文。
 
@@ -156,11 +157,12 @@
 本节建议按模块展开：
 
 - 用户鉴权需求：注册、登录、当前用户信息获取。
+- 管理员用户管理需求：普通用户列表、账号编辑、密码重置、启用/禁用、无业务数据用户删除。
 - 导入管理需求：CSV/XLSX 上传、数据集命名、导入历史、统计、软删除。
-- 交易查询需求：标的列表、交易记录列表。
+- 交易查询需求：股票列表、交易记录列表。
 - 分析中心需求：摘要、质量、指标、风险、异常、横截面、相关性、范围对比。
 - 算法增强需求：区间最大成交额、区间第 K 大成交量、联合异常排序。
-- 风险雷达需求：索引状态、重建、异常榜单、标的画像、日期聚合、事件钻取。
+- 风险雷达需求：索引状态、重建、异常榜单、股票画像、日期聚合、事件钻取。
 
 #### 3.3 非功能需求分析
 
@@ -197,7 +199,7 @@
 
 建议分别说明：
 
-- 前端模块：`Overview`、`Trading`、`Analysis`、`Risk Radar` 四个业务页面，以及通用组件和状态管理。
+- 前端模块：`Overview`、`Analysis Center`、`Algo Radar` 三个业务页面，以及通用组件、共享数据集上下文、管理员扩展区块和状态管理。
 - 后端模块：`api/routes`、`services`、`repositories`、`schemas`、`models`。
 - 算法集成模块：`algo_bridge`、`algo-module`、索引管理与风险雷达服务。
 
@@ -223,10 +225,11 @@
 建议按接口组说明：
 
 - 鉴权接口：`/api/auth/register`、`/api/auth/login`、`/api/auth/me`
+- 管理员接口：`/api/admin/users`、编辑、启用/禁用、删除普通用户
 - 导入接口：`/api/imports/runs`、`/api/imports/stats`、`/api/imports/trading`、批次软删除
-- 查询与分析接口：`/api/trading/instruments`、`/api/trading/records`、`/api/trading/analysis/*`
+- 查询与分析接口：`/api/trading/stocks`、`/api/trading/records`、`/api/trading/analysis/*`
 - 算法接口：`/api/algo/trading/range-max-amount`、`/api/algo/trading/range-kth-volume`、`/api/algo/trading/joint-anomaly-ranking`
-- 风险雷达接口：索引状态 / 重建、总览、事件、标的、日期聚合、事件上下文
+- 风险雷达接口：索引状态 / 重建、总览、事件、股票、日期聚合、事件上下文
 
 建议每组给出：
 
@@ -251,7 +254,7 @@
 - 导入完成后触发索引准备。
 - 风险雷达索引的构建状态：`pending`、`building`、`ready`、`failed`。
 - 快照写入与缓存复用机制。
-- 事件聚合、标的画像、日期聚合和事件上下文的生成方式。
+- 事件聚合、股票画像、日期聚合和事件上下文的生成方式。
 
 ### 第 5 章 系统详细实现
 
@@ -279,7 +282,7 @@
 建议覆盖：
 
 - 批次列表与统计信息生成逻辑。
-- 标的列表与交易记录查询实现。
+- 股票列表与交易记录查询实现。
 - 总览页面中的健康状态、按月导入趋势、最近导入记录展示。
 
 #### 5.4 交易分析中心实现
@@ -314,7 +317,7 @@
 
 - 联合异常事件序列构建。
 - CDQ 支配统计在联合排序中的应用。
-- 三维风险雷达事件分级、榜单、标的画像与上下文解释。
+- 三维风险雷达事件分级、榜单、股票画像与上下文解释。
 
 #### 5.6 风险雷达页面与异常钻取实现
 
@@ -322,7 +325,7 @@
 
 - 索引状态检查与手动重建交互。
 - 异常分布散点图与时间带图。
-- 事件榜单与标的风险画像。
+- 事件榜单与股票风险画像。
 - 事件上下文中的窗口分位、分布变化和局部成交额峰值解释。
 
 ### 第 6 章 系统测试与实验分析
@@ -415,12 +418,12 @@
 
 | 论文部分 | 主要代码位置 | 建议写作重点 |
 | --- | --- | --- |
-| 用户认证与权限 | `backend/app/api/routes/auth.py` `backend/app/services/auth.py` `frontend/src/stores/auth.ts` | 注册登录流程、JWT、角色隔离 |
-| 文件导入与管理 | `backend/app/services/imports.py` `backend/app/repositories/imports.py` `frontend/src/pages/TradingPage.vue` | 表头标准化、批次管理、软删除 |
-| 交易记录与统计总览 | `backend/app/api/routes/imports.py` `backend/app/api/routes/trading.py` `frontend/src/pages/OverviewPage.vue` | 总览卡片、月度统计、记录查询 |
-| 分析中心 | `backend/app/services/trading_analysis.py` `frontend/src/pages/AnalysisPage.vue` | 摘要、质量、指标、风险、异常、相关性、范围对比 |
+| 用户认证与权限 | `backend/app/api/routes/auth.py` `backend/app/api/routes/admin_users.py` `backend/app/services/auth.py` `backend/app/services/admin_users.py` `web/src/stores/auth.ts` | 注册登录流程、JWT、角色隔离、管理员普通用户管理 |
+| 文件导入与管理 | `backend/app/services/imports.py` `backend/app/repositories/imports.py` `web/src/pages/OverviewPage.vue` | 表头标准化、批次管理、软删除、当前数据集工作台 |
+| 交易记录与统计总览 | `backend/app/api/routes/imports.py` `backend/app/api/routes/trading.py` `web/src/pages/OverviewPage.vue` | 总览卡片、月度统计、记录查询、当前数据集预览 |
+| 分析中心 | `backend/app/services/trading_analysis.py` `web/src/pages/AnalysisCenterPage.vue` | 摘要、质量、指标、风险、异常、相关性、范围对比 |
 | 区间算法 | `backend/app/services/algo_trading.py` `backend/app/algo_bridge/*` `algo-module/src/*` | 区间最大值、第 K 大双方案、接口统一 |
-| 风险雷达 | `backend/app/services/algo_indexes.py` `backend/app/services/risk_radar.py` `frontend/src/pages/RiskRadarPage.vue` | 索引构建、缓存复用、异常榜单、钻取解释 |
+| 风险雷达 | `backend/app/services/algo_indexes.py` `backend/app/services/risk_radar.py` `web/src/pages/AlgoRadarPage.vue` | 索引构建、缓存复用、异常榜单、钻取解释、联合异常排序 |
 
 ## 建议图表清单
 
@@ -464,3 +467,5 @@
 - 第 4 章不要提前展开过多代码细节，第 5 章再写具体实现。
 - 第 6 章不要只写接口通了，还要写测试场景、实验结果和分析结论。
 - 若需要压缩篇幅，优先压缩背景铺陈，不要压缩第 5 章和第 6 章的核心内容。
+
+

@@ -1,4 +1,4 @@
-# Data Source Strategy
+﻿# Data Source Strategy
 
 ## Active source model
 
@@ -12,7 +12,7 @@ The system now uses one source model only: authenticated users upload historical
 ## Fixed template
 
 ```text
-instrument_code,instrument_name,trade_date,open,high,low,close,volume,amount
+stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 ```
 
 ## Asset classes
@@ -34,3 +34,4 @@ These labels are metadata only. Both asset classes share the same storage, query
 - e-commerce demo imports
 - synthetic dataset imports
 - benchmark demo routes
+
