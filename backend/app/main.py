@@ -18,6 +18,6 @@ settings = get_settings()
 app = FastAPI(
     title="Stock Trading Data Management and Analysis System Backend",
     version="0.1.0",
-    description="FastAPI backend for the Stock Trading Data Management and Analysis System Based on C++ Algorithm Module.",
+    description="FastAPI backend for the stock trading data management and analysis system.",
 )
 app.include_router(api_router, prefix=settings.api_prefix)

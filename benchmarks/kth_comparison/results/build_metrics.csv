@@ -1,3 +1,7 @@
 sample,implementation,build_seconds,build_rss_mb
-300x480,persistent_segment_tree,0.000732,0.2148
-300x480,t_digest,0.00058,0.0078
+300x480,persistent_segment_tree,0.000947,0.2188
+300x480,t_digest,0.001131,0.0391
+1000x480,persistent_segment_tree,0.000659,0.0
+1000x480,t_digest,0.000467,0.0
+3000x480,persistent_segment_tree,0.001939,0.0117
+3000x480,t_digest,0.000596,0.0

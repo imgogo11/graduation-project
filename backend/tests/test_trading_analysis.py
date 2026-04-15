@@ -327,7 +327,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertIn("breakout_new_low", anomaly_types)
         self.assertIn("breakout_new_high", anomaly_types)
 
-    def test_quality_cross_section_correlation_and_compare_runs(self) -> None:
+    def test_quality_cross_section_correlation_and_compare_scopes(self) -> None:
         token = self._register_and_login("alice_user", "password123")
         primary_frame = build_primary_frame()
         compare_frame = build_compare_frame()
@@ -376,15 +376,15 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             self.assertTrue(math.isclose(float(correlation_body["matrix"][index][index]), 1.0, abs_tol=1e-6))
 
         compare_response = self.client.get(
-            "/api/trading/analysis/compare-runs",
+            "/api/trading/analysis/compare-scopes",
             params={"base_run_id": primary_run["id"], "target_run_id": compare_run["id"]},
             headers=self._auth_headers(token),
         )
         self.assertEqual(compare_response.status_code, 200, compare_response.text)
         compare_body = compare_response.json()
-        self.assertEqual(compare_body["shared_stocks"], ["ALPHA", "GAMMA"])
-        self.assertEqual(compare_body["added_stocks"], ["DELTA"])
-        self.assertEqual(compare_body["removed_stocks"], ["BETA"])
+        self.assertEqual(compare_body["stock_overlap"]["shared_stocks"], ["ALPHA", "GAMMA"])
+        self.assertEqual(compare_body["stock_overlap"]["target_only_stocks"], ["DELTA"])
+        self.assertEqual(compare_body["stock_overlap"]["base_only_stocks"], ["BETA"])
 
     def test_compare_scopes_supports_same_run_partial_and_identical_ranges(self) -> None:
         token = self._register_and_login("scope_same_run_user", "password123")
@@ -591,14 +591,14 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertTrue(all(item["total_amount"] is None for item in cross_section_response.json()["rows"]))
 
         compare_response = self.client.get(
-            "/api/trading/analysis/compare-runs",
+            "/api/trading/analysis/compare-scopes",
             params={"base_run_id": primary_run["id"], "target_run_id": compare_run["id"]},
             headers=self._auth_headers(token),
         )
         self.assertEqual(compare_response.status_code, 200, compare_response.text)
         compare_body = compare_response.json()
-        self.assertIsNone(compare_body["base_total_amount"])
-        self.assertIsNotNone(compare_body["target_total_amount"])
+        self.assertIsNone(compare_body["base_scope"]["total_amount"])
+        self.assertIsNotNone(compare_body["target_scope"]["total_amount"])
 
     def test_correlation_reports_data_insufficient_for_single_instrument_runs(self) -> None:
         token = self._register_and_login("single_instrument_user", "password123")

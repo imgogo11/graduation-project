@@ -6,7 +6,7 @@
 
 当前仓库的主线已经不是早期的“股票抓取 + 电商演示 + benchmark 预留”组合方案，而是一个已经落地到可联调、可验证状态的：
 
-`基于 C++ 算法模块的股票交易数据管理与分析系统设计与实现（Stock Trading Data Management and Analysis System Based on C++ Algorithm Module）`
+`股票交易数据管理与分析系统的设计与实现（Design and Implementation of Stock Trading Data Management and Analysis System）`
 
 当前真实业务链路为：
 
@@ -205,7 +205,7 @@ graduation-project/
 - 已完成 `/api/trading/analysis/anomalies`
 - 已完成 `/api/trading/analysis/cross-section`
 - 已完成 `/api/trading/analysis/correlation`
-- 已完成 `/api/trading/analysis/compare-scopes`，并保留 `/api/trading/analysis/compare-runs` 兼容别名
+- 已完成 `/api/trading/analysis/compare-scopes`
 - 已完成 `/api/algo/trading/range-max-amount`
 - 已完成 `/api/algo/trading/range-kth-volume`
 - 已完成 `/api/algo/trading/joint-anomaly-ranking`
@@ -255,7 +255,7 @@ stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 - 后端已能把数据库中的成交额序列送入 C++ 引擎做区间最大值查询
 - 后端已能把数据库中的成交量序列送入精确第 K 大查询，或走 `t_digest` 近似查询链路
 - 后端已能把联合异常事件序列送入 CDQ 历史支配计数算法，并返回排序结果
-- 风险雷达快照已兼容历史 `instrument_*` 字段，并可自动重写为 `stock_*`
+- 风险雷达快照已统一到 `stock-v2` 结构，旧版快照会被直接丢弃并触发重建
 - 前端已经可以切换精确 / 近似算法方式，并展示命中日期或近似说明
 
 ## 部分完成或仍需补强
@@ -296,21 +296,27 @@ stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 
 本轮在当前仓库中重新核对并验证了以下内容：
 
-- `backend/tests/test_database_pipeline.py` 通过，共 2 个测试
+- `backend/tests/test_database_pipeline.py` 通过，共 6 个测试
 - `backend/tests/test_admin_users.py` 通过，共 2 个测试
-- `backend/tests/test_algo_trading.py` 通过，共 14 个测试
-- `backend/tests/test_trading_analysis.py` 通过，共 3 个测试
+- `backend/tests/test_algo_trading.py` 通过，共 17 个测试
+- `backend/tests/test_trading_analysis.py` 通过，共 9 个测试
 - `backend/tests/test_risk_radar.py` 通过，共 3 个测试
 - `backend/tests/test_tdigest_range_kth.py` 通过，共 2 个测试
+- `benchmarks/tests/test_common.py` 通过，共 5 个测试
+- `benchmarks/tests/test_platform_quality.py` 通过，共 2 个测试
 - `ctest --test-dir algo-module/build --output-on-failure` 通过，共 5 个测试
 - `web` 执行 `npm run build` 成功
+- `benchmarks/run_all.py --suite query_efficiency --sample all` 已完成并刷新 `benchmarks/query_efficiency/results/summary.json`
+- `benchmarks/run_all.py --suite kth_comparison --sample all` 已完成并刷新 `benchmarks/kth_comparison/results/summary.json`
+- `benchmarks/run_all.py --suite platform_quality --profile thesis` 已完成并刷新 `benchmarks/platform_quality/results/summary.json`
 
 本轮额外观察到：
 
 - 前端构建存在 chunk 体积告警，但不影响当前构建成功
 - `algo_module_python_smoke` 已通过，说明 pybind11 绑定产物可被 Python 正常加载
 - `algo-module/build/` 已存在可用构建产物，C++ 单元测试与 Python smoke test 均可运行
-- 旧风险雷达快照中的 `instrument_*` 字段已能自动兼容，不再导致算法雷达页 500
+- 真实链路已通过公开注册创建 `benchmark_runner`、导入固定数据集并执行 live smoke
+- `platform_quality` 的 `thesis` 档压测已覆盖真实风险雷达请求，`summary.json` 记录请求数 5826、失败数 0
 
 ## 一句话结论
 
@@ -318,6 +324,6 @@ stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 
 `一个具备 Web 界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化、三页式分析工作流，以及 C++ / Python 混合算法能力（区间最大成交额、区间第 K 大成交量、联合异常排序、风险雷达）的全栈 MVP。`
 
-它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“基于 C++ 算法模块的股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
+它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
 
 

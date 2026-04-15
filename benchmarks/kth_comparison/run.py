@@ -57,7 +57,7 @@ SQL_KTH_QUERY = text(
     SELECT volume
     FROM trading_records
     WHERE import_run_id = :import_run_id
-      AND instrument_code = :instrument_code
+      AND stock_code = :stock_code
       AND trade_date BETWEEN :start_date AND :end_date
     ORDER BY volume DESC
     LIMIT 1 OFFSET :offset
@@ -86,7 +86,7 @@ def rss_mb() -> float:
     return float(psutil.Process().memory_info().rss) / (1024.0 * 1024.0)
 
 
-def measure_sql(session, *, import_run_id: int, instrument_code: str, windows: list[tuple[object, object, int]]) -> tuple[list[float], list[int]]:
+def measure_sql(session, *, import_run_id: int, stock_code: str, windows: list[tuple[object, object, int]]) -> tuple[list[float], list[int]]:
     latencies: list[float] = []
     values: list[int] = []
     for query_start, query_end, kth in windows:
@@ -95,7 +95,7 @@ def measure_sql(session, *, import_run_id: int, instrument_code: str, windows: l
             SQL_KTH_QUERY,
             {
                 "import_run_id": import_run_id,
-                "instrument_code": instrument_code,
+                "stock_code": stock_code,
                 "start_date": query_start,
                 "end_date": query_end,
                 "offset": kth - 1,
@@ -339,8 +339,8 @@ def run_suite(
                 insert_benchmark_rows(session, import_run_id=run.id, rows=rows)
                 session.commit()
 
-                instrument_code = "SYM00000"
-                instrument_rows = [row for row in rows if row["instrument_code"] == instrument_code]
+                stock_code = "SYM00000"
+                instrument_rows = [row for row in rows if row["stock_code"] == stock_code]
                 dates = [row["trade_date"] for row in instrument_rows]
                 date_to_index = {trade_date: index for index, trade_date in enumerate(dates)}
                 volumes_scaled = [scale_volume(row["volume"]) for row in instrument_rows]
@@ -378,7 +378,7 @@ def run_suite(
                     }
                 )
 
-                sql_latencies, sql_values = measure_sql(session, import_run_id=run.id, instrument_code=instrument_code, windows=windows)
+                sql_latencies, sql_values = measure_sql(session, import_run_id=run.id, stock_code=stock_code, windows=windows)
                 persistent_latencies, persistent_values = measure_persistent_tree(persistent_tree, date_to_index=date_to_index, windows=windows)
                 tdigest_latencies, tdigest_values = measure_tdigest(tdigest_index, date_to_index=date_to_index, windows=windows)
 

@@ -466,25 +466,5 @@ export interface TradingScopeComparisonRead {
   mismatch_samples: TradingMismatchSampleRead[];
 }
 
-export interface TradingRunComparisonRead {
-  base_run_id: number;
-  target_run_id: number;
-  base_record_count: number;
-  target_record_count: number;
-  base_stock_count: number;
-  target_stock_count: number;
-  base_total_volume: NumericLike;
-  target_total_volume: NumericLike;
-  base_total_amount: NumericLike;
-  target_total_amount: NumericLike;
-  base_start_date: string;
-  base_end_date: string;
-  target_start_date: string;
-  target_end_date: string;
-  shared_stocks: string[];
-  added_stocks: string[];
-  removed_stocks: string[];
-}
-
 
 

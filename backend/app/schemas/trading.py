@@ -437,23 +437,5 @@ class TradingScopeComparisonRead(BaseModel):
     mismatch_samples: list[TradingMismatchSampleRead]
 
 
-class TradingRunComparisonRead(BaseModel):
-    base_run_id: int
-    target_run_id: int
-    base_record_count: int
-    target_record_count: int
-    base_stock_count: int
-    target_stock_count: int
-    base_total_volume: float
-    target_total_volume: float
-    base_total_amount: float | None
-    target_total_amount: float | None
-    base_start_date: date
-    base_end_date: date
-    target_start_date: date
-    target_end_date: date
-    shared_stocks: list[str]
-    added_stocks: list[str]
-    removed_stocks: list[str]
 
 

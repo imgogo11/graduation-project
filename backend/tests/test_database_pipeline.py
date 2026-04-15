@@ -63,22 +63,22 @@ def build_trading_frame() -> pd.DataFrame:
     )
 
 
-def build_alias_frame(*, include_amount: bool = True) -> pd.DataFrame:
+def build_legacy_header_frame(*, include_amount: bool = True) -> pd.DataFrame:
     frame = build_trading_frame().rename(
         columns={
-            "stock_code": "代码",
-            "stock_name": "名称",
-            "trade_date": "日期",
-            "open": "开盘",
-            "high": "最高",
-            "low": "最低",
-            "close": "收盘",
-            "volume": "成交量",
-            "amount": "成交额",
+            "stock_code": "instrument_code",
+            "stock_name": "instrument_name",
+            "trade_date": "date",
+            "open": "open_price",
+            "high": "high_price",
+            "low": "low_price",
+            "close": "close_price",
+            "volume": "trade_volume",
+            "amount": "trade_amount",
         }
     )
     if not include_amount:
-        frame = frame.drop(columns=["成交额"])
+        frame = frame.drop(columns=["trade_amount"])
     return frame
 
 
@@ -280,32 +280,6 @@ class DatabasePipelineTests(unittest.TestCase):
         )
         self.assertEqual(deleted_records.status_code, 404)
 
-    def test_upload_supports_alias_headers_and_optional_amount(self) -> None:
-        token = self._register_and_login("alias_user", "password123")
-        alias_run = self._upload_csv(
-            token=token,
-            dataset_name="alias_headers",
-            frame=build_alias_frame(include_amount=False),
-        )
-
-        instruments = self.client.get(
-            "/api/trading/stocks",
-            params={"import_run_id": alias_run["id"]},
-            headers=self._auth_headers(token),
-        )
-        self.assertEqual(instruments.status_code, 200, instruments.text)
-        self.assertEqual(len(instruments.json()), 2)
-
-        records = self.client.get(
-            "/api/trading/records",
-            params={"import_run_id": alias_run["id"], "stock_code": "600519.SH"},
-            headers=self._auth_headers(token),
-        )
-        self.assertEqual(records.status_code, 200, records.text)
-        body = records.json()
-        self.assertEqual(body[0]["stock_name"], "Kweichow Moutai")
-        self.assertIsNone(body[0]["amount"])
-
     def test_upload_supports_optional_turnover_without_conflicting_with_amount(self) -> None:
         token = self._register_and_login("turnover_user", "password123")
         turnover_run = self._upload_csv(
@@ -365,8 +339,23 @@ class DatabasePipelineTests(unittest.TestCase):
         )
         self.assertNotEqual(reused_run["id"], first_run["id"])
 
-    def test_upload_rejects_missing_required_headers_and_duplicate_alias_matches(self) -> None:
-        token = self._register_and_login("invalid_alias_user", "password123")
+    def test_upload_rejects_legacy_headers_missing_required_headers_and_old_alias_columns(self) -> None:
+        token = self._register_and_login("invalid_headers_user", "password123")
+
+        legacy_header_response = self.client.post(
+            "/api/imports/trading",
+            data={"dataset_name": "legacy_headers"},
+            files={
+                "file": (
+                    "trading.csv",
+                    build_legacy_header_frame(include_amount=False).to_csv(index=False).encode("utf-8"),
+                    "text/csv",
+                )
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(legacy_header_response.status_code, 400)
+        self.assertIn("缺少必要列", legacy_header_response.json()["detail"])
 
         missing_code_response = self.client.post(
             "/api/imports/trading",
@@ -374,7 +363,7 @@ class DatabasePipelineTests(unittest.TestCase):
             files={
                 "file": (
                     "trading.csv",
-                    build_alias_frame().drop(columns=["代码"]).to_csv(index=False).encode("utf-8"),
+                    build_trading_frame().drop(columns=["stock_code"]).to_csv(index=False).encode("utf-8"),
                     "text/csv",
                 )
             },
@@ -383,22 +372,22 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(missing_code_response.status_code, 400)
         self.assertIn("导入失败，数据不符合格式", missing_code_response.json()["detail"])
 
-        duplicate_alias_frame = build_trading_frame().rename(columns={"stock_code": "code"})
-        duplicate_alias_frame["symbol"] = duplicate_alias_frame["code"]
-        duplicate_response = self.client.post(
+        old_alias_frame = build_trading_frame().rename(columns={"stock_code": "code"})
+        old_alias_frame["symbol"] = old_alias_frame["code"]
+        old_alias_response = self.client.post(
             "/api/imports/trading",
-            data={"dataset_name": "duplicate_alias"},
+            data={"dataset_name": "old_alias_columns"},
             files={
                 "file": (
                     "trading.csv",
-                    duplicate_alias_frame.to_csv(index=False).encode("utf-8"),
+                    old_alias_frame.to_csv(index=False).encode("utf-8"),
                     "text/csv",
                 )
             },
             headers=self._auth_headers(token),
         )
-        self.assertEqual(duplicate_response.status_code, 400)
-        self.assertIn("导入失败，数据不符合格式", duplicate_response.json()["detail"])
+        self.assertEqual(old_alias_response.status_code, 400)
+        self.assertIn("缺少必要列", old_alias_response.json()["detail"])
 
     def test_failed_uploads_are_hidden_allow_name_reuse_and_block_data_access(self) -> None:
         token = self._register_and_login("failed_upload_user", "password123")

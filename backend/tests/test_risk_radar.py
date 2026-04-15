@@ -230,11 +230,12 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertEqual(len(context["distribution_changes"]), 2)
         self.assertIsNotNone(context["local_amount_peak"])
 
-    def test_legacy_instrument_snapshot_is_auto_compatible(self) -> None:
+    def test_legacy_snapshot_is_rebuilt_instead_of_normalized(self) -> None:
         snapshot_path = algo_index_manager._snapshot_path(int(self.run["id"]))
         payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
 
         legacy_payload = {
+            "schema_version": "stock-v1",
             "overview": {
                 **payload["overview"],
                 "top_instruments": payload["overview"]["top_stocks"],
@@ -288,7 +289,7 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertTrue(stocks_response.json()["rows"])
 
         rewritten_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        self.assertEqual(rewritten_payload["schema_version"], "stock-v1")
+        self.assertEqual(rewritten_payload["schema_version"], "stock-v2")
         self.assertIn("stock_code", rewritten_payload["events"][0])
         self.assertNotIn("instrument_code", rewritten_payload["events"][0])
 

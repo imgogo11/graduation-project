@@ -9,7 +9,7 @@ C++算法引擎与数据库协同优势详述.md
 
 .env
 .env.*
-!.env.template
+.codex*
 .venv/
 .uv-cache/
 /build/
@@ -17,8 +17,10 @@ algo-module/build/
 /web/node_modules/
 /web/dist/
 /web/.vite/
+/images/
 
 backend/.tmp-tests/
 __pycache__/
 *.pyc
 *.docx
+/docs/

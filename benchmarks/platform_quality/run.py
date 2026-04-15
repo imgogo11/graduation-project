@@ -61,6 +61,47 @@ def _require_env(name: str) -> str:
     return value
 
 
+def _should_include_request_name(name: str) -> bool:
+    return bool(name) and name != "Aggregated" and not name.startswith("setup/")
+
+
+def build_request_rows(stats_rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    return [
+        {
+            "request_type": _lookup(row, "Type"),
+            "name": _lookup(row, "Name"),
+            "request_count": _as_int(_lookup(row, "Request Count")),
+            "failure_count": _as_int(_lookup(row, "Failure Count")),
+            "avg_ms": round(_as_float(_lookup(row, "Average Response Time")), 4),
+            "p95_ms": round(_as_float(_lookup(row, "95%")), 4),
+            "rps": round(_as_float(_lookup(row, "Requests/s")), 4),
+        }
+        for row in stats_rows
+        if _should_include_request_name(_lookup(row, "Name"))
+    ]
+
+
+def build_history_rows(history_csv_rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    latest_by_user_count: dict[int, dict[str, object]] = {}
+    for row in history_csv_rows:
+        if _lookup(row, "Name") != "Aggregated":
+            continue
+
+        user_count = _as_int(_lookup(row, "User Count"))
+        total_request_count = _as_int(_lookup(row, "Total Request Count"))
+        if user_count <= 0 or total_request_count <= 0:
+            continue
+
+        latest_by_user_count[user_count] = {
+            "user_count": user_count,
+            "total_request_count": total_request_count,
+            "avg_ms": round(_as_float(_lookup(row, "Total Average Response Time", "Average Response Time")), 4),
+            "p95_ms": round(_as_float(_lookup(row, "95%")), 4),
+        }
+
+    return [latest_by_user_count[count] for count in sorted(latest_by_user_count)]
+
+
 def run_locust(paths: object, *, profile: str) -> dict[str, Path]:
     base_url = _require_env("BENCHMARK_BASE_URL")
     _require_env("BENCHMARK_USERNAME")
@@ -117,17 +158,14 @@ def render_images(paths: object, *, request_rows: list[dict[str, object]], histo
         )
 
     if history_rows:
-        grouped: dict[int, list[dict[str, object]]] = {}
-        for row in history_rows:
-            grouped.setdefault(int(row["user_count"]), []).append(row)
-        user_counts = sorted(grouped)
+        user_counts = [int(row["user_count"]) for row in history_rows]
         save_line_chart(
             paths.images / "users_vs_latency_line.png",
             title="Users vs Latency",
             x_values=user_counts,
             series={
-                "Average ms": [sum(float(item["avg_ms"]) for item in grouped[count]) / len(grouped[count]) for count in user_counts],
-                "P95 ms": [sum(float(item["p95_ms"]) for item in grouped[count]) / len(grouped[count]) for count in user_counts],
+                "Average ms": [float(row["avg_ms"]) for row in history_rows],
+                "P95 ms": [float(row["p95_ms"]) for row in history_rows],
             },
             xlabel="Concurrent Users",
             ylabel="Latency (ms)",
@@ -163,30 +201,10 @@ def run_suite(*, profile: str = "smoke", output_dir: Path | None = None) -> int:
     artifacts = run_locust(paths, profile=profile)
 
     stats_rows = read_csv_rows(artifacts["stats"])
-    request_rows = [
-        {
-            "request_type": _lookup(row, "Type"),
-            "name": _lookup(row, "Name"),
-            "request_count": _as_int(_lookup(row, "Request Count")),
-            "failure_count": _as_int(_lookup(row, "Failure Count")),
-            "avg_ms": round(_as_float(_lookup(row, "Average Response Time")), 4),
-            "p95_ms": round(_as_float(_lookup(row, "95%")), 4),
-            "rps": round(_as_float(_lookup(row, "Requests/s")), 4),
-        }
-        for row in stats_rows
-        if _lookup(row, "Name") and _lookup(row, "Name") != "Aggregated" and not _lookup(row, "Name").startswith("setup/")
-    ]
+    request_rows = build_request_rows(stats_rows)
 
     history_csv_rows = read_csv_rows(artifacts["history"])
-    history_rows = [
-        {
-            "user_count": _as_int(_lookup(row, "User Count")),
-            "avg_ms": round(_as_float(_lookup(row, "Average Response Time")), 4),
-            "p95_ms": round(_as_float(_lookup(row, "95%")), 4),
-        }
-        for row in history_csv_rows
-        if _lookup(row, "Name") == "Aggregated"
-    ]
+    history_rows = build_history_rows(history_csv_rows)
 
     status_report = json.loads(artifacts["status"].read_text(encoding="utf-8"))
     security_rows = [

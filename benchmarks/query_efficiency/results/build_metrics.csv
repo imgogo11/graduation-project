@@ -1,3 +1,7 @@
 sample,scenario,implementation,structure,build_seconds,build_rss_mb
-300x480,range_max_amount,algo_module,RangeMaxSegmentTree,0.000533,0.0273
-300x480,range_kth_volume,algo_module,RangeKthPersistentSegmentTree,0.002162,0.1953
+300x480,range_max_amount,algo_module,RangeMaxSegmentTree,0.000141,0.0312
+300x480,range_kth_volume,algo_module,RangeKthPersistentSegmentTree,0.000549,0.1953
+1000x480,range_max_amount,algo_module,RangeMaxSegmentTree,0.000107,0.0
+1000x480,range_kth_volume,algo_module,RangeKthPersistentSegmentTree,0.000878,0.0
+3000x480,range_max_amount,algo_module,RangeMaxSegmentTree,0.000247,0.0039
+3000x480,range_kth_volume,algo_module,RangeKthPersistentSegmentTree,0.001281,0.0078

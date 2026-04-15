@@ -16,7 +16,6 @@ from app.schemas.trading import (
     TradingIndicatorSeriesRead,
     TradingQualityReportRead,
     TradingRiskMetricsRead,
-    TradingRunComparisonRead,
     TradingScopeComparisonRead,
     TradingSummaryRead,
 )
@@ -208,21 +207,6 @@ def get_trading_correlation_matrix(
             end_date=end_date,
             stock_codes=selected_codes,
         )
-    except Exception as exc:  # noqa: BLE001
-        raise _handle_analysis_error(exc) from exc
-
-
-@router.get("/compare-runs", response_model=TradingRunComparisonRead)
-def compare_trading_runs(
-    base_run_id: int,
-    target_run_id: int,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_db_session),
-) -> TradingRunComparisonRead:
-    _ensure_run_visible(session, import_run_id=base_run_id, current_user=current_user)
-    _ensure_run_visible(session, import_run_id=target_run_id, current_user=current_user)
-    try:
-        return service.compare_runs(session, base_run_id=base_run_id, target_run_id=target_run_id)
     except Exception as exc:  # noqa: BLE001
         raise _handle_analysis_error(exc) from exc
 

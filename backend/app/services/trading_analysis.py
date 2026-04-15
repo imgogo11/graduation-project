@@ -24,7 +24,6 @@ from app.schemas.trading import (
     TradingQualityReportRead,
     TradingRiskMetricsRead,
     TradingRecordOverlapRead,
-    TradingRunComparisonRead,
     TradingScopeComparisonRead,
     TradingSummaryRead,
 )
@@ -460,39 +459,6 @@ class TradingAnalysisService:
             end_date=frame["trade_date"].max().date(),
             stock_codes=codes,
             matrix=matrix,
-        )
-
-    def compare_runs(
-        self,
-        session: Session,
-        *,
-        base_run_id: int,
-        target_run_id: int,
-    ) -> TradingRunComparisonRead:
-        scope_comparison = self.compare_scopes(
-            session,
-            base_run_id=base_run_id,
-            target_run_id=target_run_id,
-        )
-
-        return TradingRunComparisonRead(
-            base_run_id=base_run_id,
-            target_run_id=target_run_id,
-            base_record_count=scope_comparison.base_scope.record_count,
-            target_record_count=scope_comparison.target_scope.record_count,
-            base_stock_count=scope_comparison.base_scope.stock_count,
-            target_stock_count=scope_comparison.target_scope.stock_count,
-            base_total_volume=scope_comparison.base_scope.total_volume,
-            target_total_volume=scope_comparison.target_scope.total_volume,
-            base_total_amount=scope_comparison.base_scope.total_amount,
-            target_total_amount=scope_comparison.target_scope.total_amount,
-            base_start_date=scope_comparison.base_scope.actual_start_date,
-            base_end_date=scope_comparison.base_scope.actual_end_date,
-            target_start_date=scope_comparison.target_scope.actual_start_date,
-            target_end_date=scope_comparison.target_scope.actual_end_date,
-            shared_stocks=scope_comparison.stock_overlap.shared_stocks,
-            added_stocks=scope_comparison.stock_overlap.target_only_stocks,
-            removed_stocks=scope_comparison.stock_overlap.base_only_stocks,
         )
 
     def compare_scopes(

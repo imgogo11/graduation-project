@@ -90,16 +90,28 @@ def save_pie_chart(
     title: str,
     labels: Sequence[str],
     values: Sequence[float],
+    legend_outside: bool = False,
+    min_pct_label: float = 0.5,
 ) -> None:
     plt = _load_pyplot()
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=((10, 8) if legend_outside else (8, 8)))
     non_zero_pairs = [(label, value) for label, value in zip(labels, values, strict=True) if value > 0]
     if not non_zero_pairs:
         non_zero_pairs = [("No Data", 1.0)]
     labels_to_plot = [label for label, _ in non_zero_pairs]
     values_to_plot = [value for _, value in non_zero_pairs]
-    ax.pie(values_to_plot, labels=labels_to_plot, autopct="%1.1f%%", startangle=90, colors=_PALETTE[: len(values_to_plot)])
+    autopct = (lambda pct: (f"{pct:.1f}%" if pct >= min_pct_label else ""))
+    wedges, _, _ = ax.pie(
+        values_to_plot,
+        labels=(None if legend_outside else labels_to_plot),
+        autopct=autopct,
+        startangle=90,
+        colors=_PALETTE[: len(values_to_plot)],
+        pctdistance=0.6,
+    )
+    if legend_outside:
+        ax.legend(wedges, labels_to_plot, loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
     ax.set_title(title)
     fig.tight_layout()
-    fig.savefig(output_path, dpi=180)
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)

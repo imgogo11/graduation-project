@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-04-12T19:04:34.190146",
-  "sample": "smoke",
+  "generated_at": "2026-04-14T20:04:53.498946",
+  "sample": "thesis",
   "status_counts": {
-    "200": 149,
-    "401": 70,
-    "400": 24,
-    "404": 7
+    "200": 3356,
+    "401": 1372,
+    "400": 733,
+    "404": 365
   },
   "security_cases": [
     {
@@ -13,11 +13,11 @@
       "expected_statuses": [
         "404"
       ],
-      "total": 7,
-      "matched": 7,
+      "total": 365,
+      "matched": 365,
       "matched_ratio": 1.0,
       "status_counts": {
-        "404": 7
+        "404": 365
       }
     },
     {
@@ -25,11 +25,11 @@
       "expected_statuses": [
         "400"
       ],
-      "total": 12,
-      "matched": 12,
+      "total": 361,
+      "matched": 361,
       "matched_ratio": 1.0,
       "status_counts": {
-        "400": 12
+        "400": 361
       }
     },
     {
@@ -37,11 +37,11 @@
       "expected_statuses": [
         "400"
       ],
-      "total": 12,
-      "matched": 12,
+      "total": 372,
+      "matched": 372,
       "matched_ratio": 1.0,
       "status_counts": {
-        "400": 12
+        "400": 372
       }
     },
     {
@@ -49,11 +49,11 @@
       "expected_statuses": [
         "401"
       ],
-      "total": 35,
-      "matched": 35,
+      "total": 677,
+      "matched": 677,
       "matched_ratio": 1.0,
       "status_counts": {
-        "401": 35
+        "401": 677
       }
     },
     {
@@ -61,11 +61,11 @@
       "expected_statuses": [
         "401"
       ],
-      "total": 35,
-      "matched": 35,
+      "total": 695,
+      "matched": 695,
       "matched_ratio": 1.0,
       "status_counts": {
-        "401": 35
+        "401": 695
       }
     }
   ]

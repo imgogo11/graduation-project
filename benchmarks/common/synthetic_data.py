@@ -38,8 +38,8 @@ def build_synthetic_trading_rows(*, instruments: int, days: int, seed: int) -> l
     rows: list[dict[str, object]] = []
 
     for instrument_index in range(instruments):
-        instrument_code = f"SYM{instrument_index:05d}"
-        instrument_name = f"Synthetic {instrument_index:05d}"
+        stock_code = f"SYM{instrument_index:05d}"
+        stock_name = f"Synthetic {instrument_index:05d}"
         previous_close = 40.0 + (instrument_index % 200) * 0.35
         volume_base = 50_000.0 + instrument_index * 25.0
         move_pattern = [0.0030, -0.0012, 0.0024, 0.0008, -0.0016, 0.0018]
@@ -66,8 +66,8 @@ def build_synthetic_trading_rows(*, instruments: int, days: int, seed: int) -> l
             amount_value = close_value * volume_value
             rows.append(
                 {
-                    "instrument_code": instrument_code,
-                    "instrument_name": instrument_name,
+                    "stock_code": stock_code,
+                    "stock_name": stock_name,
                     "trade_date": trade_day,
                     "open": Decimal(f"{open_value:.4f}"),
                     "high": Decimal(f"{high_value:.4f}"),

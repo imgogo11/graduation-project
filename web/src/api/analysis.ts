@@ -7,7 +7,6 @@ import type {
   TradingJointAnomalyRankingRead,
   TradingQualityReportRead,
   TradingRiskMetricsRead,
-  TradingRunComparisonRead,
   TradingScopeComparisonRead,
   TradingSummaryRead,
 } from "@/api/types";
@@ -33,11 +32,6 @@ export interface CorrelationParams {
   start_date?: string;
   end_date?: string;
   stock_codes?: string;
-}
-
-export interface CompareRunsParams {
-  base_run_id: number;
-  target_run_id: number;
 }
 
 export interface CompareScopesParams {
@@ -88,10 +82,6 @@ export function fetchTradingCrossSection(params: CrossSectionParams) {
 
 export function fetchTradingCorrelation(params: CorrelationParams) {
   return getJson<TradingCorrelationMatrixRead>("/api/trading/analysis/correlation", params);
-}
-
-export function fetchTradingRunComparison(params: CompareRunsParams) {
-  return getJson<TradingRunComparisonRead>("/api/trading/analysis/compare-runs", params);
 }
 
 export function fetchTradingScopeComparison(params: CompareScopesParams) {

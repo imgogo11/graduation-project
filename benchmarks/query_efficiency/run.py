@@ -49,7 +49,7 @@ SQL_MAX_QUERY = text(
     SELECT MAX(amount)
     FROM trading_records
     WHERE import_run_id = :import_run_id
-      AND instrument_code = :instrument_code
+      AND stock_code = :stock_code
       AND trade_date BETWEEN :start_date AND :end_date
     """
 )
@@ -59,7 +59,7 @@ SQL_KTH_QUERY = text(
     SELECT volume
     FROM trading_records
     WHERE import_run_id = :import_run_id
-      AND instrument_code = :instrument_code
+      AND stock_code = :stock_code
       AND trade_date BETWEEN :start_date AND :end_date
     ORDER BY volume DESC
     LIMIT 1 OFFSET :offset
@@ -88,7 +88,7 @@ def rss_mb() -> float:
     return float(psutil.Process().memory_info().rss) / (1024.0 * 1024.0)
 
 
-def measure_sql_max(session, *, import_run_id: int, instrument_code: str, windows: list[tuple[object, object, int]]) -> list[float]:
+def measure_sql_max(session, *, import_run_id: int, stock_code: str, windows: list[tuple[object, object, int]]) -> list[float]:
     latencies: list[float] = []
     for query_start, query_end, _ in windows:
         started = time.perf_counter()
@@ -96,7 +96,7 @@ def measure_sql_max(session, *, import_run_id: int, instrument_code: str, window
             SQL_MAX_QUERY,
             {
                 "import_run_id": import_run_id,
-                "instrument_code": instrument_code,
+                "stock_code": stock_code,
                 "start_date": query_start,
                 "end_date": query_end,
             },
@@ -114,7 +114,7 @@ def measure_algo_max(tree: object, *, date_to_index: dict[object, int], windows:
     return latencies
 
 
-def measure_sql_kth(session, *, import_run_id: int, instrument_code: str, windows: list[tuple[object, object, int]]) -> list[float]:
+def measure_sql_kth(session, *, import_run_id: int, stock_code: str, windows: list[tuple[object, object, int]]) -> list[float]:
     latencies: list[float] = []
     for query_start, query_end, kth in windows:
         started = time.perf_counter()
@@ -122,7 +122,7 @@ def measure_sql_kth(session, *, import_run_id: int, instrument_code: str, window
             SQL_KTH_QUERY,
             {
                 "import_run_id": import_run_id,
-                "instrument_code": instrument_code,
+                "stock_code": stock_code,
                 "start_date": query_start,
                 "end_date": query_end,
                 "offset": kth - 1,
@@ -257,6 +257,8 @@ def render_images(paths: object, summary_rows: list[dict[str, object]]) -> None:
         title=f"Runtime Share ({target_sample}, {target_query_count} queries)",
         labels=[f'{scenario_labels[str(row["scenario"])]}\n{implementation_labels[str(row["implementation"])]}' for row in target_rows],
         values=[float(row["total_seconds"]) for row in target_rows],
+        legend_outside=True,
+        min_pct_label=0.5,
     )
 
 
@@ -294,8 +296,8 @@ def run_suite(
                 insert_benchmark_rows(session, import_run_id=run.id, rows=rows)
                 session.commit()
 
-                instrument_code = "SYM00000"
-                instrument_rows = [row for row in rows if row["instrument_code"] == instrument_code]
+                stock_code = "SYM00000"
+                instrument_rows = [row for row in rows if row["stock_code"] == stock_code]
                 dates = [row["trade_date"] for row in instrument_rows]
                 date_to_index = {trade_date: index for index, trade_date in enumerate(dates)}
                 amounts_scaled = [scale_amount(row["amount"]) for row in instrument_rows]
@@ -334,9 +336,9 @@ def run_suite(
                     }
                 )
 
-                sql_max_latencies = measure_sql_max(session, import_run_id=run.id, instrument_code=instrument_code, windows=windows)
+                sql_max_latencies = measure_sql_max(session, import_run_id=run.id, stock_code=stock_code, windows=windows)
                 algo_max_latencies = measure_algo_max(range_max_tree, date_to_index=date_to_index, windows=windows)
-                sql_kth_latencies = measure_sql_kth(session, import_run_id=run.id, instrument_code=instrument_code, windows=windows)
+                sql_kth_latencies = measure_sql_kth(session, import_run_id=run.id, stock_code=stock_code, windows=windows)
                 algo_kth_latencies = measure_algo_kth(range_kth_tree, date_to_index=date_to_index, windows=windows)
 
                 latency_series = {

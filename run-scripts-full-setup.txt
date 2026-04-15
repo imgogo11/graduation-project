@@ -140,13 +140,36 @@ uv sync --extra benchmark
 & $pythonExe benchmarks/run_all.py --suite kth_comparison --sample all
 
 
+# 通过公开注册接口创建平台压测专用用户
+try {
+    Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8200/api/auth/register" -ContentType "application/json" -Body '{"username":"benchmark_runner","password":"benchmark-runner-123"}' | Out-Null
+} catch {
+    if (-not $_.Exception.Response -or $_.Exception.Response.StatusCode.value__ -ne 409) {
+        throw
+    }
+}
+
+
+# 为 benchmark_runner 导入固定平台压测数据集
+$platformBenchmarkDatasetName = "platform_benchmark_dataset_{0}" -f (Get-Date -Format "yyyyMMdd_HHmmss")
+$platformImportOutput = & $pythonExe backend/scripts/import_data.py --file-path .\data\fixtures\platform_benchmark_trading.csv --dataset-name $platformBenchmarkDatasetName --username benchmark_runner
+$platformBenchmarkRunId = [regex]::Match(($platformImportOutput | Out-String), 'Import run (\d+)').Groups[1].Value
+if (-not $platformBenchmarkRunId) {
+    throw "无法从固定数据集导入结果中解析 run_id"
+}
+
+
+# 建议先执行 live smoke，确认真实链路全部可用
+& $pythonExe backend/scripts/live_smoke.py --base-url http://127.0.0.1:8200 --username benchmark_runner --password benchmark-runner-123 --run-id $platformBenchmarkRunId --admin-username admin --admin-password admin123456
+
+
 # 运行平台稳定性与安全性压测前，请先设置 Locust 所需环境变量
 $env:BENCHMARK_BASE_URL = "http://127.0.0.1:8200"
-$env:BENCHMARK_USERNAME = "admin"
-$env:BENCHMARK_PASSWORD = "admin123456"
-$env:BENCHMARK_IMPORT_RUN_ID = "1"
-$env:BENCHMARK_SAMPLE = "smoke"
+$env:BENCHMARK_USERNAME = "benchmark_runner"
+$env:BENCHMARK_PASSWORD = "benchmark-runner-123"
+$env:BENCHMARK_IMPORT_RUN_ID = $platformBenchmarkRunId
+$env:BENCHMARK_SAMPLE = "thesis"
 
 
 # 运行平台压测，结果与图表将写入根目录 benchmarks/platform_quality/
-& $pythonExe benchmarks/run_all.py --suite platform_quality --profile smoke
+& $pythonExe benchmarks/run_all.py --suite platform_quality --profile thesis

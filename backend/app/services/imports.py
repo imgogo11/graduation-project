@@ -99,8 +99,7 @@ def load_trading_head_dictionary() -> TradingHeadDictionary:
 
 def normalize_header_token(value: Any) -> str:
     text = unicodedata.normalize("NFKC", str(value or ""))
-    text = text.replace("\ufeff", "").strip().lower()
-    return re.sub(r"[\s_-]+", "", text)
+    return text.replace("\ufeff", "").strip()
 
 
 def build_import_format_error(detail: str) -> str:

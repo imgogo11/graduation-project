@@ -1,6 +1,6 @@
 case,expected_statuses,matched,total,matched_ratio,status_counts
-cross_user_records,404,7,7,1.0,"{""404"": 7}"
-invalid_date_range,400,12,12,1.0,"{""400"": 12}"
-invalid_k,400,12,12,1.0,"{""400"": 12}"
-invalid_token_me,401,35,35,1.0,"{""401"": 35}"
-no_auth_runs,401,35,35,1.0,"{""401"": 35}"
+cross_user_records,404,365,365,1.0,"{""404"": 365}"
+invalid_date_range,400,361,361,1.0,"{""400"": 361}"
+invalid_k,400,372,372,1.0,"{""400"": 372}"
+invalid_token_me,401,677,677,1.0,"{""401"": 677}"
+no_auth_runs,401,695,695,1.0,"{""401"": 695}"

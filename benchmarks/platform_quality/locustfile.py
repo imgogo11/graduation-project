@@ -45,10 +45,15 @@ def _record_security_case(case_name: str, *, status: str, expected_statuses: lis
         state["matched"] = int(state["matched"]) + 1
 
 
+def _should_track_status(name: str | None) -> bool:
+    return bool(name) and not str(name).startswith("setup/")
+
+
 @events.request.add_listener
 def on_request(request_type, name, response_time, response_length, response, context, exception, **kwargs):  # noqa: ANN001
     status = _status_label(response, exception)
-    _status_counts[status] += 1
+    if _should_track_status(name):
+        _status_counts[status] += 1
     if context and context.get("security_case"):
         expected = [str(item) for item in context.get("expected_statuses", [])]
         _record_security_case(str(context["security_case"]), status=status, expected_statuses=expected)
@@ -121,16 +126,16 @@ def _resolve_run_context(client, token: str) -> dict[str, object]:
                     risk_ready = True
                     break
 
-    instruments_response = client.get("/api/trading/instruments", params={"import_run_id": run_id}, headers=headers, name="setup/instruments")
-    instruments_response.raise_for_status()
-    instrument_rows = instruments_response.json()
-    if not instrument_rows:
-        raise RuntimeError("No instrument rows available for Locust benchmark execution.")
-    instrument_code = str(instrument_rows[0]["instrument_code"])
+    stocks_response = client.get("/api/trading/stocks", params={"import_run_id": run_id}, headers=headers, name="setup/stocks")
+    stocks_response.raise_for_status()
+    stock_rows = stocks_response.json()
+    if not stock_rows:
+        raise RuntimeError("No stock rows available for Locust benchmark execution.")
+    stock_code = str(stock_rows[0]["stock_code"])
 
     records_response = client.get(
         "/api/trading/records",
-        params={"import_run_id": run_id, "instrument_code": instrument_code},
+        params={"import_run_id": run_id, "stock_code": stock_code},
         headers=headers,
         name="setup/records",
     )
@@ -155,7 +160,7 @@ def _resolve_run_context(client, token: str) -> dict[str, object]:
 
     _run_context = {
         "import_run_id": run_id,
-        "instrument_code": instrument_code,
+        "stock_code": stock_code,
         "start_date": start_date,
         "end_date": end_date,
         "k": kth,
@@ -190,7 +195,7 @@ class AuthenticatedBenchmarkUser(HttpUser):
             "/api/trading/records",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
             },
             headers=_auth_headers(self.token),
             name="trading/records",
@@ -202,7 +207,7 @@ class AuthenticatedBenchmarkUser(HttpUser):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
                 "start_date": self.run_context["start_date"],
                 "end_date": self.run_context["end_date"],
             },
@@ -216,7 +221,7 @@ class AuthenticatedBenchmarkUser(HttpUser):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
                 "start_date": self.run_context["start_date"],
                 "end_date": self.run_context["end_date"],
                 "k": self.run_context["k"],
@@ -232,7 +237,7 @@ class AuthenticatedBenchmarkUser(HttpUser):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
                 "start_date": self.run_context["start_date"],
                 "end_date": self.run_context["end_date"],
                 "k": self.run_context["k"],
@@ -275,7 +280,7 @@ class AuthenticatedBenchmarkUser(HttpUser):
             "/api/algo/risk-radar/event-context",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": risk_event["instrument_code"],
+                "stock_code": risk_event["stock_code"],
                 "trade_date": risk_event["trade_date"],
             },
             headers=_auth_headers(self.token),
@@ -342,7 +347,7 @@ class SecurityProbeUser(HttpUser):
             "/api/trading/records",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
             },
             headers=_auth_headers(self.attacker_token),
             name="security/cross_user_records",
@@ -357,7 +362,7 @@ class SecurityProbeUser(HttpUser):
             "/api/algo/trading/range-kth-volume",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
                 "start_date": self.run_context["start_date"],
                 "end_date": self.run_context["end_date"],
                 "k": 0,
@@ -376,7 +381,7 @@ class SecurityProbeUser(HttpUser):
             "/api/algo/trading/range-max-amount",
             params={
                 "import_run_id": self.run_context["import_run_id"],
-                "instrument_code": self.run_context["instrument_code"],
+                "stock_code": self.run_context["stock_code"],
                 "start_date": self.run_context["end_date"],
                 "end_date": self.run_context["start_date"],
             },

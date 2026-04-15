@@ -32,7 +32,7 @@ from app.schemas.trading import (
 
 
 ALGO_INDEX_METADATA_KEY = "algo_index"
-RISK_RADAR_SNAPSHOT_VERSION = "stock-v1"
+RISK_RADAR_SNAPSHOT_VERSION = "stock-v2"
 ALGO_INDEX_STATUS_PENDING = "pending"
 ALGO_INDEX_STATUS_BUILDING = "building"
 ALGO_INDEX_STATUS_READY = "ready"
@@ -434,7 +434,8 @@ class AlgoIndexManager:
 
     def _load_cache_from_snapshot(self, import_run_id: int, snapshot_path: Path) -> tuple[RiskRadarIndexCache, bool]:
         payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        payload, needs_rewrite = self._normalize_snapshot_payload(payload)
+        if payload.get("schema_version") != RISK_RADAR_SNAPSHOT_VERSION:
+            raise ValueError("Unsupported risk radar snapshot schema")
         session = get_session_factory()()
         try:
             rows = TradingRepository.list_risk_radar_rows(session, import_run_id=import_run_id)
@@ -449,45 +450,7 @@ class AlgoIndexManager:
             stock_profiles=[TradingStockRiskProfileRead.model_validate(item) for item in payload["stock_profiles"]],
             calendar_rows=[TradingRiskRadarCalendarDayRead.model_validate(item) for item in payload["calendar_rows"]],
             stocks=self._build_stock_indexes(rows),
-        ), needs_rewrite
-
-    def _normalize_snapshot_payload(self, payload: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-        needs_rewrite = payload.get("schema_version") != RISK_RADAR_SNAPSHOT_VERSION
-
-        normalized = dict(payload)
-        if "stock_profiles" not in normalized and "instrument_profiles" in normalized:
-            normalized["stock_profiles"] = normalized["instrument_profiles"]
-            needs_rewrite = True
-
-        normalized["overview"] = self._normalize_snapshot_object(normalized.get("overview", {}))
-        normalized["events"] = [self._normalize_snapshot_object(item) for item in normalized.get("events", [])]
-        normalized["stock_profiles"] = [
-            self._normalize_snapshot_object(item) for item in normalized.get("stock_profiles", [])
-        ]
-        normalized["calendar_rows"] = [
-            self._normalize_snapshot_object(item) for item in normalized.get("calendar_rows", [])
-        ]
-        normalized["schema_version"] = RISK_RADAR_SNAPSHOT_VERSION
-        return normalized, needs_rewrite
-
-    def _normalize_snapshot_object(self, value: Any) -> Any:
-        if isinstance(value, list):
-            return [self._normalize_snapshot_object(item) for item in value]
-        if not isinstance(value, dict):
-            return value
-
-        key_mapping = {
-            "instrument_code": "stock_code",
-            "instrument_name": "stock_name",
-            "instrument_count": "stock_count",
-            "impacted_instrument_count": "impacted_stock_count",
-            "top_instruments": "top_stocks",
-            "instrument_profiles": "stock_profiles",
-        }
-        normalized: dict[str, Any] = {}
-        for key, item in value.items():
-            normalized[key_mapping.get(key, key)] = self._normalize_snapshot_object(item)
-        return normalized
+        ), False
 
     def _update_status(self, import_run_id: int, fields: dict[str, Any]) -> None:
         session = get_session_factory()()
