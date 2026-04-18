@@ -93,17 +93,21 @@ stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 ```powershell
 uv venv .venv --python 3.13
 uv sync
-uv sync --extra benchmark
 cd web
 npm install
 cd ..
+```
+
+如需运行 benchmark，再额外执行：
+
+```powershell
+uv sync --extra benchmark
 ```
 
 ### 2. 准备环境变量
 
 ```powershell
 Copy-Item .env.template .env
-Copy-Item .\web\.env.template .\web\.env
 ```
 
 启动前请检查以下变量：
@@ -112,43 +116,45 @@ Copy-Item .\web\.env.template .\web\.env
 - `JWT_SECRET`
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
+- `BACKEND_HOST`
+- `BACKEND_PORT`
+- `DEMO_IMPORT_FILE_PATH`
+- `DEMO_DATASET_PREFIX`
+- `DEMO_IMPORT_USERNAME`
 - `UPLOAD_ROOT`
 - `POSTGRES_PORT`，默认 `15432`
-- `web/.env` 中的 `VITE_BACKEND_TARGET`
-- `web/.env` 中的 `VITE_DEV_HOST`
-- `web/.env` 中的 `VITE_DEV_PORT`
+- `.env` 中的 `VITE_BACKEND_TARGET`
+- `.env` 中的 `VITE_DEV_HOST`
+- `.env` 中的 `VITE_DEV_PORT`
 
-### 3. 启动 PostgreSQL 并执行迁移
-
-```powershell
-docker compose -f deploy/docker-compose.yml up -d postgres
-.\.venv\Scripts\python.exe -m alembic -c backend/alembic.ini upgrade head
-.\.venv\Scripts\python.exe backend/scripts/init_admin.py
-```
-
-### 4. 构建算法模块
+### 3. 初次启动
 
 ```powershell
-$pythonExe = (Resolve-Path .\.venv\Scripts\python.exe).Path
-$pybind11CMakeDir = & $pythonExe -m pybind11 --cmakedir
-cmake -S algo-module -B algo-module/build -DPython_EXECUTABLE="$pythonExe" -Dpybind11_DIR="$pybind11CMakeDir"
-cmake --build algo-module/build
-ctest --test-dir algo-module/build --output-on-failure
+powershell -ExecutionPolicy Bypass -File .\scripts\dev\full-start.ps1
 ```
 
-### 5. 启动后端与前端
+`full-start` 只在第一次启动时执行，负责：
+
+- 创建或补齐 `.env`
+- 安装 Python 和前端依赖
+- 构建 `algo-module`
+- 启动 PostgreSQL
+- 执行 Alembic 迁移
+- 初始化管理员
+- 导入一份示例交易数据
+
+### 4. 日常启动
 
 后端：
 
 ```powershell
-.\.venv\Scripts\uvicorn.exe app.main:app --app-dir backend --host 127.0.0.1 --port 8200 --reload
+powershell -ExecutionPolicy Bypass -File .\scripts\dev\demo-start.ps1 backend
 ```
 
 前端：
 
 ```powershell
-cd web
-npm run dev
+powershell -ExecutionPolicy Bypass -File .\scripts\dev\demo-start.ps1 frontend
 ```
 
 前端开发服务器默认运行在 `http://127.0.0.1:4173`。
@@ -199,6 +205,12 @@ npm run dev
 
 ```powershell
 .\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\web\public\trading_import_template.csv --dataset-name demo_run
+```
+
+如果已经在 `.env` 中配置了 `DEMO_IMPORT_FILE_PATH`、`DEMO_DATASET_PREFIX`、`DEMO_IMPORT_USERNAME`，也可以直接执行：
+
+```powershell
+.\.venv\Scripts\python.exe backend/scripts/import_data.py
 ```
 
 执行 live smoke：

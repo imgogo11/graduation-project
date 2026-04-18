@@ -97,6 +97,7 @@ class AdminUsersTests(unittest.TestCase):
         list_response = self.client.get("/api/admin/users", headers=self._auth_headers(self.admin_token))
         self.assertEqual(list_response.status_code, 200, list_response.text)
         usernames = {row["username"] for row in list_response.json()}
+        self.assertIn("admin", usernames)
         self.assertIn("plain_user", usernames)
         self.assertIn("data_user", usernames)
 

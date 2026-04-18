@@ -3,13 +3,14 @@ import { computed, reactive, readonly } from "vue";
 
 const state = reactive({
   lastSuccessfulSyncAt: "" as string,
-  apiBase: (import.meta.env.VITE_API_BASE || "").trim(),
 });
 
 export function useRuntimeStore() {
-  const apiLabel = computed(() => (state.apiBase ? state.apiBase : "/api (Vite proxy)"));
+  const syncStatusText = computed(() => (state.lastSuccessfulSyncAt ? "已同步" : "未同步"));
   const lastSyncText = computed(() =>
-    state.lastSuccessfulSyncAt ? `最近同步：${new Date(state.lastSuccessfulSyncAt).toLocaleString("zh-CN")}` : "尚未完成联调请求"
+    state.lastSuccessfulSyncAt
+      ? new Date(state.lastSuccessfulSyncAt).toLocaleString("zh-CN")
+      : "尚无同步记录"
   );
 
   function markSynced() {
@@ -18,7 +19,7 @@ export function useRuntimeStore() {
 
   return {
     state: readonly(state),
-    apiLabel,
+    syncStatusText,
     lastSyncText,
     markSynced,
   };

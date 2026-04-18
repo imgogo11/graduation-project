@@ -37,6 +37,86 @@ export interface AdminManagedUserDeleteResponse {
   status: string;
 }
 
+export interface AuditLogRead {
+  id: number;
+  occurred_at: string;
+  category: string;
+  event_type: string;
+  success: boolean;
+  status_code: number | null;
+  actor_user_id: number | null;
+  actor_username_snapshot: string | null;
+  actor_role: string | null;
+  target_type: string | null;
+  target_label: string | null;
+  import_run_id: number | null;
+  request_path: string | null;
+  http_method: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  detail_json: Record<string, unknown>;
+}
+
+export interface AuditLogCategoryStatRead {
+  category: string;
+  total: number;
+}
+
+export interface AuditLogStatsRead {
+  total_events: number;
+  success_events: number;
+  failed_events: number;
+  unique_actor_count: number;
+  today_events: number;
+  category_breakdown: AuditLogCategoryStatRead[];
+}
+
+export interface AuditLogListRead {
+  total: number;
+  page: number;
+  page_size: number;
+  rows: AuditLogRead[];
+}
+
+export interface AdminOverviewMetricRead {
+  total_users: number;
+  active_users: number;
+  total_runs: number;
+  total_records: number;
+  today_events: number;
+  failed_events_24h: number;
+}
+
+export interface AdminRunMonitorRowRead {
+  import_run_id: number;
+  display_id: number;
+  dataset_name: string;
+  owner_user_id: number | null;
+  owner_username: string | null;
+  run_status: string;
+  started_at: string;
+  completed_at: string | null;
+  record_count: number | null;
+  algo_index_status: string;
+  algo_index_ready: boolean;
+  algo_build_duration_ms: number | null;
+  algo_last_error: string | null;
+}
+
+export interface AdminRunMonitorRead {
+  total_runs: number;
+  ready_indexes: number;
+  pending_indexes: number;
+  failed_indexes: number;
+  rows: AdminRunMonitorRowRead[];
+}
+
+export interface AdminOverviewRead {
+  metrics: AdminOverviewMetricRead;
+  recent_audit_logs: AuditLogRead[];
+  recent_runs: AdminRunMonitorRowRead[];
+}
+
 export interface ImportRunRead {
   id: number;
   display_id: number;

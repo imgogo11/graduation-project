@@ -7,8 +7,7 @@ tasks.md
 数据库 + 算法模块协同工作说明.md
 C++算法引擎与数据库协同优势详述.md
 
-.env
-.env.*
+.env*
 .codex*
 .venv/
 .uv-cache/
@@ -24,3 +23,33 @@ __pycache__/
 *.pyc
 *.docx
 /docs/
+
+# Editor settings
+.vscode/
+.idea/
+
+# Python caches and test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+
+# Frontend and tool caches
+*.tsbuildinfo
+.eslintcache
+
+# Local runtime artifacts
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# OS cruft
+.DS_Store
+Thumbs.db

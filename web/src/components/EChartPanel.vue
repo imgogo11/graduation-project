@@ -111,17 +111,17 @@ watch(
   justify-content: center;
   gap: 10px;
   border-radius: 18px;
-  background: rgba(255, 251, 244, 0.72);
+  background: rgba(248, 250, 252, 0.78);
   color: var(--text-secondary);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(6px);
 }
 
 .chart-panel__spinner {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(11, 143, 140, 0.22);
-  border-top-color: var(--accent-teal);
+  border: 2px solid rgba(47, 111, 237, 0.18);
+  border-top-color: var(--accent-blue);
   animation: spin 0.8s linear infinite;
 }
 

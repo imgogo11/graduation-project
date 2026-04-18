@@ -16,8 +16,21 @@ export interface UploadTradingFileParams {
   file: File;
 }
 
-export function fetchImportRuns(params: ListImportRunsParams = {}) {
-  return getJson<ImportRunRead[]>("/api/imports/runs", params);
+function ensureArray<T>(payload: T[] | T | null | undefined) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload === null || payload === undefined) {
+    return [] as T[];
+  }
+
+  return [payload];
+}
+
+export async function fetchImportRuns(params: ListImportRunsParams = {}) {
+  const payload = await getJson<ImportRunRead[] | ImportRunRead | null>("/api/imports/runs", params);
+  return ensureArray(payload);
 }
 
 export function fetchImportStats(params: ImportStatsParams = {}) {

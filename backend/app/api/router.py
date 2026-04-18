@@ -11,13 +11,14 @@ from fastapi import APIRouter
 from .routes.algo import indexes as algo_indexes
 from .routes.algo import risk_radar as algo_risk_radar
 from .routes.algo import trading as algo_trading
-from .routes import admin_users, auth, health, imports, trading, trading_analysis
+from .routes import admin_dashboard, admin_users, auth, health, imports, trading, trading_analysis
 
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(admin_users.router, prefix="/admin/users", tags=["admin-users"])
+api_router.include_router(admin_dashboard.router, prefix="/admin", tags=["admin-dashboard"])
 api_router.include_router(imports.router, prefix="/imports", tags=["imports"])
 api_router.include_router(trading.router, prefix="/trading", tags=["trading"])
 api_router.include_router(trading_analysis.router, prefix="/trading/analysis", tags=["trading-analysis"])

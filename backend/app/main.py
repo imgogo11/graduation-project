@@ -8,10 +8,11 @@
 #
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.services.audit_logs import audit_log_service
 
 
 settings = get_settings()
@@ -21,3 +22,44 @@ app = FastAPI(
     description="FastAPI backend for the stock trading data management and analysis system.",
 )
 app.include_router(api_router, prefix=settings.api_prefix)
+
+ANALYSIS_AUDIT_PREFIXES = (
+    f"{settings.api_prefix}/trading/analysis",
+    f"{settings.api_prefix}/algo/risk-radar",
+    f"{settings.api_prefix}/algo/trading",
+)
+
+
+def _is_analysis_request(path: str, method: str) -> bool:
+    if method.upper() != "GET":
+        return False
+    return any(path.startswith(prefix) for prefix in ANALYSIS_AUDIT_PREFIXES)
+
+
+def _build_analysis_event_type(path: str) -> str:
+    normalized = path.strip("/").replace("/", ".")
+    return f"{normalized}.access"
+
+
+@app.middleware("http")
+async def audit_analysis_access(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if _is_analysis_request(path, request.method):
+        actor_user_id, actor_username, actor_role = audit_log_service.resolve_actor_from_authorization(
+            request.headers.get("authorization")
+        )
+        audit_log_service.record_event(
+            category="analysis_access",
+            event_type=_build_analysis_event_type(path),
+            success=response.status_code < 400,
+            status_code=response.status_code,
+            actor_user_id=actor_user_id,
+            actor_username_snapshot=actor_username,
+            actor_role=actor_role,
+            request_path=path,
+            http_method=request.method.upper(),
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    return response

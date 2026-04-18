@@ -431,8 +431,8 @@ class TradingAnalysisService:
                     build_data_unavailable_message("所选股票没有可用于相关性分析的收盘价数据")
                 )
 
-        if frame["stock_code"].nunique() < 2:
-            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("相关性分析至少需要 2 只股票"))
+        if frame["stock_code"].nunique() < 1:
+            raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("相关性分析至少需要 1 只股票"))
 
         pivot = (
             frame.pivot_table(index="trade_date", columns="stock_code", values="close", aggfunc="last")
@@ -445,13 +445,19 @@ class TradingAnalysisService:
 
         corr = pivot.corr(min_periods=2)
         codes = [str(code) for code in corr.columns.tolist()]
-        if len(codes) < 2:
+        if not codes:
             raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("缺少足够的重叠收益率样本"))
 
-        matrix = [
-            [self._optional_float(corr.loc[row_code, column_code]) for column_code in codes]
-            for row_code in codes
-        ]
+        matrix: list[list[float | None]] = []
+        for row_code in codes:
+            row: list[float | None] = []
+            for column_code in codes:
+                value = self._optional_float(corr.loc[row_code, column_code])
+                if value is None and row_code == column_code:
+                    # 单股票范围或样本不足时，自相关对角线默认展示为 1.0，避免前端出现无意义空值。
+                    value = 1.0
+                row.append(value)
+            matrix.append(row)
 
         return TradingCorrelationMatrixRead(
             import_run_id=import_run_id,

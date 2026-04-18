@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 
 import type { EChartsOption } from "echarts";
+import { NAlert, NButton, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag } from "naive-ui";
 
 import {
   fetchTradingAnomalies,
@@ -13,90 +14,56 @@ import {
   fetchTradingScopeComparison,
   fetchTradingSummary,
 } from "@/api/analysis";
-import { fetchImportRuns } from "@/api/imports";
+import { fetchImportRuns, fetchImportStats } from "@/api/imports";
 import { fetchTradingStocks } from "@/api/trading";
 import type {
   ImportRunRead,
   TradingAnomalyReportRead,
-  TradingComparisonScopeRead,
   TradingCorrelationMatrixRead,
   TradingCrossSectionRead,
-  TradingIndicatorPointRead,
   TradingIndicatorSeriesRead,
-  TradingStockRead,
   TradingQualityReportRead,
   TradingRiskMetricsRead,
   TradingScopeComparisonRead,
+  TradingStockRead,
   TradingSummaryRead,
 } from "@/api/types";
+import DateInputField from "@/components/DateInputField.vue";
 import EChartPanel from "@/components/EChartPanel.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
 import StatCard from "@/components/StatCard.vue";
+import { useTablePager } from "@/composables/useTablePager";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
-import {
-  formatCompact,
-  formatDate,
-  formatNumberish,
-  formatPercent,
-  getErrorMessage,
-  isDataInsufficientMessage,
-  toNumber,
-  toStatusTagType,
-} from "@/utils/format";
+import { formatCompact, formatDate, formatNumberish, formatPercent, getErrorMessage, toNumber, toStatusTagType } from "@/utils/format";
+import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
 
-
-interface PanelState {
-  loading: boolean;
-  notice: string;
-}
-
-interface AnalysisFilters {
-  importRunId: number | undefined;
-  stockCode: string;
-  startDate: string;
-  endDate: string;
-  crossMetric: string;
-  topNInput: string;
-  compareRunId: number | undefined;
-  compareStockCode: string;
-  compareStartDate: string;
-  compareEndDate: string;
-  correlationStockCodes: string[];
-}
-
-function createPanelState(): PanelState {
-  return {
-    loading: false,
-    notice: "",
-  };
-}
-
-function createDefaultFilters(): AnalysisFilters {
-  return {
-    importRunId: undefined,
-    stockCode: "",
-    startDate: "",
-    endDate: "",
-    crossMetric: "total_return",
-    topNInput: "10",
-    compareRunId: undefined,
-    compareStockCode: "",
-    compareStartDate: "",
-    compareEndDate: "",
-    correlationStockCodes: [],
-  };
-}
 
 const runtime = useRuntimeStore();
 const datasetContext = useDatasetContextStore();
 const loadingRuns = ref(false);
 const loadingAnalysis = ref(false);
 const error = ref("");
+usePageErrorNotification(error, "Analysis Center Error");
+
 const importRuns = ref<ImportRunRead[]>([]);
 const stocks = ref<TradingStockRead[]>([]);
 const compareStocks = ref<TradingStockRead[]>([]);
+
+const filters = reactive({
+  importRunId: undefined as number | undefined,
+  stockCode: "",
+  startDate: "",
+  endDate: "",
+  crossMetric: "total_return",
+  topNInput: "10",
+  compareRunId: undefined as number | undefined,
+  compareStockCode: "",
+  compareStartDate: "",
+  compareEndDate: "",
+  correlationStockCodes: [] as string[],
+});
 
 const summary = ref<TradingSummaryRead | null>(null);
 const quality = ref<TradingQualityReportRead | null>(null);
@@ -106,61 +73,68 @@ const anomalies = ref<TradingAnomalyReportRead | null>(null);
 const crossSection = ref<TradingCrossSectionRead | null>(null);
 const correlation = ref<TradingCorrelationMatrixRead | null>(null);
 const comparison = ref<TradingScopeComparisonRead | null>(null);
-const appliedFilters = ref<AnalysisFilters | null>(null);
-const draftForm = reactive(createDefaultFilters());
-const importRunDisplayIdMap = computed(() => new Map(importRuns.value.map((item) => [item.id, item.display_id])));
-
-const panelStates = reactive({
-  summary: createPanelState(),
-  quality: createPanelState(),
-  indicators: createPanelState(),
-  risk: createPanelState(),
-  anomalies: createPanelState(),
-  crossSection: createPanelState(),
-  correlation: createPanelState(),
-  comparison: createPanelState(),
+const panelNotices = reactive({
+  summary: "",
+  quality: "",
+  indicators: "",
+  risk: "",
+  anomalies: "",
+  crossSection: "",
+  correlation: "",
+  comparison: "",
 });
 
-const compareRunOptions = computed(() => importRuns.value);
-const correlationHint = "仅从当前批次中选取，基于重叠日期收益率计算，不是跨批次公共股票。";
-const comparisonHint = "支持与当前相同批次做基线校验；对比股票留空时表示对比范围内全部股票。";
-
 const crossMetricOptions = [
-  { label: "区间收益率", value: "total_return" },
-  { label: "波动率", value: "volatility" },
+  { label: "区间收益", value: "total_return" },
+  { label: "波动", value: "volatility" },
   { label: "成交量", value: "total_volume" },
   { label: "成交额", value: "total_amount" },
   { label: "平均振幅", value: "average_amplitude" },
 ];
 
-const analysisCards = computed(() => [
+const importRunOptions = computed(() =>
+  importRuns.value.map((item) => ({ label: `#${item.display_id} · ${item.dataset_name}`, value: item.id }))
+);
+const stockOptions = computed(() =>
+  stocks.value.map((item) => ({ label: `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`, value: item.stock_code }))
+);
+const compareStockOptions = computed(() =>
+  compareStocks.value.map((item) => ({ label: `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`, value: item.stock_code }))
+);
+
+const cards = computed(() => [
   {
-    label: "Latest Close",
+    label: "最新收盘价",
     value: summary.value ? formatNumberish(summary.value.latest_close, 2) : "--",
-    hint: summary.value ? `${formatDate(summary.value.end_date)} 收盘价` : panelHint(panelStates.summary, "等待分析结果"),
+    hint: summary.value ? `${formatDate(summary.value.end_date)} 收盘价` : "等待分析结果",
     tone: "teal" as const,
   },
   {
-    label: "Interval Return",
+    label: "区间收益",
     value: risk.value ? formatPercent(risk.value.interval_return, 2) : "--",
-    hint: risk.value ? `${risk.value.record_count} 条记录` : panelHint(panelStates.risk, "等待分析结果"),
+    hint: risk.value ? `${risk.value.record_count} 条记录` : "等待分析结果",
     tone: "orange" as const,
   },
   {
-    label: "Max Drawdown",
+    label: "最大回撤",
     value: risk.value ? formatPercent(risk.value.max_drawdown, 2) : "--",
-    hint: risk.value ? `持续 ${risk.value.max_drawdown_duration} 天` : panelHint(panelStates.risk, "等待分析结果"),
+    hint: risk.value ? `持续 ${risk.value.max_drawdown_duration} 天` : "等待分析结果",
     tone: "berry" as const,
   },
   {
-    label: "范围对比差异",
+    label: "差异记录",
     value: comparison.value ? String(comparison.value.mismatch_summary.mismatched_record_count) : "--",
-    hint: comparison.value
-      ? `${comparison.value.record_overlap.shared_record_count} 条共同记录`
-      : panelHint(panelStates.comparison, "等待范围对比"),
+    hint: comparison.value ? `${comparison.value.record_overlap.shared_record_count} 条共同记录` : "等待范围对比",
     tone: "neutral" as const,
   },
 ]);
+
+const contextPills = computed(() => [
+  `当前批次：${filters.importRunId ? `#${importRuns.value.find((item) => item.id === filters.importRunId)?.display_id ?? filters.importRunId}` : "--"}`,
+  `当前股票：${filters.stockCode || "--"}`,
+  `日期范围：${filters.startDate || "起始不限"} ~ ${filters.endDate || "结束不限"}`,
+]);
+const importRunDisplayMap = computed(() => new Map(importRuns.value.map((item) => [item.id, item.display_id])));
 
 const indicatorChartOption = computed<EChartsOption | null>(() => {
   if (!indicators.value?.points.length) {
@@ -169,328 +143,191 @@ const indicatorChartOption = computed<EChartsOption | null>(() => {
 
   return {
     backgroundColor: "transparent",
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: "rgba(24, 50, 47, 0.9)",
-      borderWidth: 0,
-      textStyle: { color: "#fffdf7" },
-    },
-    legend: {
-      top: 0,
-      textStyle: { color: "#59676b" },
-    },
-    grid: {
-      left: 48,
-      right: 48,
-      top: 56,
-      bottom: 34,
-    },
-    xAxis: {
-      type: "category",
-      boundaryGap: false,
-      data: indicators.value.points.map((item) => item.trade_date),
-      axisLabel: { color: "#59676b" },
-      axisLine: {
-        lineStyle: { color: "rgba(89, 103, 107, 0.22)" },
-      },
-    },
-    yAxis: [
-      {
-        type: "value",
-        name: "Price",
-        axisLabel: { color: "#59676b" },
-        splitLine: {
-          lineStyle: { color: "rgba(89, 103, 107, 0.10)" },
-        },
-      },
-      {
-        type: "value",
-        name: "Volume",
-        axisLabel: { color: "#59676b" },
-        splitLine: { show: false },
-      },
-    ],
+    tooltip: { trigger: "axis" },
+    legend: { top: 0 },
+    grid: { left: 48, right: 32, top: 56, bottom: 28 },
+    xAxis: { type: "category", boundaryGap: false, data: indicators.value.points.map((item) => item.trade_date) },
+    yAxis: [{ type: "value", name: "Price" }, { type: "value", name: "Volume" }],
     series: [
-      {
-        type: "line",
-        name: "Close",
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 3, color: "#0b8f8c" },
-        data: indicators.value.points.map((item) => toNumber(item.close)),
-      },
-      {
-        type: "line",
-        name: "MA5",
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2, color: "#f28c28" },
-        data: indicators.value.points.map((item) => toNumber(item.ma5)),
-      },
-      {
-        type: "line",
-        name: "MA20",
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 2, color: "#b9524f" },
-        data: indicators.value.points.map((item) => toNumber(item.ma20)),
-      },
-      {
-        type: "line",
-        name: "Boll Upper",
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 1.5, color: "#59676b", type: "dashed" },
-        data: indicators.value.points.map((item) => toNumber(item.bollinger_upper)),
-      },
-      {
-        type: "line",
-        name: "Boll Lower",
-        smooth: true,
-        showSymbol: false,
-        lineStyle: { width: 1.5, color: "#7c878a", type: "dashed" },
-        data: indicators.value.points.map((item) => toNumber(item.bollinger_lower)),
-      },
-      {
-        type: "bar",
-        name: "Volume",
-        yAxisIndex: 1,
-        barMaxWidth: 14,
-        itemStyle: {
-          color: "rgba(11, 143, 140, 0.26)",
-          borderRadius: [4, 4, 0, 0],
-        },
-        data: indicators.value.points.map((item) => toNumber(item.volume)),
-      },
+      { type: "line", name: "Close", smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.close)) },
+      { type: "line", name: "MA5", smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.ma5)) },
+      { type: "line", name: "MA20", smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.ma20)) },
+      { type: "bar", name: "Volume", yAxisIndex: 1, barMaxWidth: 14, data: indicators.value.points.map((item) => toNumber(item.volume)) },
     ],
   };
 });
 
-const latestIndicatorPoint = computed<TradingIndicatorPointRead | null>(() => {
-  const points = indicators.value?.points;
-  return points?.length ? points[points.length - 1] : null;
-});
-
-const correlationTableRows = computed(() => {
+const latestIndicatorPoint = computed(() => indicators.value?.points.at(-1) ?? null);
+const correlationRows = computed(() => {
   if (!correlation.value) {
     return [];
   }
-
-  return correlation.value.stock_codes.map((stockCode, rowIndex) => {
-    const row: Record<string, string | number | null> = { stock_code: stockCode };
-    correlation.value?.stock_codes.forEach((code, columnIndex) => {
-      row[code] = correlation.value?.matrix[rowIndex]?.[columnIndex] ?? null;
-    });
-    return row;
-  });
+  return correlation.value.stock_codes.map((code, rowIndex) => ({
+    stock_code: code,
+    values: correlation.value!.stock_codes.map((item, columnIndex) => ({
+      key: `${code}-${item}`,
+      value: correlation.value!.matrix[rowIndex]?.[columnIndex] ?? null,
+    })),
+  }));
+});
+const comparisonMismatchRows = computed(() =>
+  comparison.value
+    ? [
+        ["开盘价", comparison.value.mismatch_summary.open_mismatch_count],
+        ["最高价", comparison.value.mismatch_summary.high_mismatch_count],
+        ["最低价", comparison.value.mismatch_summary.low_mismatch_count],
+        ["收盘价", comparison.value.mismatch_summary.close_mismatch_count],
+        ["成交量", comparison.value.mismatch_summary.volume_mismatch_count],
+        ["成交额", comparison.value.mismatch_summary.amount_mismatch_count],
+      ]
+    : []
+);
+const anomalyRows = computed(() => anomalies.value?.anomalies ?? []);
+const crossSectionRows = computed(() => crossSection.value?.rows ?? []);
+const mismatchSampleRows = computed(() => comparison.value?.mismatch_samples ?? []);
+const analysisScopeKey = computed(
+  () =>
+    [
+      filters.importRunId ?? "",
+      filters.stockCode,
+      filters.startDate,
+      filters.endDate,
+      filters.crossMetric,
+      filters.topNInput,
+      filters.compareRunId ?? "",
+      filters.compareStockCode,
+      filters.compareStartDate,
+      filters.compareEndDate,
+      filters.correlationStockCodes.join(","),
+    ].join("|")
+);
+const anomalyPager = useTablePager(anomalyRows, {
+  initialPageSize: 20,
+  pageSizes: [10, 20, 50, 100],
+  resetTriggers: [analysisScopeKey],
+});
+const crossSectionPager = useTablePager(crossSectionRows, {
+  initialPageSize: 20,
+  pageSizes: [10, 20, 50, 100],
+  resetTriggers: [analysisScopeKey],
+});
+const mismatchSamplePager = useTablePager(mismatchSampleRows, {
+  initialPageSize: 20,
+  pageSizes: [10, 20, 50, 100],
+  resetTriggers: [analysisScopeKey],
 });
 
-const comparisonMismatchRows = computed(() => {
-  if (!comparison.value) {
-    return [];
-  }
-
-  return [
-    { label: "开盘价", count: comparison.value.mismatch_summary.open_mismatch_count },
-    { label: "最高价", count: comparison.value.mismatch_summary.high_mismatch_count },
-    { label: "最低价", count: comparison.value.mismatch_summary.low_mismatch_count },
-    { label: "收盘价", count: comparison.value.mismatch_summary.close_mismatch_count },
-    { label: "成交量", count: comparison.value.mismatch_summary.volume_mismatch_count },
-    { label: "成交额", count: comparison.value.mismatch_summary.amount_mismatch_count },
-  ];
-});
-
-const hasUnappliedChanges = computed(() => serializeFilters(snapshotFilters()) !== serializeFilters(appliedFilters.value));
-const contextPills = computed(() => [
-  `当前批次：${formatImportRunDisplayLabel(draftForm.importRunId)}`,
-  `当前股票：${draftForm.stockCode || "--"}`,
-  `日期范围：${draftForm.startDate || "起始不限"} ~ ${draftForm.endDate || "结束不限"}`,
-]);
-
-function panelHint(state: PanelState, idleText: string) {
-  if (state.loading) {
-    return "分析中";
-  }
-  return state.notice || idleText;
-}
-
-function emptyStateTitle(state: PanelState, emptyTitle: string, loadingTitle: string) {
-  if (state.loading) {
-    return loadingTitle;
-  }
-  if (state.notice) {
-    return isDataInsufficientMessage(state.notice) ? "数据不足分析" : "加载失败";
-  }
-  return emptyTitle;
-}
-
-function emptyStateDescription(state: PanelState, emptyDescription: string, loadingDescription = "正在请求最新分析结果。") {
-  if (state.loading) {
-    return loadingDescription;
-  }
-  return state.notice || emptyDescription;
-}
-
-function resetPanelStates() {
-  Object.values(panelStates).forEach((state) => {
-    state.loading = false;
-    state.notice = "";
-  });
-}
-
-function parseTopN(rawInput: string) {
-  const normalized = rawInput.trim();
-  if (!normalized) {
+function parseTopN() {
+  const raw = filters.topNInput.trim();
+  if (!raw) {
     return undefined;
   }
-
-  const parsed = Number(normalized);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error("Top N 必须是正整数，留空则返回全部结果。");
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error("Top N 必须是正整数");
   }
-  return parsed;
+  return value;
 }
 
-function snapshotFilters(source: AnalysisFilters = draftForm): AnalysisFilters {
-  return {
-    importRunId: source.importRunId,
-    stockCode: source.stockCode,
-    startDate: source.startDate,
-    endDate: source.endDate,
-    crossMetric: source.crossMetric,
-    topNInput: source.topNInput,
-    compareRunId: source.compareRunId,
-    compareStockCode: source.compareStockCode,
-    compareStartDate: source.compareStartDate,
-    compareEndDate: source.compareEndDate,
-    correlationStockCodes: [...source.correlationStockCodes],
-  };
-}
+type AnalysisPanelNoticeKey = keyof typeof panelNotices;
 
-function serializeFilters(source: AnalysisFilters | null) {
-  return JSON.stringify(source);
-}
-
-function buildScopeParams(filters: AnalysisFilters) {
-  if (!filters.importRunId || !filters.stockCode) {
-    throw new Error("请先选择主分析范围的批次和股票。");
-  }
-
-  return {
-    import_run_id: filters.importRunId,
-    stock_code: filters.stockCode,
-    start_date: filters.startDate || undefined,
-    end_date: filters.endDate || undefined,
-  };
-}
-
-function defaultCorrelationCodes(rows: TradingStockRead[], preferredCode: string) {
-  const selectedCodes: string[] = [];
-  if (preferredCode && rows.some((item) => item.stock_code === preferredCode)) {
-    selectedCodes.push(preferredCode);
-  }
-
-  rows.forEach((item) => {
-    if (selectedCodes.length >= 6 || selectedCodes.includes(item.stock_code)) {
-      return;
-    }
-    selectedCodes.push(item.stock_code);
+function clearPanelNotices() {
+  (Object.keys(panelNotices) as AnalysisPanelNoticeKey[]).forEach((key) => {
+    panelNotices[key] = "";
   });
-  return selectedCodes;
 }
 
-function formatImportRunDisplayLabel(runId: number | null | undefined) {
+function pickVisibleRunId(runRows: ImportRunRead[], candidates: Array<number | undefined>) {
+  return candidates.find((candidate) => candidate !== undefined && runRows.some((item) => item.id === candidate)) ?? runRows[0]?.id;
+}
+
+function formatRunLabel(runId?: number | null) {
   if (!runId) {
     return "--";
   }
-  const displayId = importRunDisplayIdMap.value.get(runId);
-  return `#${displayId ?? runId}`;
+
+  return `#${importRunDisplayMap.value.get(runId) ?? runId}`;
 }
 
-function formatScopeStockLabel(scope: TradingComparisonScopeRead) {
-  if (!scope.stock_code) {
-    return "全部股票";
+function resolveAnalysisPanelResult<T>(result: PromiseSettledResult<T>, key: AnalysisPanelNoticeKey, label: string) {
+  if (result.status === "fulfilled") {
+    return result.value;
   }
-  return `${scope.stock_code}${scope.stock_name ? ` · ${scope.stock_name}` : ""}`;
+
+  panelNotices[key] = `${label}加载失败：${getErrorMessage(result.reason)}`;
+  return null;
 }
 
-function formatScopeRequestedRange(scope: TradingComparisonScopeRead) {
-  return `${scope.requested_start_date ?? "起始不限"} ~ ${scope.requested_end_date ?? "结束不限"}`;
-}
-
-function formatScopeActualRange(scope: TradingComparisonScopeRead) {
-  return `${scope.actual_start_date} ~ ${scope.actual_end_date}`;
-}
-
-function syncCompareRunSelection() {
-  const candidateIds = compareRunOptions.value.map((item) => item.id);
-  if (!candidateIds.length) {
-    draftForm.compareRunId = undefined;
-    return;
-  }
-
-  if (draftForm.compareRunId && candidateIds.includes(draftForm.compareRunId)) {
-    return;
-  }
-
-  const defaultRunId = candidateIds.find((item) => item !== draftForm.importRunId) ?? draftForm.importRunId;
-  draftForm.compareRunId = defaultRunId;
-}
-
-function syncCorrelationSelection(rows: TradingStockRead[], preferDefault = false) {
-  if (!rows.length) {
-    draftForm.correlationStockCodes = [];
-    return;
-  }
-
-  const validCurrentCodes = draftForm.correlationStockCodes.filter((code) =>
-    rows.some((item) => item.stock_code === code)
-  );
-  if (!validCurrentCodes.length || preferDefault) {
-    draftForm.correlationStockCodes = defaultCorrelationCodes(rows, draftForm.stockCode);
-    return;
-  }
-
-  const mergedCodes = [
-    draftForm.stockCode,
-    ...validCurrentCodes.filter((code) => code !== draftForm.stockCode),
-  ].filter(Boolean);
-
-  rows.forEach((item) => {
-    if (mergedCodes.length >= 6 || mergedCodes.includes(item.stock_code)) {
-      return;
-    }
-    mergedCodes.push(item.stock_code);
+function syncContext() {
+  datasetContext.applyScope({
+    importRunId: filters.importRunId,
+    stockCode: filters.stockCode,
+    startDate: filters.startDate,
+    endDate: filters.endDate,
   });
+}
 
-  draftForm.correlationStockCodes = mergedCodes.slice(0, Math.min(6, rows.length));
+async function loadCompareStocks() {
+  if (!filters.compareRunId) {
+    compareStocks.value = [];
+    filters.compareStockCode = "";
+    return;
+  }
+
+  try {
+    const rows = filters.compareRunId === filters.importRunId ? stocks.value : await fetchTradingStocks(filters.compareRunId);
+    compareStocks.value = rows;
+
+    if (filters.compareStockCode && !rows.some((item) => item.stock_code === filters.compareStockCode)) {
+      filters.compareStockCode = "";
+    }
+  } catch (err) {
+    error.value = getErrorMessage(err);
+    compareStocks.value = [];
+    filters.compareStockCode = "";
+  }
+}
+
+async function loadStocks() {
+  if (!filters.importRunId) {
+    stocks.value = [];
+    compareStocks.value = [];
+    filters.stockCode = "";
+    return;
+  }
+
+  try {
+    const rows = await fetchTradingStocks(filters.importRunId);
+    stocks.value = rows;
+    if (!rows.some((item) => item.stock_code === filters.stockCode)) {
+      filters.stockCode = rows[0]?.stock_code || "";
+    }
+    if (!filters.correlationStockCodes.length) {
+      filters.correlationStockCodes = rows.slice(0, 6).map((item) => item.stock_code);
+    } else {
+      filters.correlationStockCodes = filters.correlationStockCodes.filter((code) => rows.some((item) => item.stock_code === code));
+    }
+    filters.compareRunId = pickVisibleRunId(importRuns.value, [filters.compareRunId, filters.importRunId]);
+    await loadCompareStocks();
+  } catch (err) {
+    error.value = getErrorMessage(err);
+    stocks.value = [];
+    compareStocks.value = [];
+    filters.stockCode = "";
+    filters.compareStockCode = "";
+  }
 }
 
 async function loadRuns(preferredRunId?: number) {
   loadingRuns.value = true;
   error.value = "";
   try {
-    const rows = await fetchImportRuns({ limit: 50 });
-    importRuns.value = rows;
-    if (!rows.length) {
-      Object.assign(draftForm, createDefaultFilters());
-      appliedFilters.value = null;
-      stocks.value = [];
-      compareStocks.value = [];
-      clearAnalysisResults();
-      return;
-    }
-
-    const fallbackRunId =
-      preferredRunId && rows.some((row) => row.id === preferredRunId)
-        ? preferredRunId
-        : draftForm.importRunId && rows.some((row) => row.id === draftForm.importRunId)
-          ? draftForm.importRunId
-          : rows[0].id;
-    draftForm.importRunId = fallbackRunId;
-    syncCompareRunSelection();
-    await loadStocks(true);
-    if (draftForm.stockCode) {
+    const statsResponse = await fetchImportStats();
+    importRuns.value = await fetchImportRuns({ limit: Math.max(statsResponse.total_runs, 1) });
+    filters.importRunId = pickVisibleRunId(importRuns.value, [preferredRunId, filters.importRunId, datasetContext.state.importRunId]);
+    filters.compareRunId = pickVisibleRunId(importRuns.value, [filters.compareRunId, filters.importRunId]);
+    await loadStocks();
+    if (filters.importRunId && filters.stockCode) {
       await applyFilters();
     }
   } catch (err) {
@@ -500,88 +337,14 @@ async function loadRuns(preferredRunId?: number) {
   }
 }
 
-async function loadStocks(preferDefaults = false) {
-  if (!draftForm.importRunId) {
-    stocks.value = [];
-    draftForm.stockCode = "";
-    draftForm.correlationStockCodes = [];
-    compareStocks.value = [];
-    draftForm.compareStockCode = "";
+async function applyFilters() {
+  if (!filters.importRunId || !filters.stockCode) {
     return;
   }
 
-  try {
-    const rows = await fetchTradingStocks(draftForm.importRunId);
-    stocks.value = rows;
-    if (!rows.length) {
-      draftForm.stockCode = "";
-      draftForm.correlationStockCodes = [];
-      compareStocks.value = [];
-      draftForm.compareStockCode = "";
-      appliedFilters.value = null;
-      clearAnalysisResults();
-      return;
-    }
-
-    if (!rows.some((row) => row.stock_code === draftForm.stockCode)) {
-      draftForm.stockCode = rows[0].stock_code;
-    }
-
-    syncCompareRunSelection();
-    syncCorrelationSelection(rows, preferDefaults);
-    await loadCompareStocks(preferDefaults);
-  } catch (err) {
-    error.value = getErrorMessage(err);
-  }
-}
-
-async function loadCompareStocks(preferDefaults = false) {
-  if (!draftForm.compareRunId) {
-    compareStocks.value = [];
-    draftForm.compareStockCode = "";
-    return;
-  }
-
-  try {
-    const rows =
-      draftForm.compareRunId === draftForm.importRunId ? stocks.value : await fetchTradingStocks(draftForm.compareRunId);
-    compareStocks.value = rows;
-    if (!rows.length) {
-      draftForm.compareStockCode = "";
-      return;
-    }
-
-    if (!draftForm.compareStockCode) {
-      if (preferDefaults && rows.some((item) => item.stock_code === draftForm.stockCode)) {
-        draftForm.compareStockCode = draftForm.stockCode;
-      }
-      return;
-    }
-
-    if (!rows.some((item) => item.stock_code === draftForm.compareStockCode)) {
-      draftForm.compareStockCode = rows.some((item) => item.stock_code === draftForm.stockCode)
-        ? draftForm.stockCode
-        : "";
-    }
-  } catch (err) {
-    error.value = getErrorMessage(err);
-  }
-}
-
-async function handleBaseRunChange() {
-  await loadStocks(true);
-}
-
-async function handleBaseStockChange() {
-  syncCorrelationSelection(stocks.value, true);
-  await loadCompareStocks(true);
-}
-
-async function handleCompareRunChange() {
-  await loadCompareStocks(false);
-}
-
-function clearAnalysisResults() {
+  loadingAnalysis.value = true;
+  error.value = "";
+  clearPanelNotices();
   summary.value = null;
   quality.value = null;
   indicators.value = null;
@@ -590,144 +353,90 @@ function clearAnalysisResults() {
   crossSection.value = null;
   correlation.value = null;
   comparison.value = null;
-  resetPanelStates();
-}
-
-async function loadPanel<T>(
-  state: PanelState,
-  loader: () => Promise<T>,
-  assign: (value: T | null) => void,
-) {
-  assign(null);
-  state.loading = true;
-  state.notice = "";
+  syncContext();
 
   try {
-    const payload = await loader();
-    assign(payload);
-    return true;
-  } catch (err) {
-    const message = getErrorMessage(err);
-    assign(null);
-    state.notice = message;
-    if (!isDataInsufficientMessage(message) && !error.value) {
-      error.value = message;
-    }
-    return false;
-  } finally {
-    state.loading = false;
-  }
-}
+    const topN = parseTopN();
+    const baseScope = {
+      import_run_id: filters.importRunId,
+      stock_code: filters.stockCode,
+      start_date: filters.startDate || undefined,
+      end_date: filters.endDate || undefined,
+    };
 
-async function loadAnalysis(filters: AnalysisFilters) {
-  if (!filters.importRunId || !filters.stockCode) {
-    clearAnalysisResults();
-    return;
-  }
-
-  loadingAnalysis.value = true;
-  error.value = "";
-  clearAnalysisResults();
-
-  try {
-    const scopeParams = buildScopeParams(filters);
-    const topN = parseTopN(filters.topNInput);
-    const correlationCodes = filters.correlationStockCodes.length
-      ? filters.correlationStockCodes.join(",")
-      : undefined;
-
-    const results = await Promise.all([
-      loadPanel(panelStates.summary, () => fetchTradingSummary(scopeParams), (value) => {
-        summary.value = value;
+    const results = await Promise.allSettled([
+      fetchTradingSummary(baseScope),
+      fetchTradingQuality(baseScope),
+      fetchTradingIndicators(baseScope),
+      fetchTradingRisk(baseScope),
+      fetchTradingAnomalies(baseScope),
+      fetchTradingCrossSection({
+        import_run_id: filters.importRunId,
+        start_date: filters.startDate || undefined,
+        end_date: filters.endDate || undefined,
+        metric: filters.crossMetric,
+        top_n: topN,
       }),
-      loadPanel(panelStates.quality, () => fetchTradingQuality(scopeParams), (value) => {
-        quality.value = value;
+      fetchTradingCorrelation({
+        import_run_id: filters.importRunId,
+        start_date: filters.startDate || undefined,
+        end_date: filters.endDate || undefined,
+        stock_codes: filters.correlationStockCodes.join(",") || undefined,
       }),
-      loadPanel(panelStates.indicators, () => fetchTradingIndicators(scopeParams), (value) => {
-        indicators.value = value;
+      fetchTradingScopeComparison({
+        base_run_id: filters.importRunId,
+        base_stock_code: filters.stockCode,
+        base_start_date: filters.startDate || undefined,
+        base_end_date: filters.endDate || undefined,
+        target_run_id: filters.compareRunId ?? filters.importRunId,
+        target_stock_code: filters.compareStockCode || undefined,
+        target_start_date: filters.compareStartDate || undefined,
+        target_end_date: filters.compareEndDate || undefined,
       }),
-      loadPanel(panelStates.risk, () => fetchTradingRisk(scopeParams), (value) => {
-        risk.value = value;
-      }),
-      loadPanel(panelStates.anomalies, () => fetchTradingAnomalies(scopeParams), (value) => {
-        anomalies.value = value;
-      }),
-      loadPanel(
-        panelStates.crossSection,
-        () =>
-          fetchTradingCrossSection({
-            import_run_id: filters.importRunId!,
-            start_date: filters.startDate || undefined,
-            end_date: filters.endDate || undefined,
-            metric: filters.crossMetric,
-            top_n: topN,
-          }),
-        (value) => {
-          crossSection.value = value;
-        }
-      ),
-      loadPanel(
-        panelStates.correlation,
-        () =>
-          fetchTradingCorrelation({
-            import_run_id: filters.importRunId!,
-            start_date: filters.startDate || undefined,
-            end_date: filters.endDate || undefined,
-            stock_codes: correlationCodes,
-          }),
-        (value) => {
-          correlation.value = value;
-        }
-      ),
-      loadPanel(
-        panelStates.comparison,
-        () =>
-          fetchTradingScopeComparison({
-            base_run_id: filters.importRunId!,
-            base_stock_code: filters.stockCode,
-            base_start_date: filters.startDate || undefined,
-            base_end_date: filters.endDate || undefined,
-            target_run_id: filters.compareRunId ?? filters.importRunId!,
-            target_stock_code: filters.compareStockCode || undefined,
-            target_start_date: filters.compareStartDate || undefined,
-            target_end_date: filters.compareEndDate || undefined,
-          }),
-        (value) => {
-          comparison.value = value;
-        }
-      ),
     ]);
 
-    if (results.some(Boolean)) {
-      runtime.markSynced();
+    summary.value = resolveAnalysisPanelResult(results[0], "summary", "基础摘要");
+    quality.value = resolveAnalysisPanelResult(results[1], "quality", "数据质量");
+    indicators.value = resolveAnalysisPanelResult(results[2], "indicators", "指标序列");
+    risk.value = resolveAnalysisPanelResult(results[3], "risk", "风险指标");
+    anomalies.value = resolveAnalysisPanelResult(results[4], "anomalies", "异常检测");
+    crossSection.value = resolveAnalysisPanelResult(results[5], "crossSection", "横截面对比");
+    correlation.value = resolveAnalysisPanelResult(results[6], "correlation", "相关性矩阵");
+    comparison.value = resolveAnalysisPanelResult(results[7], "comparison", "范围对比");
+
+    if (results.some((item) => item.status === "rejected")) {
+      error.value = "部分分析面板加载失败，请查看对应卡片中的提示";
     }
+
+    runtime.markSynced();
   } catch (err) {
     error.value = getErrorMessage(err);
-    clearAnalysisResults();
   } finally {
     loadingAnalysis.value = false;
   }
 }
 
-async function applyFilters() {
-  const nextFilters = snapshotFilters();
-  parseTopN(nextFilters.topNInput);
-  datasetContext.applyScope({
-    importRunId: nextFilters.importRunId,
-    stockCode: nextFilters.stockCode,
-    startDate: nextFilters.startDate,
-    endDate: nextFilters.endDate,
-  });
-  appliedFilters.value = nextFilters;
-  await loadAnalysis(nextFilters);
+async function handleBaseRunChange() {
+  await loadStocks();
 }
 
-onMounted(async () => {
-  draftForm.importRunId = datasetContext.state.importRunId;
-  draftForm.stockCode = datasetContext.state.stockCode;
-  draftForm.startDate = datasetContext.state.startDate;
-  draftForm.endDate = datasetContext.state.endDate;
-  await loadRuns();
+async function handleBaseStockChange() {
+  if (!filters.correlationStockCodes.includes(filters.stockCode) && filters.stockCode) {
+    filters.correlationStockCodes = [filters.stockCode, ...filters.correlationStockCodes].slice(0, 6);
+  }
+  await loadCompareStocks();
+}
+
+async function handleCompareRunChange() {
+  await loadCompareStocks();
+}
+
+onMounted(() => {
+  filters.importRunId = datasetContext.state.importRunId;
+  filters.stockCode = datasetContext.state.stockCode;
+  filters.startDate = datasetContext.state.startDate;
+  filters.endDate = datasetContext.state.endDate;
+  void loadRuns(filters.importRunId);
 });
 </script>
 
@@ -736,665 +445,270 @@ onMounted(async () => {
     <section class="page__header">
       <div>
         <div class="page__eyebrow">Analysis Center / 分析中心</div>
-        <h2 class="page__title">围绕当前数据集展开基础分析、指标分析与范围比较</h2>
-        <p class="page__subtitle">
-          这里默认继承总览页选中的当前数据集上下文，你可以继续微调筛选范围，并把结果同步给整个系统的分析工作流。
-        </p>
+        <h2 class="page__title">围绕当前数据集执行统计分析、指标分析与范围对比</h2>
+        <p class="page__subtitle">分析中心保留原有接口，只把布局和交互改成后台式卡片结构</p>
       </div>
       <div class="page__actions">
-        <el-button type="primary" :loading="loadingAnalysis" @click="applyFilters">应用筛选并分析</el-button>
-        <div v-if="hasUnappliedChanges" class="analysis-filters__hint">存在未应用的筛选修改。</div>
+        <n-button :loading="loadingRuns" @click="loadRuns(filters.importRunId)">刷新批次</n-button>
+        <n-button type="primary" :loading="loadingAnalysis" @click="applyFilters">执行分析</n-button>
       </div>
     </section>
-
-    <el-alert
-      v-if="error"
-      title="分析请求失败"
-      type="error"
-      :description="error"
-      show-icon
-      :closable="false"
-    />
-
-    <PanelCard title="共享数据集上下文" description="主分析范围默认继承自 Overview，可在此页微调后重新应用。">
-      <div class="analysis-tags">
+    <PanelCard title="共享上下文" description="当前范围会同步到数据集管理页和算法雷达页">
+      <div class="toolbar-row">
         <span v-for="item in contextPills" :key="item" class="pill">{{ item }}</span>
       </div>
     </PanelCard>
 
-    <PanelCard title="分析筛选器" description="基础分析、多股票分析和范围对比分区编辑，但统一点击上方按钮后生效。">
-      <div class="analysis-stack">
-        <div>
-          <div class="analysis-subtitle">摘要与基础范围</div>
-          <el-form class="analysis-filters" label-position="top">
-            <el-form-item label="当前批次">
-              <el-select
-                v-model="draftForm.importRunId"
-                placeholder="选择批次"
-                filterable
-                class="analysis-filters__control"
-                @change="handleBaseRunChange"
-              >
-                <el-option
-                  v-for="item in importRuns"
-                  :key="item.id"
-                  :label="`#${item.display_id} - ${item.dataset_name}`"
-                  :value="item.id"
-                />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="分析股票">
-              <el-select
-                v-model="draftForm.stockCode"
-                placeholder="选择股票"
-                filterable
-                class="analysis-filters__control"
-                @change="handleBaseStockChange"
-              >
-                <el-option
-                  v-for="item in stocks"
-                  :key="item.stock_code"
-                  :label="`${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ''}`"
-                  :value="item.stock_code"
-                />
-              </el-select>
-            </el-form-item>
-
-            <div class="date-range-group">
-              <el-form-item label="开始日期">
-                <el-date-picker
-                  v-model="draftForm.startDate"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="开始日期"
-                  class="analysis-filters__control"
-                />
-              </el-form-item>
-
-              <el-form-item label="结束日期">
-                <el-date-picker
-                  v-model="draftForm.endDate"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="结束日期"
-                  class="analysis-filters__control"
-                />
-              </el-form-item>
-            </div>
-          </el-form>
-        </div>
-
-        <div>
-          <div class="analysis-subtitle">技术指标与多股票分析</div>
-          <el-form class="analysis-filters" label-position="top">
-            <el-form-item label="横截面指标">
-              <el-select v-model="draftForm.crossMetric" placeholder="横截面指标" class="analysis-filters__control">
-                <el-option
-                  v-for="item in crossMetricOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="Top N">
-              <el-input v-model="draftForm.topNInput" placeholder="Top N" class="analysis-filters__control" />
-            </el-form-item>
-
-            <el-form-item label="相关性分析股票" class="analysis-filters__item analysis-filters__item--wide">
-              <el-select
-                v-model="draftForm.correlationStockCodes"
-                multiple
-                collapse-tags
-                collapse-tags-tooltip
-                placeholder="相关性分析股票"
-                class="analysis-filters__control"
-              >
-                <el-option
-                  v-for="item in stocks"
-                  :key="`corr-${item.stock_code}`"
-                  :label="`${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ''}`"
-                  :value="item.stock_code"
-                />
-              </el-select>
-              <div class="analysis-filters__hint">{{ correlationHint }}</div>
-            </el-form-item>
-          </el-form>
-        </div>
-
-        <div>
-          <div class="analysis-subtitle">范围对比</div>
-          <el-form class="analysis-filters" label-position="top">
-            <el-form-item label="对比批次">
-              <el-select
-                v-model="draftForm.compareRunId"
-                placeholder="选择对比批次"
-                filterable
-                class="analysis-filters__control"
-                @change="handleCompareRunChange"
-              >
-                <el-option
-                  v-for="item in compareRunOptions"
-                  :key="`compare-${item.id}`"
-                  :label="`#${item.display_id} - ${item.dataset_name}`"
-                  :value="item.id"
-                />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="对比股票">
-              <el-select
-                v-model="draftForm.compareStockCode"
-                placeholder="留空表示全部股票"
-                clearable
-                filterable
-                class="analysis-filters__control"
-              >
-                <el-option
-                  v-for="item in compareStocks"
-                  :key="`compare-stock-${item.stock_code}`"
-                  :label="`${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ''}`"
-                  :value="item.stock_code"
-                />
-              </el-select>
-            </el-form-item>
-
-            <div class="date-range-group">
-              <el-form-item label="对比开始日期">
-                <el-date-picker
-                  v-model="draftForm.compareStartDate"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="对比开始日期"
-                  class="analysis-filters__control"
-                />
-              </el-form-item>
-
-              <el-form-item label="对比结束日期">
-                <el-date-picker
-                  v-model="draftForm.compareEndDate"
-                  type="date"
-                  value-format="YYYY-MM-DD"
-                  placeholder="对比结束日期"
-                  class="analysis-filters__control"
-                />
-              </el-form-item>
-            </div>
-          </el-form>
-          <div class="analysis-filters__hint">{{ comparisonHint }}</div>
-        </div>
+    <PanelCard title="分析筛选器" description="主范围分析和范围对比都在这里统一控制">
+      <n-form class="form-grid" label-placement="top">
+        <n-form-item label="主批次">
+          <n-select v-model:value="filters.importRunId" :options="importRunOptions" @update:value="handleBaseRunChange" />
+        </n-form-item>
+        <n-form-item label="主股票">
+          <n-select v-model:value="filters.stockCode" :options="stockOptions" @update:value="handleBaseStockChange" />
+        </n-form-item>
+        <n-form-item label="开始日期">
+          <DateInputField v-model="filters.startDate" clearable />
+        </n-form-item>
+        <n-form-item label="结束日期">
+          <DateInputField v-model="filters.endDate" clearable />
+        </n-form-item>
+        <n-form-item label="横截面指标">
+          <n-select v-model:value="filters.crossMetric" :options="crossMetricOptions" />
+        </n-form-item>
+        <n-form-item label="横截面 Top N">
+          <n-input v-model:value="filters.topNInput" placeholder="留空表示返回全部结果" />
+        </n-form-item>
+        <n-form-item label="对比批次">
+          <n-select v-model:value="filters.compareRunId" :options="importRunOptions" clearable @update:value="handleCompareRunChange" />
+        </n-form-item>
+        <n-form-item label="对比股票">
+          <n-select v-model:value="filters.compareStockCode" :options="compareStockOptions" clearable />
+        </n-form-item>
+        <n-form-item label="对比开始日期">
+          <DateInputField v-model="filters.compareStartDate" clearable />
+        </n-form-item>
+        <n-form-item label="对比结束日期">
+          <DateInputField v-model="filters.compareEndDate" clearable />
+        </n-form-item>
+        <n-form-item label="相关性股票" class="form-grid--wide">
+          <n-select v-model:value="filters.correlationStockCodes" :options="stockOptions" multiple clearable placeholder="建议不超过 6 只股票" />
+        </n-form-item>
+      </n-form>
+      <div class="toolbar-row" style="margin-top: 8px;">
+        <span class="inline-hint">相关性仅在当前批次内计算</span>
+        <span class="inline-hint">范围对比留空股票时表示对比全部股票</span>
       </div>
     </PanelCard>
 
     <section class="page__grid page__grid--stats">
-      <StatCard
-        v-for="item in analysisCards"
-        :key="item.label"
-        :label="item.label"
-        :value="item.value"
-        :hint="item.hint"
-        :tone="item.tone"
-      />
+      <StatCard v-for="item in cards" :key="item.label" :label="item.label" :value="item.value" :hint="item.hint" :tone="item.tone" />
     </section>
 
-    <PanelCard title="摘要" description="展示当前股票在筛选区间内的核心成交与价格摘要。">
-      <div v-if="summary" class="analysis-summary">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="股票">
-            {{ summary.stock_code }}{{ summary.stock_name ? ` · ${summary.stock_name}` : "" }}
-          </el-descriptions-item>
-          <el-descriptions-item label="区间">{{ summary.start_date }} ~ {{ summary.end_date }}</el-descriptions-item>
-          <el-descriptions-item label="记录数">{{ summary.record_count }}</el-descriptions-item>
-          <el-descriptions-item label="最高价">{{ formatNumberish(summary.high_price, 2) }}</el-descriptions-item>
-          <el-descriptions-item label="最低价">{{ formatNumberish(summary.low_price, 2) }}</el-descriptions-item>
-          <el-descriptions-item label="平均收盘价">{{ formatNumberish(summary.average_close, 2) }}</el-descriptions-item>
-          <el-descriptions-item label="总成交量">{{ formatCompact(summary.total_volume, 2) }}</el-descriptions-item>
-          <el-descriptions-item label="总成交额">{{ formatCompact(summary.total_amount, 2) }}</el-descriptions-item>
-          <el-descriptions-item label="平均成交量">{{ formatCompact(summary.average_volume, 2) }}</el-descriptions-item>
-          <el-descriptions-item label="平均振幅">{{ formatPercent(summary.average_amplitude, 2) }}</el-descriptions-item>
-        </el-descriptions>
-      </div>
-      <EmptyState
-        v-else
-        :title="emptyStateTitle(panelStates.summary, '暂无摘要', '正在加载摘要')"
-        :description="emptyStateDescription(panelStates.summary, '选择一个有数据的批次和股票后，这里会展示区间摘要。')"
-      />
-    </PanelCard>
-
-    <PanelCard title="指标" description="含收益率、均线、EMA、MACD、RSI、Bollinger、ATR。">
-      <template #actions>
-        <span v-if="latestIndicatorPoint" class="pill">最新点 {{ latestIndicatorPoint.trade_date }}</span>
-      </template>
-
-      <div v-if="indicators?.points.length" class="analysis-stack">
-        <EChartPanel :option="indicatorChartOption" :loading="panelStates.indicators.loading" height="360px" />
-
-        <el-descriptions v-if="latestIndicatorPoint" :column="3" border>
-          <el-descriptions-item label="日收益率">
-            {{ formatPercent(latestIndicatorPoint.daily_return, 2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="累计收益率">
-            {{ formatPercent(latestIndicatorPoint.cumulative_return, 2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="RSI14">
-            {{ formatNumberish(latestIndicatorPoint.rsi14, 2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="EMA12">
-            {{ formatNumberish(latestIndicatorPoint.ema12, 2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="EMA26">
-            {{ formatNumberish(latestIndicatorPoint.ema26, 2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="MACD">
-            {{ formatNumberish(latestIndicatorPoint.macd, 4) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="MACD Signal">
-            {{ formatNumberish(latestIndicatorPoint.macd_signal, 4) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="MACD Histogram">
-            {{ formatNumberish(latestIndicatorPoint.macd_histogram, 4) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="ATR14">
-            {{ formatNumberish(latestIndicatorPoint.atr14, 4) }}
-          </el-descriptions-item>
-        </el-descriptions>
-      </div>
-      <EmptyState
-        v-else
-        :title="emptyStateTitle(panelStates.indicators, '暂无指标数据', '正在加载指标')"
-        :description="emptyStateDescription(panelStates.indicators, '当筛选区间内存在行情记录时，这里会展示指标走势与最新值。')"
-      />
-    </PanelCard>
-
-    <PanelCard title="风险" description="展示收益、波动、回撤和涨跌分布等风险画像。">
-      <div v-if="risk" class="page__grid page__grid--stats">
-        <StatCard label="区间收益率" :value="formatPercent(risk.interval_return, 2)" hint="首尾收盘价计算" tone="teal" />
-        <StatCard label="波动率" :value="formatPercent(risk.volatility, 2)" hint="基于日收益率" tone="orange" />
-        <StatCard label="最大回撤" :value="formatPercent(risk.max_drawdown, 2)" :hint="`持续 ${risk.max_drawdown_duration} 天`" tone="berry" />
-        <StatCard label="上涨日占比" :value="formatPercent(risk.up_day_ratio, 2)" hint="日收益率 > 0" tone="neutral" />
-        <StatCard label="平均振幅" :value="formatPercent(risk.average_amplitude, 2)" hint="(high-low)/open" tone="teal" />
-        <StatCard label="最大单日上涨" :value="formatPercent(risk.max_daily_gain, 2)" hint="区间内最大正收益日" tone="orange" />
-        <StatCard label="最大单日下跌" :value="formatPercent(risk.max_daily_loss, 2)" hint="区间内最大负收益日" tone="berry" />
-      </div>
-      <EmptyState
-        v-else
-        :title="emptyStateTitle(panelStates.risk, '暂无风险结果', '正在加载风险画像')"
-        :description="emptyStateDescription(panelStates.risk, '完成分析后，这里会展示波动率、最大回撤、上涨日占比等指标。')"
-      />
-    </PanelCard>
-
-    <PanelCard title="异常" description="全部采用可解释规则：放量、收益率异动、振幅异动、突破前高/前低。">
-      <el-table v-if="anomalies?.anomalies.length" :data="anomalies.anomalies" stripe class="data-table" max-height="420">
-        <el-table-column prop="trade_date" label="Trade Date" width="120" />
-        <el-table-column prop="anomaly_type" label="Type" min-width="160" />
-        <el-table-column label="Severity" width="120">
-          <template #default="{ row }">
-            <el-tag :type="toStatusTagType(row.severity)" effect="plain">{{ row.severity }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="Metric" min-width="120">
-          <template #default="{ row }">
-            {{ formatNumberish(row.metric_value, 4) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="Threshold" min-width="120">
-          <template #default="{ row }">
-            {{ formatNumberish(row.threshold_value, 4) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="Description" min-width="280" />
-      </el-table>
-      <EmptyState
-        v-else
-        :title="emptyStateTitle(panelStates.anomalies, '未检测到异常', '正在加载异常检测')"
-        :description="emptyStateDescription(panelStates.anomalies, '如果没有满足规则阈值的记录，这里会保持空状态。')"
-      />
-    </PanelCard>
-
-    <PanelCard title="横截面 / 相关性" description="仅在当前批次与当前日期范围内执行多股票排序和收益率相关性矩阵分析。">
-      <div class="analysis-stack">
-        <div>
-          <div class="analysis-subtitle">横截面排序</div>
-          <el-table v-if="crossSection?.rows.length" :data="crossSection.rows" stripe class="data-table" max-height="420">
-            <el-table-column prop="stock_code" label="Code" min-width="130" />
-            <el-table-column prop="stock_name" label="Name" min-width="180" />
-            <el-table-column label="Return" min-width="120">
-              <template #default="{ row }">
-                {{ formatPercent(row.total_return, 2) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="Volatility" min-width="120">
-              <template #default="{ row }">
-                {{ formatPercent(row.volatility, 2) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="Amount" min-width="140">
-              <template #default="{ row }">
-                {{ formatCompact(row.total_amount, 2) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="Amplitude" min-width="120">
-              <template #default="{ row }">
-                {{ formatPercent(row.average_amplitude, 2) }}
-              </template>
-            </el-table-column>
-          </el-table>
-          <EmptyState
-            v-else
-            :title="emptyStateTitle(panelStates.crossSection, '暂无横截面结果', '正在加载横截面分析')"
-            :description="emptyStateDescription(panelStates.crossSection, '这里会展示同一批次内多股票的区间排序结果。')"
-          />
+    <section class="page__grid page__grid--double">
+      <PanelCard title="基础摘要" description="当前主范围的价格与成交概览">
+        <n-alert v-if="panelNotices.summary" type="warning" :show-icon="true">{{ panelNotices.summary }}</n-alert>
+        <div v-else-if="summary" class="detail-grid">
+          <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ summary.stock_code }}{{ summary.stock_name ? ` · ${summary.stock_name}` : "" }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">时间范围</span><div class="detail-grid__value">{{ formatDate(summary.start_date) }} ~ {{ formatDate(summary.end_date) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">记录</span><div class="detail-grid__value">{{ summary.record_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">股票数</span><div class="detail-grid__value">{{ summary.stock_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">平均收盘</span><div class="detail-grid__value">{{ formatNumberish(summary.average_close, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">总成交额</span><div class="detail-grid__value">{{ formatCompact(summary.total_amount, 2) }}</div></div>
         </div>
+        <EmptyState v-else title="暂无基础摘要" description="执行分析后，这里会展示当前主范围的基础统计" />
+      </PanelCard>
 
-        <div>
-          <div class="analysis-subtitle">相关性矩阵</div>
-          <el-table v-if="correlationTableRows.length" :data="correlationTableRows" stripe class="data-table" max-height="420">
-            <el-table-column prop="stock_code" label="Code" width="120" fixed />
-            <el-table-column
-              v-for="code in correlation?.stock_codes || []"
-              :key="`corr-col-${code}`"
-              :prop="code"
-              :label="code"
-              min-width="110"
-            >
-              <template #default="{ row }">
-                {{ row[code] === null ? "--" : formatNumberish(Number(row[code]), 2) }}
-              </template>
-            </el-table-column>
-          </el-table>
-          <EmptyState
-            v-else
-            :title="emptyStateTitle(panelStates.correlation, '暂无相关性结果', '正在加载相关性矩阵')"
-            :description="emptyStateDescription(panelStates.correlation, '相关性需要至少两只股票且存在重叠收益率样本。')"
-          />
+      <PanelCard title="数据质量" description="缺失交易日无效价格与异常数据校验">
+        <n-alert v-if="panelNotices.quality" type="warning" :show-icon="true">{{ panelNotices.quality }}</n-alert>
+        <div v-else-if="quality" class="detail-grid">
+          <div class="detail-grid__item"><span class="detail-grid__label">覆盖</span><div class="detail-grid__value">{{ formatPercent(quality.coverage_ratio, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">缺失交易</span><div class="detail-grid__value">{{ quality.missing_trade_date_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">无效 OHLC</span><div class="detail-grid__value">{{ quality.invalid_ohlc_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">非正价格</span><div class="detail-grid__value">{{ quality.non_positive_price_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">非正成交</span><div class="detail-grid__value">{{ quality.non_positive_volume_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">平盘日数</span><div class="detail-grid__value">{{ quality.flat_days_count }}</div></div>
         </div>
-      </div>
-    </PanelCard>
+        <div v-if="quality?.missing_trade_dates.length" class="inline-hint" style="margin-top: 12px;">缺失交易日：{{ quality.missing_trade_dates.join("、") }}</div>
+        <EmptyState v-else-if="!quality" title="暂无质量报告" description="执行分析后，这里会返回当前范围的数据质量诊断" />
+      </PanelCard>
+    </section>
 
-    <PanelCard title="数据质量 / 范围对比" description="数据质量仍围绕主分析范围；范围对比用于校验两个分析范围的差异与一致性。">
-      <div class="analysis-stack">
-        <div>
-          <div class="analysis-subtitle">数据质量</div>
-          <el-descriptions v-if="quality" :column="2" border>
-            <el-descriptions-item label="覆盖率">
-              {{ formatPercent(quality.coverage_ratio, 2) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="缺失交易日">
-              {{ quality.missing_trade_date_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="OHLC 非法行">
-              {{ quality.invalid_ohlc_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="非正价格行">
-              {{ quality.non_positive_price_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="非正成交量行">
-              {{ quality.non_positive_volume_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="非正成交额行">
-              {{ quality.non_positive_amount_count ?? "--" }}
-            </el-descriptions-item>
-            <el-descriptions-item label="平盘天数">
-              {{ quality.flat_days_count }}
-            </el-descriptions-item>
-            <el-descriptions-item label="参考日期数">
-              {{ quality.reference_date_count }}
-            </el-descriptions-item>
-          </el-descriptions>
-
-          <div v-if="quality?.missing_trade_dates.length" class="analysis-tags">
-            <span v-for="item in quality.missing_trade_dates" :key="item" class="pill">{{ item }}</span>
-          </div>
-          <EmptyState
-            v-else-if="!quality"
-            :title="emptyStateTitle(panelStates.quality, '暂无数据质量结果', '正在加载数据质量')"
-            :description="emptyStateDescription(panelStates.quality, '这里会展示覆盖率、缺失交易日和异常值统计。')"
-          />
+    <section class="page__grid page__grid--double">
+      <PanelCard title="指标序列" description="Close、均线与成交量序列">
+        <n-alert v-if="panelNotices.indicators" type="warning" :show-icon="true">{{ panelNotices.indicators }}</n-alert>
+        <EChartPanel v-else-if="indicatorChartOption" :option="indicatorChartOption" :loading="loadingAnalysis" />
+        <EmptyState v-else title="暂无指标图表" description="选择主股票并执行分析后，这里会展示指标序列" />
+        <div v-if="latestIndicatorPoint" class="detail-grid" style="margin-top: 16px;">
+          <div class="detail-grid__item"><span class="detail-grid__label">最新日期</span><div class="detail-grid__value">{{ formatDate(latestIndicatorPoint.trade_date) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">MACD</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.macd, 4) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">RSI14</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.rsi14, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">ATR14</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.atr14, 4) }}</div></div>
         </div>
+      </PanelCard>
 
-        <div>
-          <div class="analysis-subtitle">范围对比</div>
-          <div v-if="comparison" class="analysis-compare">
-            <el-descriptions :column="2" border>
-              <el-descriptions-item label="当前范围批次">
-                {{ formatImportRunDisplayLabel(comparison.base_scope.import_run_id) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="对比范围批次">
-                {{ formatImportRunDisplayLabel(comparison.target_scope.import_run_id) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="当前范围股票">
-                {{ formatScopeStockLabel(comparison.base_scope) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="对比范围股票">
-                {{ formatScopeStockLabel(comparison.target_scope) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="当前筛选区间">
-                {{ formatScopeRequestedRange(comparison.base_scope) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="对比筛选区间">
-                {{ formatScopeRequestedRange(comparison.target_scope) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="当前有效数据区间">
-                {{ formatScopeActualRange(comparison.base_scope) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="对比有效数据区间">
-                {{ formatScopeActualRange(comparison.target_scope) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="当前范围记录数">{{ comparison.base_scope.record_count }}</el-descriptions-item>
-              <el-descriptions-item label="对比范围记录数">{{ comparison.target_scope.record_count }}</el-descriptions-item>
-              <el-descriptions-item label="当前范围股票数">{{ comparison.base_scope.stock_count }}</el-descriptions-item>
-              <el-descriptions-item label="对比范围股票数">{{ comparison.target_scope.stock_count }}</el-descriptions-item>
-              <el-descriptions-item label="当前范围成交额">
-                {{ formatCompact(comparison.base_scope.total_amount, 2) }}
-              </el-descriptions-item>
-              <el-descriptions-item label="对比范围成交额">
-                {{ formatCompact(comparison.target_scope.total_amount, 2) }}
-              </el-descriptions-item>
-            </el-descriptions>
+      <PanelCard title="风险指标" description="收益率波动率与最大回撤">
+        <n-alert v-if="panelNotices.risk" type="warning" :show-icon="true">{{ panelNotices.risk }}</n-alert>
+        <div v-else-if="risk" class="detail-grid">
+          <div class="detail-grid__item"><span class="detail-grid__label">区间收益</span><div class="detail-grid__value">{{ formatPercent(risk.interval_return, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">波动</span><div class="detail-grid__value">{{ formatPercent(risk.volatility, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">最大回撤</span><div class="detail-grid__value">{{ formatPercent(risk.max_drawdown, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">回撤持续天数</span><div class="detail-grid__value">{{ risk.max_drawdown_duration }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">上涨日占比</span><div class="detail-grid__value">{{ formatPercent(risk.up_day_ratio, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">平均振幅</span><div class="detail-grid__value">{{ formatNumberish(risk.average_amplitude, 4) }}</div></div>
+        </div>
+        <EmptyState v-else title="暂无风险画像" description="执行分析后，这里会展示主股票的风险画像" />
+      </PanelCard>
+    </section>
 
-            <section class="page__grid page__grid--stats">
-              <StatCard
-                label="共同交易记录"
-                :value="String(comparison.record_overlap.shared_record_count)"
-                :hint="`${comparison.record_overlap.shared_trade_date_count} 个共同交易日`"
-                tone="teal"
-              />
-              <StatCard
-                label="一致记录"
-                :value="String(comparison.mismatch_summary.matching_record_count)"
-                hint="共同记录中完全一致的条数"
-                tone="orange"
-              />
-              <StatCard
-                label="不一致记录"
-                :value="String(comparison.mismatch_summary.mismatched_record_count)"
-                hint="共同记录中至少一个字段不一致"
-                tone="berry"
-              />
-              <StatCard
-                label="范围独有记录"
-                :value="String(comparison.record_overlap.base_only_record_count + comparison.record_overlap.target_only_record_count)"
-                hint="两边无法按股票+日期配对的记录"
-                tone="neutral"
-              />
-            </section>
-
-            <div>
-              <div class="analysis-compare__label">共同股票</div>
-              <div class="analysis-tags">
-                <span
-                  v-for="item in comparison.stock_overlap.shared_stocks"
-                  :key="`shared-${item}`"
-                  class="pill"
-                >
-                  {{ item }}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div class="analysis-compare__label">当前范围独有股票</div>
-              <div class="analysis-tags">
-                <span
-                  v-for="item in comparison.stock_overlap.base_only_stocks"
-                  :key="`base-only-${item}`"
-                  class="pill"
-                >
-                  {{ item }}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div class="analysis-compare__label">对比范围独有股票</div>
-              <div class="analysis-tags">
-                <span
-                  v-for="item in comparison.stock_overlap.target_only_stocks"
-                  :key="`target-only-${item}`"
-                  class="pill"
-                >
-                  {{ item }}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div class="analysis-compare__label">字段不一致分布</div>
-              <el-table :data="comparisonMismatchRows" stripe class="data-table" max-height="420">
-                <el-table-column prop="label" label="字段" min-width="140" />
-                <el-table-column prop="count" label="不一致条数" min-width="140" />
-              </el-table>
-            </div>
-
-            <div v-if="comparison.mismatch_samples.length">
-              <div class="analysis-compare__label">不一致样例</div>
-              <el-table :data="comparison.mismatch_samples" stripe class="data-table" max-height="420">
-                <el-table-column prop="stock_code" label="股票" min-width="120" />
-                <el-table-column prop="trade_date" label="交易日" min-width="120" />
-                <el-table-column label="不一致字段" min-width="180">
-                  <template #default="{ row }">
-                    {{ row.mismatched_fields.join(" / ") }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="当前范围值" min-width="260">
-                  <template #default="{ row }">
-                    close {{ formatNumberish(row.base_values.close, 2) }},
-                    volume {{ formatNumberish(row.base_values.volume, 2) }},
-                    amount {{ formatCompact(row.base_values.amount, 2) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="对比范围值" min-width="260">
-                  <template #default="{ row }">
-                    close {{ formatNumberish(row.target_values.close, 2) }},
-                    volume {{ formatNumberish(row.target_values.volume, 2) }},
-                    amount {{ formatCompact(row.target_values.amount, 2) }}
-                  </template>
-                </el-table-column>
-              </el-table>
-            </div>
-
-            <el-alert
-              v-else-if="comparison.record_overlap.shared_record_count > 0"
-              title="共同记录全部一致"
-              type="success"
-              :closable="false"
-              description="两个范围在可对齐的共同记录上没有发现字段差异，可作为基线校验结果。"
-            />
-
-            <el-alert
-              v-else
-              title="没有共同交易记录"
-              type="info"
-              :closable="false"
-              description="当前只展示两边范围的摘要和股票差异，因为没有可按股票+日期配对的共同记录。"
+    <section class="page__grid page__grid--double">
+      <PanelCard title="异常检测" description="保留原有异常接口结果">
+        <n-alert v-if="panelNotices.anomalies" type="warning" :show-icon="true">{{ panelNotices.anomalies }}</n-alert>
+        <div v-else-if="anomalyPager.total.value" class="data-table-wrap">
+          <n-table class="data-table" striped size="small" :single-line="false">
+            <thead><tr><th>日期</th><th>类型</th><th>严重</th><th>指标</th><th>基线</th><th>阈值</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr v-for="item in anomalyPager.pagedRows.value" :key="`${item.trade_date}-${item.anomaly_type}`">
+                <td>{{ formatDate(item.trade_date) }}</td>
+                <td>{{ item.anomaly_type }}</td>
+                <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ item.severity }}</n-tag></td>
+                <td>{{ formatNumberish(item.metric_value, 4) }}</td>
+                <td>{{ formatNumberish(item.baseline_value, 4) }}</td>
+                <td>{{ formatNumberish(item.threshold_value, 4) }}</td>
+                <td>{{ item.description }}</td>
+              </tr>
+            </tbody>
+          </n-table>
+          <div class="table-pagination">
+            <n-pagination
+              :page="anomalyPager.page.value"
+              :page-size="anomalyPager.pageSize.value"
+              :item-count="anomalyPager.total.value"
+              :page-sizes="anomalyPager.pageSizes"
+              show-size-picker
+              @update:page="anomalyPager.setPage"
+              @update:page-size="anomalyPager.setPageSize"
             />
           </div>
-          <EmptyState
-            v-else
-            :title="emptyStateTitle(panelStates.comparison, '暂无范围对比结果', '正在加载范围对比')"
-            :description="emptyStateDescription(panelStates.comparison, '这里会展示两个分析范围的摘要差异、重叠记录和一致性校验结果。')"
+        </div>
+        <EmptyState v-else title="暂无异常结果" description="执行分析后，这里会展示主股票的异常检测结果" />
+      </PanelCard>
+
+      <PanelCard title="横截面对比" description="按指标对当前范围内股票排序">
+        <n-alert v-if="panelNotices.crossSection" type="warning" :show-icon="true">{{ panelNotices.crossSection }}</n-alert>
+        <div v-else-if="crossSectionPager.total.value" class="data-table-wrap">
+          <n-table class="data-table" striped size="small" :single-line="false">
+            <thead><tr><th>股票</th><th>收益</th><th>波动</th><th>成交量</th><th>成交额</th><th>平均振幅</th><th>最新收盘价</th></tr></thead>
+            <tbody>
+              <tr v-for="item in crossSectionPager.pagedRows.value" :key="item.stock_code">
+                <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
+                <td>{{ formatPercent(item.total_return, 2) }}</td>
+                <td>{{ formatPercent(item.volatility, 2) }}</td>
+                <td>{{ formatCompact(item.total_volume, 2) }}</td>
+                <td>{{ formatCompact(item.total_amount, 2) }}</td>
+                <td>{{ formatNumberish(item.average_amplitude, 4) }}</td>
+                <td>{{ formatNumberish(item.latest_close, 2) }}</td>
+              </tr>
+            </tbody>
+          </n-table>
+          <div class="table-pagination">
+            <n-pagination
+              :page="crossSectionPager.page.value"
+              :page-size="crossSectionPager.pageSize.value"
+              :item-count="crossSectionPager.total.value"
+              :page-sizes="crossSectionPager.pageSizes"
+              show-size-picker
+              @update:page="crossSectionPager.setPage"
+              @update:page-size="crossSectionPager.setPageSize"
+            />
+          </div>
+        </div>
+        <EmptyState v-else title="暂无横截面对比结果" description="执行分析后，这里会展示当前批次内的横截面排序" />
+      </PanelCard>
+    </section>
+
+    <PanelCard title="相关性矩阵" description="当前批次内股票收益率相关性">
+      <n-alert v-if="panelNotices.correlation" type="warning" :show-icon="true">{{ panelNotices.correlation }}</n-alert>
+      <div v-else-if="correlationRows.length" class="data-table-wrap">
+        <n-table class="data-table" striped size="small" :single-line="false">
+          <thead><tr><th>股票</th><th v-for="code in correlation?.stock_codes" :key="code">{{ code }}</th></tr></thead>
+          <tbody>
+            <tr v-for="row in correlationRows" :key="row.stock_code">
+              <td>{{ row.stock_code }}</td>
+              <td v-for="cell in row.values" :key="cell.key">{{ cell.value === null ? "--" : formatNumberish(Number(cell.value), 4) }}</td>
+            </tr>
+          </tbody>
+        </n-table>
+      </div>
+      <EmptyState v-else title="暂无相关性结果" description="执行分析后，这里会展示当前所选股票的收益率相关性矩阵" />
+    </PanelCard>
+
+    <PanelCard title="范围对比" description="主范围与对比范围之间的重叠和差异">
+      <n-alert v-if="panelNotices.comparison" type="warning" :show-icon="true">{{ panelNotices.comparison }}</n-alert>
+      <div v-else-if="comparison" class="page__grid page__grid--double">
+        <div>
+          <div class="section-label">基线范围</div>
+          <div class="detail-grid">
+            <div class="detail-grid__item"><span class="detail-grid__label">批次</span><div class="detail-grid__value">{{ formatRunLabel(comparison.base_scope.import_run_id) }}</div></div>
+            <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ comparison.base_scope.stock_code || "全部股票" }}</div></div>
+            <div class="detail-grid__item"><span class="detail-grid__label">请求范围</span><div class="detail-grid__value">{{ comparison.base_scope.requested_start_date || "起始不限" }} ~ {{ comparison.base_scope.requested_end_date || "结束不限" }}</div></div>
+            <div class="detail-grid__item"><span class="detail-grid__label">实际范围</span><div class="detail-grid__value">{{ comparison.base_scope.actual_start_date }} ~ {{ comparison.base_scope.actual_end_date }}</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="section-label">对比范围</div>
+          <div class="detail-grid">
+            <div class="detail-grid__item"><span class="detail-grid__label">批次</span><div class="detail-grid__value">{{ formatRunLabel(comparison.target_scope.import_run_id) }}</div></div>
+            <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ comparison.target_scope.stock_code || "全部股票" }}</div></div>
+            <div class="detail-grid__item"><span class="detail-grid__label">请求范围</span><div class="detail-grid__value">{{ comparison.target_scope.requested_start_date || "起始不限" }} ~ {{ comparison.target_scope.requested_end_date || "结束不限" }}</div></div>
+            <div class="detail-grid__item"><span class="detail-grid__label">实际范围</span><div class="detail-grid__value">{{ comparison.target_scope.actual_start_date }} ~ {{ comparison.target_scope.actual_end_date }}</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="comparison" style="margin-top: 18px;" class="page__grid page__grid--double">
+        <div class="data-table-wrap">
+          <n-table class="data-table" striped size="small" :single-line="false">
+            <thead><tr><th>字段</th><th>差异条数</th></tr></thead>
+            <tbody><tr v-for="item in comparisonMismatchRows" :key="item[0]"><td>{{ item[0] }}</td><td>{{ item[1] }}</td></tr></tbody>
+          </n-table>
+        </div>
+        <div class="detail-grid">
+          <div class="detail-grid__item"><span class="detail-grid__label">共同股票</span><div class="detail-grid__value">{{ comparison.stock_overlap.shared_stocks.length }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">共同交易日数</span><div class="detail-grid__value">{{ comparison.record_overlap.shared_trade_date_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">共同记录</span><div class="detail-grid__value">{{ comparison.record_overlap.shared_record_count }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">差异记录</span><div class="detail-grid__value">{{ comparison.mismatch_summary.mismatched_record_count }}</div></div>
+        </div>
+      </div>
+
+      <div v-if="mismatchSamplePager.total.value" style="margin-top: 18px;" class="data-table-wrap">
+        <n-table class="data-table" striped size="small" :single-line="false">
+          <thead><tr><th>股票</th><th>日期</th><th>差异字段</th><th>基线</th><th>对比</th></tr></thead>
+          <tbody>
+            <tr v-for="item in mismatchSamplePager.pagedRows.value" :key="`${item.stock_code}-${item.trade_date}`">
+              <td>{{ item.stock_code }}</td>
+              <td>{{ formatDate(item.trade_date) }}</td>
+              <td>{{ item.mismatched_fields.join("、") }}</td>
+              <td class="mono">O {{ formatNumberish(item.base_values.open, 2) }} / H {{ formatNumberish(item.base_values.high, 2) }} / C {{ formatNumberish(item.base_values.close, 2) }}</td>
+              <td class="mono">O {{ formatNumberish(item.target_values.open, 2) }} / H {{ formatNumberish(item.target_values.high, 2) }} / C {{ formatNumberish(item.target_values.close, 2) }}</td>
+            </tr>
+          </tbody>
+        </n-table>
+        <div class="table-pagination">
+          <n-pagination
+            :page="mismatchSamplePager.page.value"
+            :page-size="mismatchSamplePager.pageSize.value"
+            :item-count="mismatchSamplePager.total.value"
+            :page-sizes="mismatchSamplePager.pageSizes"
+            show-size-picker
+            @update:page="mismatchSamplePager.setPage"
+            @update:page-size="mismatchSamplePager.setPageSize"
           />
         </div>
       </div>
+      <EmptyState v-else-if="!comparison" title="暂无范围对比结果" description="执行分析后，这里会展示基线范围和对比范围的差异" />
     </PanelCard>
   </div>
 </template>
-
-<style scoped>
-.analysis-filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 14px;
-}
-
-.analysis-filters :deep(.el-form-item) {
-  margin-bottom: 0;
-}
-
-.analysis-filters__control {
-  width: 100%;
-}
-
-.analysis-filters__item--wide {
-  grid-column: 1 / -1;
-}
-
-.analysis-filters__hint {
-  margin-top: 8px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.date-range-group {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 10px;
-  grid-column: 1 / -1;
-}
-
-.analysis-stack {
-  display: grid;
-  gap: 18px;
-}
-
-.analysis-summary,
-.analysis-compare {
-  display: grid;
-  gap: 16px;
-}
-
-.analysis-subtitle {
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.analysis-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.analysis-compare__label {
-  margin-bottom: 10px;
-  color: var(--text-secondary);
-  font-weight: 700;
-}
-
-@media (max-width: 768px) {
-  .date-range-group {
-    grid-template-columns: 1fr;
-  }
-}
-</style>
-
-
 
 

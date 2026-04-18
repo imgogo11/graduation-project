@@ -35,6 +35,32 @@ class User(Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+    __table_args__ = (
+        Index("ix_audit_logs_occurred_at", "occurred_at"),
+        Index("ix_audit_logs_category_success", "category", "success"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    category: Mapped[str] = mapped_column(String(64), index=True)
+    event_type: Mapped[str] = mapped_column(String(128))
+    success: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    actor_username_snapshot: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    target_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    target_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    import_run_id: Mapped[int | None] = mapped_column(ForeignKey("import_runs.id"), nullable=True, index=True)
+    request_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    http_method: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detail_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
 class ImportRun(Base):
     __tablename__ = "import_runs"
     __table_args__ = (

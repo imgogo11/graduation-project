@@ -31,10 +31,23 @@ export interface RangeKthVolumeParams {
   method?: "persistent_segment_tree" | "t_digest";
 }
 
-export function fetchTradingStocks(importRunId: number) {
-  return getJson<TradingStockRead[]>("/api/trading/stocks", {
+function ensureArray<T>(payload: T[] | T | null | undefined) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload === null || payload === undefined) {
+    return [] as T[];
+  }
+
+  return [payload];
+}
+
+export async function fetchTradingStocks(importRunId: number) {
+  const payload = await getJson<TradingStockRead[] | TradingStockRead | null>("/api/trading/stocks", {
     import_run_id: importRunId,
   });
+  return ensureArray(payload);
 }
 
 export function fetchTradingRecords(params: ListTradingRecordsParams) {

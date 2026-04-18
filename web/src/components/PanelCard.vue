@@ -29,7 +29,6 @@ defineProps<{
   background: var(--panel-bg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
-  backdrop-filter: blur(14px);
 }
 
 .panel-card__header {

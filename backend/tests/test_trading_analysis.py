@@ -600,7 +600,7 @@ class TradingAnalysisRouteTests(unittest.TestCase):
         self.assertIsNone(compare_body["base_scope"]["total_amount"])
         self.assertIsNotNone(compare_body["target_scope"]["total_amount"])
 
-    def test_correlation_reports_data_insufficient_for_single_instrument_runs(self) -> None:
+    def test_correlation_supports_single_instrument_runs(self) -> None:
         token = self._register_and_login("single_instrument_user", "password123")
         single_instrument_frame = build_primary_frame().loc[lambda frame: frame["stock_code"] == "ALPHA"].reset_index(drop=True)
         run = self._upload_csv(
@@ -614,8 +614,12 @@ class TradingAnalysisRouteTests(unittest.TestCase):
             params={"import_run_id": run["id"], "stock_codes": "ALPHA"},
             headers=self._auth_headers(token),
         )
-        self.assertEqual(response.status_code, 400, response.text)
-        self.assertIn("数据不足分析", response.json()["detail"])
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["stock_codes"], ["ALPHA"])
+        self.assertEqual(len(payload["matrix"]), 1)
+        self.assertEqual(len(payload["matrix"][0]), 1)
+        self.assertTrue(math.isclose(float(payload["matrix"][0][0]), 1.0, abs_tol=1e-6))
 
     def test_failed_runs_are_hidden_from_analysis_endpoints(self) -> None:
         token = self._register_and_login("failed_analysis_user", "password123")

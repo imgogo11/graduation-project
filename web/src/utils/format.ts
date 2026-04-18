@@ -3,7 +3,6 @@ import type { NumericLike } from "@/api/types";
 
 export const DATA_INSUFFICIENT_PREFIX = "数据不足分析";
 
-
 export function toNumber(value: NumericLike, fallback = 0) {
   if (value === null || value === "") {
     return fallback;
@@ -63,25 +62,29 @@ export function formatDateTime(value: string | null | undefined) {
   return new Date(value).toLocaleString("zh-CN");
 }
 
-export function toStatusTagType(status: string) {
-  const normalized = status.toLowerCase();
-  if (normalized.includes("critical")) {
-    return "danger" as const;
+export function toStatusTagType(status: unknown) {
+  const normalized =
+    typeof status === "string"
+      ? status.toLowerCase()
+      : status === null || status === undefined
+        ? ""
+        : String(status).toLowerCase();
+
+  if (!normalized) {
+    return "info" as const;
   }
-  if (normalized.includes("high")) {
-    return "danger" as const;
+
+  if (normalized.includes("critical") || normalized.includes("high")) {
+    return "error" as const;
   }
-  if (normalized.includes("medium") || normalized.includes("warning")) {
+  if (normalized.includes("medium") || normalized.includes("warning") || normalized.includes("running")) {
     return "warning" as const;
   }
-  if (normalized.includes("complete") || normalized.includes("ok")) {
+  if (normalized.includes("complete") || normalized.includes("ok") || normalized.includes("ready")) {
     return "success" as const;
   }
-  if (normalized.includes("running")) {
-    return "warning" as const;
-  }
   if (normalized.includes("fail") || normalized.includes("error") || normalized.includes("degraded")) {
-    return "danger" as const;
+    return "error" as const;
   }
   return "info" as const;
 }

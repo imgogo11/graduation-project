@@ -49,8 +49,6 @@ CORE_PACKAGES = [
 
 BACKEND_ENV_FILE = REPO_ROOT / ".env"
 BACKEND_ENV_TEMPLATE = REPO_ROOT / ".env.template"
-FRONTEND_ENV_FILE = REPO_ROOT / "web" / ".env"
-FRONTEND_ENV_TEMPLATE = REPO_ROOT / "web" / ".env.template"
 
 
 def _run_command(command: list[str]) -> tuple[bool, str]:
@@ -156,19 +154,16 @@ def main() -> int:
 
     backend_env = _load_env_file(BACKEND_ENV_FILE)
     backend_template_env = _load_env_file(BACKEND_ENV_TEMPLATE)
-    frontend_env = _load_env_file(FRONTEND_ENV_FILE)
-    frontend_template_env = _load_env_file(FRONTEND_ENV_TEMPLATE)
-
     postgres_host = _pick_env_value(os.environ, backend_env, backend_template_env, key="POSTGRES_HOST", default="127.0.0.1")
     postgres_port_text = _pick_env_value(os.environ, backend_env, backend_template_env, key="POSTGRES_PORT", default="15432")
     database_url = _pick_env_value(os.environ, backend_env, backend_template_env, key="DATABASE_URL", default="")
-    frontend_host = _pick_env_value(os.environ, frontend_env, frontend_template_env, key="VITE_DEV_HOST", default="127.0.0.1")
-    frontend_port = _pick_env_value(os.environ, frontend_env, frontend_template_env, key="VITE_DEV_PORT", default="4173")
+    frontend_host = _pick_env_value(os.environ, backend_env, backend_template_env, key="VITE_DEV_HOST", default="127.0.0.1")
+    frontend_port = _pick_env_value(os.environ, backend_env, backend_template_env, key="VITE_DEV_PORT", default="4173")
 
     print()
     print("== Runtime defaults ==")
     print(f"Backend env file   : {BACKEND_ENV_FILE if BACKEND_ENV_FILE.exists() else '(missing, template fallback)'}")
-    print(f"Frontend env file  : {FRONTEND_ENV_FILE if FRONTEND_ENV_FILE.exists() else '(missing, template fallback)'}")
+    print(f"Frontend env file  : {BACKEND_ENV_FILE if BACKEND_ENV_FILE.exists() else '(shared root .env, template fallback)'}")
     print(f"PostgreSQL host    : {postgres_host}")
     print(f"PostgreSQL port    : {postgres_port_text}")
     print(f"Database URL       : {database_url or '(derived from POSTGRES_* variables)'}")
@@ -191,7 +186,7 @@ def main() -> int:
     print()
     print("Notes:")
     print("- version-description.txt stores the local machine/version checklist.")
-    print("- Use .env.template and web/.env.template as runtime templates.")
+    print("- Use .env.template as the runtime template for both backend and frontend dev settings.")
     print("- Python 3.13 is the default project interpreter for the .venv workflow.")
     print("- The project now keeps only the user-upload trading workflow.")
     print("- Default local ports are PostgreSQL 15432 and web dev server 4173.")
