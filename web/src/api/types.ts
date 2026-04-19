@@ -163,6 +163,51 @@ export interface DeleteImportRunResponse {
   status: string;
 }
 
+export interface ImportMappingCandidateRead {
+  original_column: string;
+  header_score: number;
+  value_score: number;
+  template_bonus: number;
+  total_score: number;
+  confidence: string;
+  reasons: string[];
+}
+
+export interface ImportFieldSuggestionRead {
+  canonical_column: string;
+  required: boolean;
+  selected_original_column: string | null;
+  selected_score: number | null;
+  selected_confidence: string;
+  candidates: ImportMappingCandidateRead[];
+}
+
+export interface ImportMappingConflictRead {
+  canonical_column: string;
+  primary_original_column: string;
+  secondary_original_column: string;
+  gap: number;
+  message: string;
+}
+
+export interface ImportPreviewRead {
+  preview_id: string;
+  expires_at: string;
+  can_auto_commit: boolean;
+  required_confirmation_needed: boolean;
+  required_issue_columns: string[];
+  matcher_engine: string;
+  required_columns: string[];
+  optional_columns: string[];
+  original_columns: string[];
+  ignored_columns: string[];
+  suggested_mapping: Record<string, string>;
+  missing_required: string[];
+  conflicts: ImportMappingConflictRead[];
+  field_suggestions: ImportFieldSuggestionRead[];
+  action_hints: string[];
+}
+
 export interface TradingStockRead {
   stock_code: string;
   stock_name: string | null;

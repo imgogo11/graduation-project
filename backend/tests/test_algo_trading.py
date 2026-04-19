@@ -8,8 +8,6 @@ import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
-from sqlalchemy import select
-
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parent
 ARTIFACT_ROOT = REPO_ROOT / "data" / "processed" / "test_artifacts" / "algo_trading"
@@ -19,7 +17,6 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.core.database import create_all_tables, get_session_factory, reset_database_state
 from app.algo_bridge.adapters.trading import load_algo_module
-from app.models import ImportRun
 from app.services.auth import AuthService
 
 
@@ -661,13 +658,12 @@ class AlgoTradingRouteTests(unittest.TestCase):
             headers=self._auth_headers(self.token),
         )
         self.assertEqual(failed_response.status_code, 400)
-
-        failed_run_id = self._find_run_id(dataset_name="algo_failed", status="failed")
+        self.assertIn("/api/imports/trading/preview", failed_response.json()["detail"])
 
         response = self.client.get(
             "/api/algo/trading/range-max-amount",
             params={
-                "import_run_id": failed_run_id,
+                "import_run_id": 999999,
                 "stock_code": "600519.SH",
                 "start_date": "2026-01-02",
                 "end_date": "2026-01-05",
@@ -687,32 +683,33 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
     def _upload_csv(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
         csv_text = frame.to_csv(index=False)
-        response = self.client.post(
-            "/api/imports/trading",
+        preview_response = self.client.post(
+            "/api/imports/trading/preview",
             data={"dataset_name": dataset_name},
             files={"file": ("trading.csv", csv_text.encode("utf-8"), "text/csv")},
             headers=self._auth_headers(token),
         )
-        self.assertEqual(response.status_code, 200, response.text)
-        return response.json()
+        self.assertEqual(preview_response.status_code, 200, preview_response.text)
+        preview_body = preview_response.json()
+        mapping_overrides: dict[str, str] = {}
+        for optional_column in ("stock_name", "amount"):
+            selected = preview_body.get("suggested_mapping", {}).get(optional_column)
+            if selected:
+                mapping_overrides[optional_column] = selected
+        commit_response = self.client.post(
+            "/api/imports/trading/commit",
+            json={
+                "preview_id": preview_body["preview_id"],
+                "required_confirmation_ack": True,
+                "mapping_overrides": mapping_overrides,
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(commit_response.status_code, 200, commit_response.text)
+        return commit_response.json()
 
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
-
-    def _find_run_id(self, *, dataset_name: str, status: str) -> int:
-        session = get_session_factory()()
-        try:
-            run = session.scalar(
-                select(ImportRun)
-                .where(ImportRun.dataset_name == dataset_name)
-                .where(ImportRun.status == status)
-                .order_by(ImportRun.id.desc())
-            )
-            self.assertIsNotNone(run)
-            return int(run.id)
-        finally:
-            session.close()
-
 
 if __name__ == "__main__":
     unittest.main()

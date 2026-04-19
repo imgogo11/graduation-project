@@ -9,10 +9,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.orm import Session
 
-from app.models import ImportArtifactRecord, ImportManifestRecord, ImportRun, utc_now
+from app.models import (
+    ImportArtifactRecord,
+    ImportManifestRecord,
+    ImportMappingTemplate,
+    ImportPreviewSession,
+    ImportRun,
+    utc_now,
+)
 
 
 CURRENT_IMPORT_SOURCE_TYPE = "upload"
@@ -220,3 +227,118 @@ class ImportRunRepository:
         session.commit()
         session.refresh(run)
         return run
+
+
+class ImportPreviewSessionRepository:
+    @staticmethod
+    def create(
+        session: Session,
+        *,
+        preview_id: str,
+        owner_user_id: int,
+        dataset_name: str,
+        original_file_name: str,
+        file_format: str,
+        staged_file_path: str,
+        header_fingerprint: str,
+        preview_payload_json: dict[str, Any],
+        expires_at: datetime,
+    ) -> ImportPreviewSession:
+        row = ImportPreviewSession(
+            id=preview_id,
+            owner_user_id=owner_user_id,
+            dataset_name=dataset_name,
+            original_file_name=original_file_name,
+            file_format=file_format,
+            staged_file_path=staged_file_path,
+            header_fingerprint=header_fingerprint,
+            preview_payload_json=preview_payload_json,
+            status="pending",
+            expires_at=expires_at,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return row
+
+    @staticmethod
+    def get_by_id(session: Session, preview_id: str) -> ImportPreviewSession | None:
+        return session.get(ImportPreviewSession, preview_id)
+
+    @staticmethod
+    def list_expired_pending(session: Session, *, now: datetime, limit: int = 100) -> list[ImportPreviewSession]:
+        stmt = (
+            select(ImportPreviewSession)
+            .where(ImportPreviewSession.status == "pending")
+            .where(ImportPreviewSession.expires_at < now)
+            .order_by(ImportPreviewSession.expires_at.asc())
+            .limit(limit)
+        )
+        return list(session.scalars(stmt))
+
+    @staticmethod
+    def delete_many(session: Session, preview_ids: list[str]) -> None:
+        if not preview_ids:
+            return
+        stmt = delete(ImportPreviewSession).where(ImportPreviewSession.id.in_(preview_ids))
+        session.execute(stmt)
+        session.commit()
+
+    @staticmethod
+    def mark_committed(session: Session, row: ImportPreviewSession, *, run_id: int) -> None:
+        row.status = "committed"
+        row.committed_run_id = run_id
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+
+
+class ImportMappingTemplateRepository:
+    @staticmethod
+    def get_for_owner_and_fingerprint(
+        session: Session,
+        *,
+        owner_user_id: int,
+        header_fingerprint: str,
+    ) -> ImportMappingTemplate | None:
+        stmt = (
+            select(ImportMappingTemplate)
+            .where(ImportMappingTemplate.owner_user_id == owner_user_id)
+            .where(ImportMappingTemplate.header_fingerprint == header_fingerprint)
+            .limit(1)
+        )
+        return session.scalar(stmt)
+
+    @staticmethod
+    def upsert(
+        session: Session,
+        *,
+        owner_user_id: int,
+        header_fingerprint: str,
+        mapping_json: dict[str, str],
+    ) -> ImportMappingTemplate:
+        now = utc_now()
+        row = ImportMappingTemplateRepository.get_for_owner_and_fingerprint(
+            session,
+            owner_user_id=owner_user_id,
+            header_fingerprint=header_fingerprint,
+        )
+        if row is None:
+            row = ImportMappingTemplate(
+                owner_user_id=owner_user_id,
+                header_fingerprint=header_fingerprint,
+                mapping_json=mapping_json,
+                usage_count=1,
+                created_at=now,
+                updated_at=now,
+                last_used_at=now,
+            )
+        else:
+            row.mapping_json = mapping_json
+            row.usage_count = (row.usage_count or 0) + 1
+            row.updated_at = now
+            row.last_used_at = now
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return row

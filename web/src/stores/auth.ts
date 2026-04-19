@@ -16,7 +16,10 @@ function loadInitialState(): AuthState {
     return emptyState;
   }
 
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  // Migrate away from persistent login across app restarts.
+  window.localStorage.removeItem(STORAGE_KEY);
+
+  const raw = window.sessionStorage.getItem(STORAGE_KEY);
   if (!raw) {
     return emptyState;
   }
@@ -40,11 +43,12 @@ function persistState() {
   }
 
   if (!state.accessToken || !state.user) {
+    window.sessionStorage.removeItem(STORAGE_KEY);
     window.localStorage.removeItem(STORAGE_KEY);
     return;
   }
 
-  window.localStorage.setItem(
+  window.sessionStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
       accessToken: state.accessToken,

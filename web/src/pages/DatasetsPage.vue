@@ -2,11 +2,26 @@
 import { computed, onMounted, reactive, ref } from "vue";
 
 import type { EChartsOption } from "echarts";
-import { NButton, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag, useMessage } from "naive-ui";
+import {
+  NButton,
+  NForm,
+  NFormItem,
+  NInput,
+  NModal,
+  NPagination,
+  NSelect,
+  NSwitch,
+  NTable,
+  NTabPane,
+  NTabs,
+  NTag,
+  useMessage,
+} from "naive-ui";
 
-import { deleteImportRun, fetchImportRuns, fetchImportStats, uploadTradingFile } from "@/api/imports";
+import { commitTradingPreview, deleteImportRun, fetchImportRuns, fetchImportStats, previewTradingFile } from "@/api/imports";
 import { fetchTradingRecords, fetchTradingStocks } from "@/api/trading";
 import type {
+  ImportPreviewRead,
   ImportRunRead,
   ImportStatsRead,
   TradingRecordRead,
@@ -43,12 +58,33 @@ const stocks = ref<TradingStockRead[]>([]);
 const records = ref<TradingRecordRead[]>([]);
 const loading = ref(false);
 const loadingPreview = ref(false);
-const uploading = ref(false);
+const previewingImport = ref(false);
+const committingImport = ref(false);
 const deletingRunId = ref<number | null>(null);
 const error = ref("");
 usePageErrorNotification(error, "Dataset Page Error");
 const selectedFile = ref<File | null>(null);
 const ownerFilterInput = ref("");
+const importPreview = ref<ImportPreviewRead | null>(null);
+const mappingSelections = reactive<Record<string, string | null>>({});
+const requiredColumnEnabled = reactive<Record<string, boolean>>({});
+const optionalColumnEnabled = reactive<Record<string, boolean>>({});
+const mappingModalVisible = ref(false);
+const mappingModalTab = ref<"required" | "optional">("required");
+
+const optionalCanonicalColumns = ["stock_name", "amount", "turnover"] as const;
+const canonicalLabelMap: Record<string, string> = {
+  stock_code: "股票代码",
+  trade_date: "交易日期",
+  open: "开盘价",
+  high: "最高价",
+  low: "最低价",
+  close: "收盘价",
+  volume: "成交量",
+  stock_name: "股票名称",
+  amount: "成交额",
+  turnover: "换手率",
+};
 
 const workspaceForm = reactive({
   importRunId: undefined as number | undefined,
@@ -95,6 +131,58 @@ const stockOptions = computed(() =>
     label: `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`,
     value: item.stock_code,
   }))
+);
+const hasImportPreview = computed(() => importPreview.value !== null);
+const importMappingOptions = computed(() =>
+  (importPreview.value?.original_columns ?? []).map((column) => ({ label: column, value: column }))
+);
+const mappingFieldsByCanonical = computed(() => {
+  const output: Record<string, ImportPreviewRead["field_suggestions"][number]> = {};
+  for (const field of importPreview.value?.field_suggestions ?? []) {
+    output[field.canonical_column] = field;
+  }
+  return output;
+});
+const requiredMappingFields = computed(() =>
+  (importPreview.value?.required_columns ?? [])
+    .map((canonical) => mappingFieldsByCanonical.value[canonical])
+    .filter((item): item is ImportPreviewRead["field_suggestions"][number] => Boolean(item))
+);
+const optionalMappingFields = computed(() =>
+  optionalCanonicalColumns
+    .map((canonical) => mappingFieldsByCanonical.value[canonical])
+    .filter((item): item is ImportPreviewRead["field_suggestions"][number] => Boolean(item))
+);
+const requiredOffColumns = computed(() =>
+  (importPreview.value?.required_columns ?? []).filter((canonical) => {
+    return !requiredColumnEnabled[canonical];
+  })
+);
+const unresolvedEnabledRequiredColumns = computed(() =>
+  (importPreview.value?.required_columns ?? []).filter((canonical) => {
+    if (!requiredColumnEnabled[canonical]) {
+      return false;
+    }
+    const selected = mappingSelections[canonical];
+    return !selected;
+  })
+);
+const unresolvedEnabledOptionalColumns = computed(() =>
+  optionalCanonicalColumns.filter((canonical) => optionalColumnEnabled[canonical] && !mappingSelections[canonical])
+);
+const requiredConfirmationAck = computed(
+  () =>
+    Boolean(importPreview.value?.preview_id) &&
+    requiredOffColumns.value.length === 0 &&
+    unresolvedEnabledRequiredColumns.value.length === 0
+);
+const canCommitImport = computed(
+  () =>
+    Boolean(importPreview.value?.preview_id) &&
+    requiredOffColumns.value.length === 0 &&
+    unresolvedEnabledRequiredColumns.value.length === 0 &&
+    requiredConfirmationAck.value &&
+    unresolvedEnabledOptionalColumns.value.length === 0
 );
 const importRunsPager = useTablePager(importRuns, {
   initialPageSize: 20,
@@ -249,6 +337,18 @@ function applySharedScope() {
 function onFileSelected(event: Event) {
   const input = event.target as HTMLInputElement;
   selectedFile.value = input.files?.[0] ?? null;
+  importPreview.value = null;
+  mappingModalVisible.value = false;
+  mappingModalTab.value = "required";
+  for (const key of Object.keys(mappingSelections)) {
+    delete mappingSelections[key];
+  }
+  for (const key of Object.keys(requiredColumnEnabled)) {
+    delete requiredColumnEnabled[key];
+  }
+  for (const key of Object.keys(optionalColumnEnabled)) {
+    delete optionalColumnEnabled[key];
+  }
 }
 
 async function loadPreview() {
@@ -341,7 +441,84 @@ async function loadDatasets(preferredRunId?: number) {
   }
 }
 
-async function submitUpload() {
+function applyPreviewSuggestedMapping(preview: ImportPreviewRead) {
+  for (const key of Object.keys(mappingSelections)) {
+    delete mappingSelections[key];
+  }
+  for (const key of Object.keys(requiredColumnEnabled)) {
+    delete requiredColumnEnabled[key];
+  }
+  for (const key of Object.keys(optionalColumnEnabled)) {
+    delete optionalColumnEnabled[key];
+  }
+  for (const [canonical, original] of Object.entries(preview.suggested_mapping)) {
+    mappingSelections[canonical] = original;
+  }
+  for (const canonical of preview.required_columns) {
+    if (!(canonical in mappingSelections)) {
+      mappingSelections[canonical] = null;
+    }
+  }
+  for (const canonical of preview.optional_columns) {
+    if (!(canonical in mappingSelections)) {
+      mappingSelections[canonical] = null;
+    }
+  }
+  const requiredIssueSet = new Set(preview.required_issue_columns);
+  for (const requiredColumn of preview.required_columns) {
+    const hasIssue = requiredIssueSet.has(requiredColumn);
+    if (hasIssue) {
+      mappingSelections[requiredColumn] = null;
+      requiredColumnEnabled[requiredColumn] = false;
+    } else {
+      requiredColumnEnabled[requiredColumn] = Boolean(mappingSelections[requiredColumn]);
+    }
+  }
+  for (const optionalColumn of optionalCanonicalColumns) {
+    optionalColumnEnabled[optionalColumn] = false;
+  }
+}
+
+function resolveCanonicalLabel(canonical: string) {
+  return canonicalLabelMap[canonical] ?? canonical;
+}
+
+function openMappingModal(mode: "auto" | "manual") {
+  if (!importPreview.value) {
+    error.value = "请先执行列头解析";
+    return;
+  }
+  if (mode === "auto") {
+    mappingModalTab.value = "required";
+  } else {
+    mappingModalTab.value = "optional";
+  }
+  mappingModalVisible.value = true;
+}
+
+function setAllOptionalColumns(enabled: boolean) {
+  for (const optionalColumn of optionalCanonicalColumns) {
+    optionalColumnEnabled[optionalColumn] = enabled;
+  }
+}
+
+function setAllRequiredColumns(enabled: boolean) {
+  for (const requiredColumn of importPreview.value?.required_columns ?? []) {
+    if (!mappingSelections[requiredColumn]) {
+      requiredColumnEnabled[requiredColumn] = false;
+      continue;
+    }
+    requiredColumnEnabled[requiredColumn] = enabled;
+  }
+}
+
+function onRequiredMappingChange(canonical: string, value: string | null) {
+  if (!value) {
+    requiredColumnEnabled[canonical] = false;
+  }
+}
+
+async function submitPreview() {
   if (!selectedFile.value) {
     error.value = "请先选择要上传的 CSV / XLSX 文件";
     return;
@@ -352,22 +529,84 @@ async function submitUpload() {
     return;
   }
 
-  uploading.value = true;
+  previewingImport.value = true;
   error.value = "";
 
   try {
-    const createdRun = await uploadTradingFile({
+    const preview = await previewTradingFile({
       dataset_name: uploadForm.datasetName.trim(),
       file: selectedFile.value,
     });
+    importPreview.value = preview;
+    applyPreviewSuggestedMapping(preview);
+    if (preview.required_confirmation_needed) {
+      openMappingModal("auto");
+      message.warning("必要列存在冲突或低置信问题，请手动选择并开启对应必要列。");
+    } else if (preview.can_auto_commit) {
+      message.success("列头识别完成，可一键确认导入。");
+    } else {
+      message.warning("列头识别完成，如需自定义映射请打开“列头映射”弹窗。");
+    }
+  } catch (err) {
+    error.value = getErrorMessage(err);
+  } finally {
+    previewingImport.value = false;
+  }
+}
+
+async function submitCommit() {
+  if (!importPreview.value) {
+    error.value = "请先执行列头解析";
+    return;
+  }
+  if (!canCommitImport.value) {
+    if (requiredOffColumns.value.length) {
+      error.value = `必要列必须全部开启后才可导入：${requiredOffColumns.value.join("、")}`;
+    } else if (unresolvedEnabledRequiredColumns.value.length) {
+      error.value = `请先补齐已开启必要列映射：${unresolvedEnabledRequiredColumns.value.join("、")}`;
+    } else {
+      error.value = `请先补齐已开启的可选列映射：${unresolvedEnabledOptionalColumns.value.join("、")}`;
+    }
+    return;
+  }
+
+  committingImport.value = true;
+  error.value = "";
+  try {
+    const mappingOverrides: Record<string, string | null> = {};
+    for (const canonical of importPreview.value.required_columns) {
+      mappingOverrides[canonical] = requiredColumnEnabled[canonical] ? (mappingSelections[canonical] ?? null) : null;
+    }
+    for (const canonical of optionalCanonicalColumns) {
+      if (optionalColumnEnabled[canonical]) {
+        mappingOverrides[canonical] = mappingSelections[canonical] ?? null;
+      }
+    }
+    const createdRun = await commitTradingPreview({
+      preview_id: importPreview.value.preview_id,
+      required_confirmation_ack: requiredConfirmationAck.value,
+      mapping_overrides: mappingOverrides,
+    });
     uploadForm.datasetName = "";
     selectedFile.value = null;
+    importPreview.value = null;
+    mappingModalVisible.value = false;
+    mappingModalTab.value = "required";
+    for (const key of Object.keys(mappingSelections)) {
+      delete mappingSelections[key];
+    }
+    for (const key of Object.keys(requiredColumnEnabled)) {
+      delete requiredColumnEnabled[key];
+    }
+    for (const key of Object.keys(optionalColumnEnabled)) {
+      delete optionalColumnEnabled[key];
+    }
     message.success(`已创建导入批次 #${createdRun.display_id}`);
     await loadDatasets(createdRun.id);
   } catch (err) {
     error.value = getErrorMessage(err);
   } finally {
-    uploading.value = false;
+    committingImport.value = false;
   }
 }
 
@@ -411,9 +650,9 @@ onMounted(() => {
     <section class="page__header">
       <div>
         <div class="page__eyebrow">Datasets / 数据集管理</div>
-        <h2 class="page__title">导入批次、共享范围与交易样本预览统一收口到数据集管理</h2>
+        <h2 class="page__title">在数据集管理中完成导入、范围设置与交易样本预览</h2>
         <p class="page__subtitle">
-          这一页负责上传数据、切换当前数据集、预览交易样本，并让后续分析页面复用同一套共享上下文。
+          该页面用于上传交易文件、切换当前数据集并预览交易样本，分析中心与算法雷达会复用同一共享范围。
         </p>
       </div>
       <div class="page__actions">
@@ -474,7 +713,7 @@ onMounted(() => {
         </div>
       </PanelCard>
 
-      <PanelCard title="上传新数据集" description="保持现有后端导入接口，只重做前端交互">
+      <PanelCard title="上传新数据集" description="上传交易文件并完成列头映射后创建新数据集">
         <n-form class="form-grid" label-placement="top">
           <n-form-item label="数据集名" class="form-grid--wide">
             <n-input v-model:value="uploadForm.datasetName" placeholder="例如 2024 全市场日线数据" />
@@ -484,16 +723,123 @@ onMounted(() => {
           </n-form-item>
         </n-form>
 
-        <div class="inline-hint">
-          当前支持直接沿用现有的导入接口，上传完成后，新的批次会自动刷新并作为当前范围。
-        </div>
+        <div class="inline-hint">请先解析列头，再确认映射并提交导入。系统会自动给出建议映射，必要时可手动调整。</div>
 
         <div class="toolbar-row" style="margin-top: 16px;">
-          <n-button type="primary" :loading="uploading" @click="submitUpload">上传并导入</n-button>
+          <n-button type="primary" :loading="previewingImport" @click="submitPreview">解析列头</n-button>
+          <n-button secondary :disabled="!hasImportPreview" @click="openMappingModal('manual')">列头映射</n-button>
+          <n-button
+            type="primary"
+            secondary
+            :loading="committingImport"
+            :disabled="!hasImportPreview || !canCommitImport"
+            @click="submitCommit"
+          >
+            确认导入
+          </n-button>
           <span class="muted">{{ selectedFile?.name || "尚未选择文件" }}</span>
+        </div>
+
+        <div v-if="importPreview" class="upload-preview-panel">
+          <div class="inline-hint" style="margin-top: 12px;">预览编号：{{ importPreview.preview_id }}</div>
+          <div class="inline-hint" style="margin-top: 8px;">
+            {{ importPreview.action_hints.join("；") }}
+          </div>
+          <div v-if="importPreview.conflicts.length" class="inline-hint" style="margin-top: 8px; color: #b45309;">
+            冲突：{{ importPreview.conflicts.map((item) => item.message).join("；") }}
+          </div>
+          <div v-if="requiredOffColumns.length" class="inline-hint" style="margin-top: 8px; color: #be123c;">
+            未开启必要列：{{ requiredOffColumns.join("、") }}
+          </div>
+          <div v-if="unresolvedEnabledRequiredColumns.length" class="inline-hint" style="margin-top: 8px; color: #be123c;">
+            必要列映射未完成：{{ unresolvedEnabledRequiredColumns.join("、") }}
+          </div>
         </div>
       </PanelCard>
     </section>
+
+    <n-modal v-model:show="mappingModalVisible" preset="card" title="列头映射确认" style="width: min(980px, 92vw);">
+      <template v-if="importPreview">
+        <div class="inline-hint">
+          必要列有问题时会自动打开此弹窗；你也可以随时手动打开进行自定义映射。
+        </div>
+        <n-tabs v-model:value="mappingModalTab" type="line" animated style="margin-top: 12px;">
+          <n-tab-pane name="required" tab="必要列映射">
+            <div class="toolbar-row" style="margin-bottom: 12px;">
+              <span class="muted">
+                状态：{{ requiredOffColumns.length === 0 && unresolvedEnabledRequiredColumns.length === 0 ? "可提交" : "待确认" }}
+              </span>
+              <n-button size="small" secondary @click="setAllRequiredColumns(true)">全开</n-button>
+              <n-button size="small" secondary @click="setAllRequiredColumns(false)">全关</n-button>
+            </div>
+            <n-table striped size="small">
+              <thead>
+                <tr>
+                  <th>目标列</th>
+                  <th>建议置信度</th>
+                  <th>映射源列</th>
+                  <th>确认导入</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="field in requiredMappingFields" :key="field.canonical_column">
+                  <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
+                  <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
+                  <td style="min-width: 280px;">
+                    <n-select
+                      v-model:value="mappingSelections[field.canonical_column]"
+                      :options="importMappingOptions"
+                      placeholder="选择源列"
+                      clearable
+                      @update:value="(value) => onRequiredMappingChange(field.canonical_column, value)"
+                    />
+                  </td>
+                  <td>
+                    <n-switch
+                      v-model:value="requiredColumnEnabled[field.canonical_column]"
+                      :disabled="!mappingSelections[field.canonical_column]"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </n-table>
+          </n-tab-pane>
+          <n-tab-pane name="optional" tab="可选列映射">
+            <div class="toolbar-row" style="margin-bottom: 12px;">
+              <n-button size="small" secondary @click="setAllOptionalColumns(true)">全开</n-button>
+              <n-button size="small" secondary @click="setAllOptionalColumns(false)">全关</n-button>
+            </div>
+            <n-table striped size="small">
+              <thead>
+                <tr>
+                  <th>目标列</th>
+                  <th>建议置信度</th>
+                  <th>映射源列</th>
+                  <th>确认导入</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="field in optionalMappingFields" :key="field.canonical_column">
+                  <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
+                  <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
+                  <td style="min-width: 260px;">
+                    <n-select
+                      v-model:value="mappingSelections[field.canonical_column]"
+                      :options="importMappingOptions"
+                      placeholder="选择源列"
+                      clearable
+                    />
+                  </td>
+                  <td>
+                    <n-switch v-model:value="optionalColumnEnabled[field.canonical_column]" />
+                  </td>
+                </tr>
+              </tbody>
+            </n-table>
+          </n-tab-pane>
+        </n-tabs>
+      </template>
+    </n-modal>
 
     <section class="page__grid page__grid--double">
       <PanelCard title="当前数据集摘要" description="优先展示当前批次的元数据与范围信息">
@@ -542,7 +888,7 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <PanelCard title="导入历史" description="保留导入历史查看与删除能力，管理员可结合 owner 过滤进行巡检">
+    <PanelCard title="导入历史" description="按时间查看导入批次，管理员可结合 owner 过滤进行巡检">
       <div v-if="importRunsPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>
@@ -605,7 +951,7 @@ onMounted(() => {
       />
     </PanelCard>
 
-    <PanelCard title="交易样本" description="表格预览保留当前交易记录的关键字段，便于校验数据质量">
+    <PanelCard title="交易样本" description="表格展示当前范围内交易记录的关键字段，便于校验数据质量">
       <div v-if="recordsPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>

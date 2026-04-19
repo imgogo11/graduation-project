@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+from datetime import timedelta
 from io import BytesIO
 import os
 from pathlib import Path
@@ -19,7 +20,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.database import create_all_tables, get_session_factory, reset_database_state
-from app.models import ImportRun, utc_now
+from app.models import ImportMappingTemplate, ImportPreviewSession, ImportRun, utc_now
 from app.services.auth import AuthService
 
 
@@ -282,11 +283,25 @@ class DatabasePipelineTests(unittest.TestCase):
 
     def test_upload_supports_optional_turnover_without_conflicting_with_amount(self) -> None:
         token = self._register_and_login("turnover_user", "password123")
-        turnover_run = self._upload_csv(
+        preview = self._preview_csv(
             token=token,
-            dataset_name="turnover_headers",
+            dataset_name="turnover_headers_default_required_only",
             frame=build_turnover_frame(),
         )
+        turnover_run = self._commit_preview(
+            token=token,
+            preview_id=str(preview["preview_id"]),
+            mapping_overrides={},
+        )
+        session = get_session_factory()()
+        try:
+            template = session.scalar(select(ImportMappingTemplate).where(ImportMappingTemplate.owner_user_id.is_not(None)))
+            self.assertIsNotNone(template)
+            template_mapping = dict(template.mapping_json) if template is not None else {}
+            self.assertNotIn("amount", template_mapping)
+            self.assertNotIn("turnover", template_mapping)
+        finally:
+            session.close()
 
         records = self.client.get(
             "/api/trading/records",
@@ -296,7 +311,36 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(records.status_code, 200, records.text)
         body = records.json()
         self.assertEqual(len(body), 2)
-        self.assertIsNotNone(body[0]["amount"])
+        self.assertIsNone(body[0]["amount"])
+
+        preview_with_optional = self._preview_csv(
+            token=token,
+            dataset_name="turnover_headers_with_optional",
+            frame=build_turnover_frame(),
+        )
+        run_with_optional = self._commit_preview(
+            token=token,
+            preview_id=str(preview_with_optional["preview_id"]),
+            mapping_overrides={"amount": "amount"},
+        )
+        session = get_session_factory()()
+        try:
+            template = session.scalar(select(ImportMappingTemplate).where(ImportMappingTemplate.owner_user_id.is_not(None)))
+            self.assertIsNotNone(template)
+            template_mapping = dict(template.mapping_json) if template is not None else {}
+            self.assertEqual(template_mapping.get("amount"), "amount")
+            self.assertNotIn("turnover", template_mapping)
+        finally:
+            session.close()
+        records_with_optional = self.client.get(
+            "/api/trading/records",
+            params={"import_run_id": run_with_optional["id"], "stock_code": "600519.SH"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(records_with_optional.status_code, 200, records_with_optional.text)
+        body_with_optional = records_with_optional.json()
+        self.assertEqual(len(body_with_optional), 2)
+        self.assertIsNotNone(body_with_optional[0]["amount"])
 
     def test_dataset_name_conflicts_are_user_scoped_and_deleted_names_can_be_reused(self) -> None:
         alice_token = self._register_and_login("alice_name_user", "password123")
@@ -339,55 +383,117 @@ class DatabasePipelineTests(unittest.TestCase):
         )
         self.assertNotEqual(reused_run["id"], first_run["id"])
 
-    def test_upload_rejects_legacy_headers_missing_required_headers_and_old_alias_columns(self) -> None:
-        token = self._register_and_login("invalid_headers_user", "password123")
+    def test_preview_and_commit_support_alias_headers_and_manual_confirmation(self) -> None:
+        token = self._register_and_login("preview_user", "password123")
 
-        legacy_header_response = self.client.post(
-            "/api/imports/trading",
-            data={"dataset_name": "legacy_headers"},
-            files={
-                "file": (
-                    "trading.csv",
-                    build_legacy_header_frame(include_amount=False).to_csv(index=False).encode("utf-8"),
-                    "text/csv",
-                )
-            },
-            headers=self._auth_headers(token),
+        legacy_preview = self._preview_csv(
+            token=token,
+            dataset_name="legacy_headers",
+            frame=build_legacy_header_frame(include_amount=False),
         )
-        self.assertEqual(legacy_header_response.status_code, 400)
-        self.assertIn("缺少必要列", legacy_header_response.json()["detail"])
-
-        missing_code_response = self.client.post(
-            "/api/imports/trading",
-            data={"dataset_name": "missing_code"},
-            files={
-                "file": (
-                    "trading.csv",
-                    build_trading_frame().drop(columns=["stock_code"]).to_csv(index=False).encode("utf-8"),
-                    "text/csv",
-                )
-            },
-            headers=self._auth_headers(token),
+        self.assertIn("preview_id", legacy_preview)
+        self.assertIn("required_confirmation_needed", legacy_preview)
+        legacy_mapping_overrides: dict[str, str] = {}
+        for canonical in legacy_preview.get("required_issue_columns", []):
+            selected = legacy_preview.get("suggested_mapping", {}).get(canonical)
+            if selected:
+                legacy_mapping_overrides[str(canonical)] = str(selected)
+        legacy_commit = self._commit_preview(
+            token=token,
+            preview_id=str(legacy_preview["preview_id"]),
+            mapping_overrides=legacy_mapping_overrides,
         )
-        self.assertEqual(missing_code_response.status_code, 400)
-        self.assertIn("导入失败，数据不符合格式", missing_code_response.json()["detail"])
+        self.assertEqual(legacy_commit["dataset_name"], "legacy_headers")
 
         old_alias_frame = build_trading_frame().rename(columns={"stock_code": "code"})
         old_alias_frame["symbol"] = old_alias_frame["code"]
         old_alias_response = self.client.post(
             "/api/imports/trading",
             data={"dataset_name": "old_alias_columns"},
-            files={
-                "file": (
-                    "trading.csv",
-                    old_alias_frame.to_csv(index=False).encode("utf-8"),
-                    "text/csv",
-                )
-            },
+            files={"file": ("trading.csv", old_alias_frame.to_csv(index=False).encode("utf-8"), "text/csv")},
             headers=self._auth_headers(token),
         )
         self.assertEqual(old_alias_response.status_code, 400)
-        self.assertIn("缺少必要列", old_alias_response.json()["detail"])
+        self.assertIn("/api/imports/trading/preview", old_alias_response.json()["detail"])
+
+        old_alias_preview = self._preview_csv(token=token, dataset_name="old_alias_columns", frame=old_alias_frame)
+        self.assertFalse(old_alias_preview["can_auto_commit"])
+        self.assertTrue(old_alias_preview["conflicts"])
+        self.assertTrue(old_alias_preview["required_confirmation_needed"])
+        self.assertIn("stock_code", old_alias_preview["required_issue_columns"])
+        old_alias_mapping_overrides: dict[str, str] = {"stock_code": "code"}
+        for canonical in old_alias_preview.get("required_issue_columns", []):
+            if str(canonical) == "stock_code":
+                continue
+            selected = old_alias_preview.get("suggested_mapping", {}).get(canonical)
+            if selected:
+                old_alias_mapping_overrides[str(canonical)] = str(selected)
+        old_alias_commit = self._commit_preview(
+            token=token,
+            preview_id=str(old_alias_preview["preview_id"]),
+            mapping_overrides=old_alias_mapping_overrides,
+        )
+        self.assertEqual(old_alias_commit["dataset_name"], "old_alias_columns")
+
+        missing_code_preview = self._preview_csv(
+            token=token,
+            dataset_name="missing_code",
+            frame=build_trading_frame().drop(columns=["stock_code"]),
+        )
+        self.assertIn("stock_code", missing_code_preview["missing_required"])
+        self.assertTrue(missing_code_preview["required_confirmation_needed"])
+        self.assertIn("stock_code", missing_code_preview["required_issue_columns"])
+        self.assertFalse(missing_code_preview["can_auto_commit"])
+
+    def test_preview_commit_permissions_expiry_and_template_learning(self) -> None:
+        alice_token = self._register_and_login("preview_alice", "password123")
+        bob_token = self._register_and_login("preview_bob", "password123")
+
+        preview = self._preview_csv(token=alice_token, dataset_name="preview_scope", frame=build_trading_frame())
+        preview_id = str(preview["preview_id"])
+
+        forbidden = self.client.post(
+            "/api/imports/trading/commit",
+            json={"preview_id": preview_id, "required_confirmation_ack": True, "mapping_overrides": {}},
+            headers=self._auth_headers(bob_token),
+        )
+        self.assertEqual(forbidden.status_code, 404)
+
+        session = get_session_factory()()
+        try:
+            row = session.get(ImportPreviewSession, preview_id)
+            self.assertIsNotNone(row)
+            row.expires_at = utc_now() - timedelta(hours=1)  # type: ignore[assignment]
+            session.add(row)
+            session.commit()
+        finally:
+            session.close()
+
+        expired = self.client.post(
+            "/api/imports/trading/commit",
+            json={"preview_id": preview_id, "required_confirmation_ack": True, "mapping_overrides": {}},
+            headers=self._auth_headers(alice_token),
+        )
+        self.assertEqual(expired.status_code, 410)
+
+        preview2 = self._preview_csv(token=alice_token, dataset_name="preview_scope_ok", frame=build_trading_frame())
+        preview2_id = str(preview2["preview_id"])
+        committed = self._commit_preview(token=alice_token, preview_id=preview2_id, mapping_overrides={})
+        self.assertEqual(committed["dataset_name"], "preview_scope_ok")
+
+        repeated = self.client.post(
+            "/api/imports/trading/commit",
+            json={"preview_id": preview2_id, "required_confirmation_ack": True, "mapping_overrides": {}},
+            headers=self._auth_headers(alice_token),
+        )
+        self.assertEqual(repeated.status_code, 409)
+
+        session = get_session_factory()()
+        try:
+            template = session.scalar(select(ImportMappingTemplate).where(ImportMappingTemplate.owner_user_id.is_not(None)))
+            self.assertIsNotNone(template)
+        finally:
+            session.close()
 
     def test_failed_uploads_are_hidden_allow_name_reuse_and_block_data_access(self) -> None:
         token = self._register_and_login("failed_upload_user", "password123")
@@ -406,20 +512,11 @@ class DatabasePipelineTests(unittest.TestCase):
             headers=self._auth_headers(token),
         )
         self.assertEqual(failed_response.status_code, 400)
-        self.assertIn("导入失败", failed_response.json()["detail"])
+        self.assertIn("/api/imports/trading/preview", failed_response.json()["detail"])
 
         runs_after_failure = self.client.get("/api/imports/runs", headers=self._auth_headers(token))
         self.assertEqual(runs_after_failure.status_code, 200)
         self.assertEqual(runs_after_failure.json(), [])
-
-        failed_run_id = self._find_run_id(dataset_name="sample2", status="failed")
-
-        blocked_instruments = self.client.get(
-            "/api/trading/stocks",
-            params={"import_run_id": failed_run_id},
-            headers=self._auth_headers(token),
-        )
-        self.assertEqual(blocked_instruments.status_code, 404)
 
         successful_run = self._upload_csv(
             token=token,
@@ -439,9 +536,9 @@ class DatabasePipelineTests(unittest.TestCase):
         stats_response = self.client.get("/api/imports/stats", headers=self._auth_headers(token))
         self.assertEqual(stats_response.status_code, 200)
         stats_body = stats_response.json()
-        self.assertEqual(stats_body["total_runs"], 2)
+        self.assertEqual(stats_body["total_runs"], 1)
         self.assertEqual(stats_body["completed_runs"], 1)
-        self.assertEqual(stats_body["failed_runs"], 1)
+        self.assertEqual(stats_body["failed_runs"], 0)
 
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
@@ -482,22 +579,38 @@ class DatabasePipelineTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
+    def _preview_csv(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
+        response = self.client.post(
+            "/api/imports/trading/preview",
+            data={"dataset_name": dataset_name},
+            files={"file": ("trading.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv")},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
+    def _commit_preview(
+        self,
+        *,
+        token: str,
+        preview_id: str,
+        required_confirmation_ack: bool = True,
+        mapping_overrides: dict[str, str | None],
+    ) -> dict[str, object]:
+        response = self.client.post(
+            "/api/imports/trading/commit",
+            json={
+                "preview_id": preview_id,
+                "required_confirmation_ack": required_confirmation_ack,
+                "mapping_overrides": mapping_overrides,
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()
+
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
-
-    def _find_run_id(self, *, dataset_name: str, status: str) -> int:
-        session = get_session_factory()()
-        try:
-            run = session.scalar(
-                select(ImportRun)
-                .where(ImportRun.dataset_name == dataset_name)
-                .where(ImportRun.status == status)
-                .order_by(ImportRun.id.desc())
-            )
-            self.assertIsNotNone(run)
-            return int(run.id)
-        finally:
-            session.close()
 
     def _insert_legacy_run(self, *, owner_user_id: int, dataset_name: str) -> None:
         session = get_session_factory()()

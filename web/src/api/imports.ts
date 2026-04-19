@@ -1,5 +1,5 @@
-import { deleteJson, getJson, postForm } from "@/api/http";
-import type { DeleteImportRunResponse, ImportRunRead, ImportStatsRead } from "@/api/types";
+import { deleteJson, getJson, postForm, postJson } from "@/api/http";
+import type { DeleteImportRunResponse, ImportPreviewRead, ImportRunRead, ImportStatsRead } from "@/api/types";
 
 
 export interface ListImportRunsParams {
@@ -14,6 +14,12 @@ export interface ImportStatsParams {
 export interface UploadTradingFileParams {
   dataset_name: string;
   file: File;
+}
+
+export interface CommitTradingPreviewParams {
+  preview_id: string;
+  required_confirmation_ack: boolean;
+  mapping_overrides: Record<string, string | null>;
 }
 
 function ensureArray<T>(payload: T[] | T | null | undefined) {
@@ -37,11 +43,15 @@ export function fetchImportStats(params: ImportStatsParams = {}) {
   return getJson<ImportStatsRead>("/api/imports/stats", params);
 }
 
-export function uploadTradingFile(params: UploadTradingFileParams) {
+export function previewTradingFile(params: UploadTradingFileParams) {
   const formData = new FormData();
   formData.append("dataset_name", params.dataset_name);
   formData.append("file", params.file);
-  return postForm<ImportRunRead>("/api/imports/trading", formData);
+  return postForm<ImportPreviewRead>("/api/imports/trading/preview", formData);
+}
+
+export function commitTradingPreview(params: CommitTradingPreviewParams) {
+  return postJson<ImportRunRead>("/api/imports/trading/commit", params);
 }
 
 export function deleteImportRun(runId: number) {

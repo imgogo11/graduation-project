@@ -150,7 +150,7 @@ onMounted(() => {
         <div class="page__eyebrow">System / 用户管理</div>
         <h2 class="page__title">管理员维护普通用户状态与基础资料</h2>
         <p class="page__subtitle">
-          当前阶段继续沿用现有后端能力，只保留搜索、编辑启停与删除普通用户的管理动作，不引入额外 RBAC 配置页。
+          本页支持按用户名筛选普通用户，并提供编辑、启停和删除等账号管理操作。
         </p>
       </div>
       <div class="page__actions">

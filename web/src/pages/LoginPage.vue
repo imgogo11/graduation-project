@@ -24,11 +24,11 @@ const form = reactive({
 const highlights = computed(() => [
   {
     label: "统一后台骨架",
-    value: "工作台数据集管理、分析中心与算法雷达统一收口",
+    value: "工作台、数据集管理、分析中心与算法雷达提供统一操作入口",
   },
   {
-    label: "轻量联调",
-    value: "继续沿用现有 FastAPI 接口 + JWT 登录状态",
+    label: "安全登录",
+    value: "基于账号登录与会话鉴权保障访问安全",
   },
   {
     label: "研究型业务",
@@ -62,7 +62,7 @@ async function submit() {
           <div class="auth-shell__eyebrow">Naive Admin Refresh</div>
           <h1 class="auth-shell__title">股票交易数据管理与分析系统</h1>
           <p class="auth-shell__subtitle">
-            新界面统一承接数据导入、统计分析、区间算法与风险雷达能力，让研究型业务也拥有清晰的后台操作体验。
+            系统覆盖数据导入、统计分析、区间算法与风险雷达，支持完整研究流程。
           </p>
         </div>
 
@@ -77,7 +77,7 @@ async function submit() {
       <div class="auth-shell__form">
         <div class="auth-shell__form-header">
           <h1>登录系统</h1>
-          <p>登录后即可进入后台工作台，继续处理导入批次数据集预览与分析结果</p>
+          <p>登录后可进入工作台，继续处理数据导入、数据集预览与分析任务</p>
         </div>
 <n-form class="auth-form" label-placement="top" @submit.prevent="submit">
           <n-form-item label="用户">

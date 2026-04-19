@@ -7,10 +7,24 @@ from app.api.deps import get_current_user
 from app.core.database import get_db_session
 from app.models import User
 from app.repositories.imports import ImportRunRepository
-from app.schemas.trading import DeleteImportRunResponse, ImportRunRead, ImportStatsRead
+from app.schemas.trading import (
+    DeleteImportRunResponse,
+    ImportCommitRequest,
+    ImportPreviewRead,
+    ImportRunRead,
+    ImportStatsRead,
+)
 from app.services.algo_indexes import algo_index_manager
 from app.services.audit_logs import audit_log_service
-from app.services.imports import ImportConflictError, ImportExecutionError, ImportService, ImportValidationError
+from app.services.imports import (
+    ImportConflictError,
+    ImportExecutionError,
+    ImportPreviewExpiredError,
+    ImportPreviewNotFoundError,
+    ImportPreviewStateError,
+    ImportService,
+    ImportValidationError,
+)
 
 
 router = APIRouter()
@@ -29,6 +43,55 @@ def _get_visible_run_or_404(session: Session, *, run_id: int, current_user: User
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import run not found")
     return run
+
+
+async def _read_upload_or_400(
+    *,
+    request: Request,
+    dataset_name: str,
+    file: UploadFile,
+    current_user: User,
+    request_path: str,
+) -> bytes:
+    if not file.filename:
+        audit_log_service.record_event(
+            category="data_ops",
+            event_type="import_run.create",
+            success=False,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            actor_user_id=current_user.id,
+            actor_username_snapshot=current_user.username,
+            actor_role=current_user.role,
+            target_type="import_run",
+            target_label=dataset_name,
+            request_path=request_path,
+            http_method="POST",
+            ip_address=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+            detail_json={"reason": "Uploaded file name is required"},
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file name is required")
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        audit_log_service.record_event(
+            category="data_ops",
+            event_type="import_run.create",
+            success=False,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            actor_user_id=current_user.id,
+            actor_username_snapshot=current_user.username,
+            actor_role=current_user.role,
+            target_type="import_run",
+            target_label=dataset_name,
+            request_path=request_path,
+            http_method="POST",
+            ip_address=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+            detail_json={"reason": "Uploaded file is empty"},
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+    return file_bytes
 
 
 @router.get("/runs", response_model=list[ImportRunRead])
@@ -54,6 +117,72 @@ def get_import_stats(
     return service.build_stats(session, owner_user_id=_resolve_owner_scope(current_user, owner_user_id))
 
 
+@router.post("/trading/preview", response_model=ImportPreviewRead)
+async def preview_trading_file(
+    request: Request,
+    dataset_name: str = Form(...),
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ImportPreviewRead:
+    file_bytes = await _read_upload_or_400(
+        request=request,
+        dataset_name=dataset_name,
+        file=file,
+        current_user=current_user,
+        request_path="/api/imports/trading/preview",
+    )
+    try:
+        preview = service.preview_uploaded_file(
+            session,
+            owner=current_user,
+            dataset_name=dataset_name,
+            original_file_name=file.filename or "upload.csv",
+            file_bytes=file_bytes,
+        )
+    except ImportConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ImportValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return preview
+
+
+@router.post("/trading/commit", response_model=ImportRunRead)
+def commit_trading_preview(
+    payload: ImportCommitRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> ImportRunRead:
+    try:
+        run = service.commit_preview(
+            session,
+            owner=current_user,
+            payload=payload,
+        )
+    except ImportPreviewNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ImportPreviewExpiredError as exc:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail=str(exc)) from exc
+    except ImportPreviewStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ImportConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except ImportValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except ImportExecutionError as exc:
+        failure_reason = str(exc.__cause__) if isinstance(exc.__cause__, ImportValidationError) else str(exc)
+        if isinstance(exc.__cause__, ImportValidationError):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=failure_reason) from exc
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    algo_index_manager.prepare_after_import(int(run.id))
+    try:
+        algo_index_manager.enqueue_build(int(run.id))
+    except Exception:
+        pass
+    return service.serialize_run(session, run, owner_user_id=_resolve_owner_scope(current_user, None))
+
+
 @router.post("/trading", response_model=ImportRunRead)
 async def import_trading_file(
     request: Request,
@@ -62,51 +191,20 @@ async def import_trading_file(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ) -> ImportRunRead:
-    if not file.filename:
-        audit_log_service.record_event(
-            category="data_ops",
-            event_type="import_run.create",
-            success=False,
-            status_code=status.HTTP_400_BAD_REQUEST,
-            actor_user_id=current_user.id,
-            actor_username_snapshot=current_user.username,
-            actor_role=current_user.role,
-            target_type="import_run",
-            target_label=dataset_name,
-            request_path="/api/imports/trading",
-            http_method="POST",
-            ip_address=request.client.host if request and request.client else None,
-            user_agent=request.headers.get("user-agent") if request else None,
-            detail_json={"reason": "Uploaded file name is required"},
-        )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file name is required")
-
-    file_bytes = await file.read()
-    if not file_bytes:
-        audit_log_service.record_event(
-            category="data_ops",
-            event_type="import_run.create",
-            success=False,
-            status_code=status.HTTP_400_BAD_REQUEST,
-            actor_user_id=current_user.id,
-            actor_username_snapshot=current_user.username,
-            actor_role=current_user.role,
-            target_type="import_run",
-            target_label=dataset_name,
-            request_path="/api/imports/trading",
-            http_method="POST",
-            ip_address=request.client.host if request and request.client else None,
-            user_agent=request.headers.get("user-agent") if request else None,
-            detail_json={"reason": "Uploaded file is empty"},
-        )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
+    file_bytes = await _read_upload_or_400(
+        request=request,
+        dataset_name=dataset_name,
+        file=file,
+        current_user=current_user,
+        request_path="/api/imports/trading",
+    )
 
     try:
         run = service.import_uploaded_file(
             session,
             owner=current_user,
             dataset_name=dataset_name,
-            original_file_name=file.filename,
+            original_file_name=file.filename or "upload.csv",
             file_bytes=file_bytes,
         )
     except ImportConflictError as exc:

@@ -1,11 +1,22 @@
 from .base import Base, utc_now
-from .entities import AuditLog, ImportArtifactRecord, ImportManifestRecord, ImportRun, TradingRecord, User
+from .entities import (
+    AuditLog,
+    ImportArtifactRecord,
+    ImportManifestRecord,
+    ImportMappingTemplate,
+    ImportPreviewSession,
+    ImportRun,
+    TradingRecord,
+    User,
+)
 
 __all__ = [
     "AuditLog",
     "Base",
     "ImportArtifactRecord",
     "ImportManifestRecord",
+    "ImportMappingTemplate",
+    "ImportPreviewSession",
     "ImportRun",
     "TradingRecord",
     "User",

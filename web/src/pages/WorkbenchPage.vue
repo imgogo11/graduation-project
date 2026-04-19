@@ -105,7 +105,7 @@ const summaryCards = computed(() => [
   {
     label: "累计记录",
     value: formatCompact(stats.value?.total_records ?? null, 2),
-    hint: "当前可见范围内保留的交易记录总量",
+    hint: "当前可见范围内的交易记录总量",
     tone: "berry" as const,
   },
   {
@@ -256,7 +256,7 @@ onMounted(() => {
         <div class="page__eyebrow">Workbench / 工作台</div>
         <h2 class="page__title">后台工作台集中展示系统状态、导入趋势与当前数据集摘要</h2>
         <p class="page__subtitle">
-          这里作为新的后台首页，用来快速确认服务是否可用、最近导入是否正常，以及当前共享分析范围是否设置正确。
+          工作台用于快速确认系统可用性、导入状态与当前共享分析范围。
         </p>
       </div>
       <div class="page__actions">
@@ -389,7 +389,7 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <PanelCard title="最近导入批次" description="这里保留最近几个批次的状态和规模，方便快速回看。">
+    <PanelCard title="最近导入批次" description="展示最近批次的状态与规模，便于快速回看。">
       <div v-if="importRuns.length" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>

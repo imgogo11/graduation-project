@@ -98,6 +98,44 @@ class ImportRun(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class ImportPreviewSession(Base):
+    __tablename__ = "import_preview_sessions"
+    __table_args__ = (
+        Index("ix_import_preview_sessions_owner_status", "owner_user_id", "status"),
+        Index("ix_import_preview_sessions_expires_at", "expires_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    dataset_name: Mapped[str] = mapped_column(String(128))
+    original_file_name: Mapped[str] = mapped_column(String(255))
+    file_format: Mapped[str] = mapped_column(String(16))
+    staged_file_path: Mapped[str] = mapped_column(String(512))
+    header_fingerprint: Mapped[str] = mapped_column(String(128), index=True)
+    preview_payload_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    committed_run_id: Mapped[int | None] = mapped_column(ForeignKey("import_runs.id"), nullable=True, index=True)
+
+
+class ImportMappingTemplate(Base):
+    __tablename__ = "import_mapping_templates"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "header_fingerprint", name="uq_import_mapping_templates_owner_fingerprint"),
+        Index("ix_import_mapping_templates_owner_last_used", "owner_user_id", "last_used_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    header_fingerprint: Mapped[str] = mapped_column(String(128), index=True)
+    mapping_json: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    usage_count: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ImportManifestRecord(Base):
     __tablename__ = "import_manifests"
     __table_args__ = (UniqueConstraint("import_run_id", name="uq_import_manifests_import_run_id"),)

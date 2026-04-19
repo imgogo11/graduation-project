@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ImportRunRead(BaseModel):
@@ -50,6 +50,57 @@ class ImportStatsRead(BaseModel):
 class DeleteImportRunResponse(BaseModel):
     id: int
     status: str
+
+
+class ImportMappingCandidateRead(BaseModel):
+    original_column: str
+    header_score: float
+    value_score: float
+    template_bonus: float
+    total_score: float
+    confidence: str
+    reasons: list[str]
+
+
+class ImportFieldSuggestionRead(BaseModel):
+    canonical_column: str
+    required: bool
+    selected_original_column: str | None
+    selected_score: float | None
+    selected_confidence: str
+    candidates: list[ImportMappingCandidateRead]
+
+
+class ImportMappingConflictRead(BaseModel):
+    canonical_column: str
+    primary_original_column: str
+    secondary_original_column: str
+    gap: float
+    message: str
+
+
+class ImportPreviewRead(BaseModel):
+    preview_id: str
+    expires_at: datetime
+    can_auto_commit: bool
+    required_confirmation_needed: bool
+    required_issue_columns: list[str]
+    matcher_engine: str
+    required_columns: list[str]
+    optional_columns: list[str]
+    original_columns: list[str]
+    ignored_columns: list[str]
+    suggested_mapping: dict[str, str]
+    missing_required: list[str]
+    conflicts: list[ImportMappingConflictRead]
+    field_suggestions: list[ImportFieldSuggestionRead]
+    action_hints: list[str]
+
+
+class ImportCommitRequest(BaseModel):
+    preview_id: str
+    required_confirmation_ack: bool = False
+    mapping_overrides: dict[str, str | None] = Field(default_factory=dict)
 
 
 class TradingStockRead(BaseModel):

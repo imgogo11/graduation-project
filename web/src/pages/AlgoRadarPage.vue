@@ -521,8 +521,8 @@ onMounted(() => {
     <section class="page__header">
       <div>
         <div class="page__eyebrow">Algo Radar / 算法雷达</div>
-        <h2 class="page__title">区间算法、联合异常与风险雷达统一收拢到同一页面</h2>
-        <p class="page__subtitle">这里承接算法增强能力：区间查询、联合异常排名和风险雷达都以后台式布局呈现。</p>
+        <h2 class="page__title">在同一页面执行区间算法、联合异常排名与风险雷达分析</h2>
+        <p class="page__subtitle">基于统一筛选范围查看算法结果、风险分布与事件上下文。</p>
       </div>
       <div class="page__actions">
         <n-button :loading="loadingRuns || loadingAlgo || loadingRadar" @click="loadRuns(filters.importRunId)">刷新算法</n-button>

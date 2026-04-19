@@ -303,14 +303,30 @@ class RiskRadarRouteTests(unittest.TestCase):
         return response.json()["access_token"]
 
     def _upload_csv(self, *, token: str, dataset_name: str, frame: pd.DataFrame) -> dict[str, object]:
-        response = self.client.post(
-            "/api/imports/trading",
+        preview_response = self.client.post(
+            "/api/imports/trading/preview",
             data={"dataset_name": dataset_name},
             files={"file": ("trading.csv", frame.to_csv(index=False).encode("utf-8"), "text/csv")},
             headers=self._auth_headers(token),
         )
-        self.assertEqual(response.status_code, 200, response.text)
-        return response.json()
+        self.assertEqual(preview_response.status_code, 200, preview_response.text)
+        preview_body = preview_response.json()
+        mapping_overrides: dict[str, str] = {}
+        for optional_column in ("stock_name", "amount"):
+            selected = preview_body.get("suggested_mapping", {}).get(optional_column)
+            if selected:
+                mapping_overrides[optional_column] = selected
+        commit_response = self.client.post(
+            "/api/imports/trading/commit",
+            json={
+                "preview_id": preview_body["preview_id"],
+                "required_confirmation_ack": True,
+                "mapping_overrides": mapping_overrides,
+            },
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(commit_response.status_code, 200, commit_response.text)
+        return commit_response.json()
 
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}

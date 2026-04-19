@@ -1,276 +1,270 @@
-# 股票交易数据管理与分析系统的设计与实现（Design and Implementation of Stock Trading Data Management and Analysis System）
+# 股票交易数据管理与分析系统
 
-## 项目简介
+基于 `FastAPI + Vue 3 + PostgreSQL + C++/pybind11` 的毕业设计项目，围绕一条明确主线展开：
 
-本项目当前聚焦一条明确主线：
+- 用户注册、登录与权限隔离
+- 上传 `CSV` / `XLSX` 股票交易数据
+- 导入批次、清单、产物与审计信息持久化
+- 交易数据分析、异常检测与横截面对比
+- 由 C++ 算法模块增强的区间查询、联合异常排序与风险雷达
+- 面向管理员的健康检查、用户管理、运行监控与资产概览
 
-- 用户注册与登录
-- 用户上传 `CSV` / `XLSX` 历史交易数据
-- 导入批次、清单与产物记录持久化
-- 基于用户权限隔离的数据查询与管理
-- 面向股票数据的一体化交易分析
-- 由 C++ 算法模块增强的区间分析、联合异常排序与风险雷达能力
 
-早期的股票爬虫、电商演示数据和历史兼容壳已经退出当前主业务主线。
+## 1. 技术栈
 
-## 技术栈
-
-- 前端：Vue 3 + TypeScript + Element Plus + ECharts
-- 后端：FastAPI + SQLAlchemy + Alembic + Pandas
+- 前端：Vue 3、TypeScript、Vite、Naive UI、ECharts
+- 后端：FastAPI、SQLAlchemy、Alembic、Pandas
 - 数据库：PostgreSQL
-- 算法模块：C++ + pybind11
+- 算法模块：C++、CMake、pybind11
+- 本地环境：`uv`、Node.js / npm、Docker Compose
 
-## 当前核心数据模型
+## 2. 当前能力
 
-- `users`
-- `import_runs`
-- `import_manifests`
-- `import_artifacts`
-- `trading_records`
+### 用户侧
 
-## 支持的上传模板
+- 注册、登录、鉴权
+- 上传交易文件并生成导入批次
+- 查看导入历史、导入统计与交易明细
+- 进行指标分析、风险分析、异常检测、相关性分析和范围对比
+- 使用算法增强接口查看区间最大值、区间第 K 大、联合异常排序和风险雷达
+
+### 管理员侧
+
+- 系统概览
+- 系统健康状态检查
+- 普通用户管理：编辑用户名、重置密码、启用/禁用、删除无业务数据用户
+- 用户调用记录与审计信息查看
+- 数据资产总览
+- 运行监控
+
+## 3. 主要页面与路由
+
+### 前端页面
+
+- 用户端：`/workbench`、`/datasets`、`/analysis`、`/algo-radar`
+- 管理端：`/admin/overview`、`/admin/health`、`/admin/users`、`/admin/activity`、`/admin/assets`、`/admin/runs`
+- 鉴权页：`/login`、`/register`
+
+### 后端接口前缀
+
+- 鉴权：`/api/auth/*`
+- 管理员：`/api/admin/*`
+- 导入：`/api/imports/*`
+- 交易查询：`/api/trading/*`
+- 分析：`/api/trading/analysis/*`
+- 算法增强：`/api/algo/*`
+- 健康检查：`/api/health`
+
+## 4. 目录结构
 
 ```text
-stock_code,stock_name,trade_date,open,high,low,close,volume,amount
+graduation-project/
+├─ backend/               FastAPI、SQLAlchemy、Alembic、测试
+├─ web/                   Vue 3 前端
+├─ algo-module/           C++ 算法模块与 pybind11 绑定
+├─ benchmarks/            benchmark 套件
+├─ deploy/                Docker Compose 与部署辅助文件
+├─ scripts/dev/           本地开发辅助脚本
+├─ data/                  本地数据、导入产物、测试产物
+├─ .env.template          根目录运行配置模板
+├─ pytest.ini             pytest 项目级配置
+└─ pyproject.toml         Python 项目与 uv 依赖配置
 ```
 
-- 支持文件格式：`.csv`、`.xlsx`
-- 当前系统仅处理股票交易数据
-- 必填列：`stock_code`、`trade_date`、`open`、`high`、`low`、`close`、`volume`
-- 可选列：`stock_name`、`amount`、`turnover`
-- 上传链路只接受规范字段名本身，不再兼容 `instrument_*`、`code/symbol/ticker` 或中文别名表头
-- 数据集名称在“同一用户 + 未删除上传批次”范围内必须唯一；删除后名称可再次使用
+## 5. 环境要求
 
-## 当前主要能力
+- Python `3.13`
+- Node.js `20+`
+- npm
+- `uv`
+- Docker Desktop / Docker Compose
+- CMake
 
-### 数据管理
+## 6. 环境变量
 
-- 用户注册、登录、鉴权
-- 按用户隔离的导入批次管理
-- 导入历史、导入统计、软删除
-- 原始交易记录查询
-- 管理员普通用户管理：用户名编辑、密码重置、启用/禁用、无业务数据用户删除
-- Web 前端采用 `Overview / Analysis Center / Algo Radar` 三页结构
+根目录只保留一份运行配置：`.env`。
 
-### 数据分析
-
-- 股票级交易摘要
-- 数据质量分析
-- 技术指标分析：MA / EMA / MACD / RSI / Bollinger / ATR
-- 风险指标分析：区间收益率、波动率、最大回撤、上涨日占比等
-- 异常检测：放量异常、收益率异常、振幅异常、突破前高/前低
-- 横截面分析：多股票排序
-- 相关性分析：当前批次内多股票收益率相关性矩阵
-- 范围对比分析：通过 `compare-scopes` 支持同批次/跨批次、同股票/多股票、不同日期范围的一致性校验
-
-### 算法与风险雷达
-
-- `GET /api/algo/trading/range-max-amount`
-- `GET /api/algo/trading/range-kth-volume`
-- `GET /api/algo/trading/joint-anomaly-ranking`
-- `GET /api/algo/indexes/status`
-- `POST /api/algo/indexes/rebuild`
-- `GET /api/algo/risk-radar/overview`
-- `GET /api/algo/risk-radar/events`
-- `GET /api/algo/risk-radar/stocks`
-- `GET /api/algo/risk-radar/calendar`
-- `GET /api/algo/risk-radar/event-context`
-
-其中 `range-kth-volume` 同时支持：
-
-- `persistent_segment_tree`：精确结果，返回命中的交易日期
-- `t_digest`：近似结果，返回 `is_approx=true` 与 `approximation_note`
-
-## 论文材料
-
-- 毕业论文目录与写作提纲：[`docs/structure-codex.md`](docs/structure-codex.md)
-- 论文正文草稿：[`docs/main-text.md`](docs/main-text.md)
-
-## 环境准备
-
-### 1. 安装依赖
-
-```powershell
-uv venv .venv --python 3.13
-uv sync
-cd web
-npm install
-cd ..
-```
-
-如需运行 benchmark，再额外执行：
-
-```powershell
-uv sync --extra benchmark
-```
-
-### 2. 准备环境变量
+首次准备：
 
 ```powershell
 Copy-Item .env.template .env
 ```
 
-启动前请检查以下变量：
+当前最关键的变量包括：
 
 - `DATABASE_URL`
+- `POSTGRES_HOST`
+- `POSTGRES_PORT`
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
 - `JWT_SECRET`
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `BACKEND_HOST`
 - `BACKEND_PORT`
+- `VITE_DEV_HOST`
+- `VITE_DEV_PORT`
+- `VITE_BACKEND_TARGET`
 - `DEMO_IMPORT_FILE_PATH`
 - `DEMO_DATASET_PREFIX`
 - `DEMO_IMPORT_USERNAME`
-- `UPLOAD_ROOT`
-- `POSTGRES_PORT`，默认 `15432`
-- `.env` 中的 `VITE_BACKEND_TARGET`
-- `.env` 中的 `VITE_DEV_HOST`
-- `.env` 中的 `VITE_DEV_PORT`
 
-### 3. 初次启动
+默认本地端口：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev\full-start.ps1
-```
+- PostgreSQL：`15432`
+- FastAPI：`8200`
+- Vite：`4173`
 
-`full-start` 只在第一次启动时执行，负责：
+## 7. 安装依赖
 
-- 创建或补齐 `.env`
-- 安装 Python 和前端依赖
-- 构建 `algo-module`
-- 启动 PostgreSQL
-- 执行 Alembic 迁移
-- 初始化管理员
-- 导入一份示例交易数据
-
-### 4. 日常启动
-
-后端：
+### Python
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev\demo-start.ps1 backend
+uv venv .venv --python 3.13
+uv sync
 ```
 
-前端：
+### 前端
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\dev\demo-start.ps1 frontend
+npm.cmd --prefix web install
 ```
 
-前端开发服务器默认运行在 `http://127.0.0.1:4173`。
-
-## 主要接口
-
-### 鉴权与系统
-
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `GET /api/admin/users`
-- `PATCH /api/admin/users/{user_id}`
-- `POST /api/admin/users/{user_id}/disable`
-- `POST /api/admin/users/{user_id}/enable`
-- `DELETE /api/admin/users/{user_id}`
-- `GET /api/health`
-
-### 导入与交易查询
-
-- `GET /api/imports/runs`
-- `GET /api/imports/stats`
-- `POST /api/imports/trading`
-- `DELETE /api/imports/runs/{run_id}`
-- `GET /api/trading/stocks`
-- `GET /api/trading/records`
-
-### 交易分析接口
-
-- `GET /api/trading/analysis/summary`
-- `GET /api/trading/analysis/quality`
-- `GET /api/trading/analysis/indicators`
-- `GET /api/trading/analysis/risk`
-- `GET /api/trading/analysis/anomalies`
-- `GET /api/trading/analysis/cross-section`
-- `GET /api/trading/analysis/correlation`
-- `GET /api/trading/analysis/compare-scopes`
-
-## 常用脚本
-
-初始化管理员账号：
+### 可选 benchmark 依赖
 
 ```powershell
-.\.venv\Scripts\python.exe backend/scripts/init_admin.py
+uv sync --extra benchmark
 ```
 
-从命令行导入本地交易文件：
+## 8. 首次初始化
+
+如果你希望按步骤手动完成初始化，可依次执行：
 
 ```powershell
-.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\web\public\trading_import_template.csv --dataset-name demo_run
+Copy-Item .env.template .env
+uv sync
+npm.cmd --prefix web install
+cmake -S algo-module -B algo-module/build "-DPython_EXECUTABLE=$(Resolve-Path .\.venv\Scripts\python.exe)" "-Dpybind11_DIR=$(uv run python -m pybind11 --cmakedir)"
+cmake --build algo-module/build
+docker compose -f deploy/docker-compose.yml up -d postgres
+uv run python -m alembic -c backend/alembic.ini upgrade head
+uv run python backend/scripts/init_admin.py
+uv run python backend/scripts/import_data.py
 ```
 
-如果已经在 `.env` 中配置了 `DEMO_IMPORT_FILE_PATH`、`DEMO_DATASET_PREFIX`、`DEMO_IMPORT_USERNAME`，也可以直接执行：
+如果你更喜欢看整理后的命令清单，也可以参考：
+
+- [run-scripts-full-setup.txt](D:\graduation-project\run-scripts-full-setup.txt)
+- [run-scripts-demo-start.txt](D:\graduation-project\run-scripts-demo-start.txt)
+
+## 9. 日常启动
+
+### 终端 1：启动数据库
 
 ```powershell
-.\.venv\Scripts\python.exe backend/scripts/import_data.py
+docker compose -f deploy/docker-compose.yml up -d postgres
 ```
 
-执行 live smoke：
+### 终端 1：启动后端
 
 ```powershell
-python backend/scripts/live_smoke.py --base-url http://127.0.0.1:8200 --username benchmark_runner --password benchmark-runner-123 --dataset-name platform_benchmark_dataset --admin-username admin --admin-password admin123456
+uv run uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8200 --reload
 ```
 
-## 验证方式
-
-后端：
+### 终端 2：启动前端
 
 ```powershell
-.\.venv\Scripts\python.exe backend/tests/test_database_pipeline.py
-.\.venv\Scripts\python.exe backend/tests/test_admin_users.py
-.\.venv\Scripts\python.exe backend/tests/test_algo_trading.py
-.\.venv\Scripts\python.exe backend/tests/test_tdigest_range_kth.py
-.\.venv\Scripts\python.exe backend/tests/test_trading_analysis.py
-.\.venv\Scripts\python.exe backend/tests/test_risk_radar.py
-.\.venv\Scripts\python.exe benchmarks/tests/test_common.py
-.\.venv\Scripts\python.exe benchmarks/tests/test_platform_quality.py
+cd web
+npm run dev
 ```
 
-前端：
+访问地址：
+
+- 前端：`http://127.0.0.1:4173`
+- 后端 OpenAPI：`http://127.0.0.1:8200/docs`
+
+## 10. 数据导入说明
+
+默认示例文件位于：
+
+```text
+web/public/trading_import_template.csv
+```
+
+支持字段：
+
+```text
+stock_code,stock_name,trade_date,open,high,low,close,volume,amount
+```
+
+说明：
+
+- 支持 `.csv` 与 `.xlsx`
+- 必填列：`stock_code`、`trade_date`、`open`、`high`、`low`、`close`、`volume`
+- 可选列：`stock_name`、`amount`、`turnover`
+- 当前仅处理股票交易数据
+- 上传链路使用规范英文列名，不再兼容历史别名和中文列头
+
+## 11. 常用命令
+
+### 初始化管理员
+
+```powershell
+uv run python backend/scripts/init_admin.py
+```
+
+### 导入本地交易文件
+
+```powershell
+uv run python backend/scripts/import_data.py --file-path .\web\public\trading_import_template.csv --dataset-name demo_run
+```
+
+如果 `.env` 已配置 `DEMO_IMPORT_FILE_PATH`、`DEMO_DATASET_PREFIX`、`DEMO_IMPORT_USERNAME`，也可以直接执行：
+
+```powershell
+uv run python backend/scripts/import_data.py
+```
+
+### 环境检查
+
+```powershell
+uv run python backend/scripts/check_environment.py
+```
+
+## 12. 测试与验证
+
+### 后端测试
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
+
+### 前端构建验证
 
 ```powershell
 cd web
 npm run build
 ```
 
-## 项目级 Benchmarks
+## 13. Benchmark
 
-- 官方 benchmark 入口统一为 `benchmarks/run_all.py`
-- 查询效率套件：`query_efficiency`
-- 第 K 大对比套件：`kth_comparison`
-- 平台质量套件：`platform_quality`
-- 每个 suite 都会把数值结果写入对应目录的 `results/`，把可视化图写入 `images/`
-
-### 查询效率与第 K 大对比
+统一入口：
 
 ```powershell
-python benchmarks/run_all.py --suite query_efficiency --sample all
-python benchmarks/run_all.py --suite kth_comparison --sample all
+python benchmarks/run_all.py --suite <suite-name>
 ```
 
-### 平台稳定性与安全性压测
+当前套件：
 
-推荐先通过公开注册接口创建普通用户 `benchmark_runner`，再用固定数据集 `data/fixtures/platform_benchmark_trading.csv` 导入平台压测批次。
+- `query_efficiency`
+- `kth_comparison`
+- `platform_quality`
 
 示例：
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8200/api/auth/register" -ContentType "application/json" -Body '{"username":"benchmark_runner","password":"benchmark-runner-123"}'
-.\.venv\Scripts\python.exe backend/scripts/import_data.py --file-path .\data\fixtures\platform_benchmark_trading.csv --dataset-name platform_benchmark_dataset --username benchmark_runner
-python backend/scripts/live_smoke.py --base-url http://127.0.0.1:8200 --username benchmark_runner --password benchmark-runner-123 --dataset-name platform_benchmark_dataset --admin-username admin --admin-password admin123456
-
-$env:BENCHMARK_BASE_URL = "http://127.0.0.1:8200"
-$env:BENCHMARK_USERNAME = "benchmark_runner"
-$env:BENCHMARK_PASSWORD = "benchmark-runner-123"
-$env:BENCHMARK_IMPORT_RUN_ID = "<导入后的 run id>"
-$env:BENCHMARK_SAMPLE = "thesis"
+python benchmarks/run_all.py --suite query_efficiency --sample all
+python benchmarks/run_all.py --suite kth_comparison --sample all
 python benchmarks/run_all.py --suite platform_quality --profile thesis
 ```

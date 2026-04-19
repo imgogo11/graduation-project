@@ -446,7 +446,7 @@ onMounted(() => {
       <div>
         <div class="page__eyebrow">Analysis Center / 分析中心</div>
         <h2 class="page__title">围绕当前数据集执行统计分析、指标分析与范围对比</h2>
-        <p class="page__subtitle">分析中心保留原有接口，只把布局和交互改成后台式卡片结构</p>
+        <p class="page__subtitle">分析中心基于当前数据集提供统计分析、指标分析与范围对比能力。</p>
       </div>
       <div class="page__actions">
         <n-button :loading="loadingRuns" @click="loadRuns(filters.importRunId)">刷新批次</n-button>
@@ -562,7 +562,7 @@ onMounted(() => {
     </section>
 
     <section class="page__grid page__grid--double">
-      <PanelCard title="异常检测" description="保留原有异常接口结果">
+      <PanelCard title="异常检测" description="展示当前范围内的异常检测结果与说明">
         <n-alert v-if="panelNotices.anomalies" type="warning" :show-icon="true">{{ panelNotices.anomalies }}</n-alert>
         <div v-else-if="anomalyPager.total.value" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">

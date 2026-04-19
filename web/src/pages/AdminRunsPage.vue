@@ -130,7 +130,7 @@ onMounted(() => {
 
     <PanelCard title="批次与索引状态" description="显示导入运行状态、索引状态和错误信息">
       <div class="inline-hint" style="margin-bottom: 12px;">
-        重建索引：会重新计算该批次的算法索引，主要用于修复索引失败、数据更新后的重新同步，或排查分析结果异常。
+        重建索引：会重新计算该批次的算法索引，适用于索引失效、数据更新后同步，或分析结果核验场景。
       </div>
       <div v-if="rowsPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">

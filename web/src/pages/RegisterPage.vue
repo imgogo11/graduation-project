@@ -53,7 +53,7 @@ async function submit() {
           <div class="auth-shell__eyebrow">Create Account</div>
           <h1 class="auth-shell__title">快速创建研究账号</h1>
           <p class="auth-shell__subtitle">
-            注册成功后会直接登录，并进入新的后台工作台，后续你可以导入交易文件、切换数据集并继续分析流程。
+            注册成功后将自动登录并进入工作台，可直接开始导入交易文件和执行分析。
           </p>
         </div>
 
@@ -76,7 +76,7 @@ async function submit() {
       <div class="auth-shell__form">
         <div class="auth-shell__form-header">
           <h1>创建账号</h1>
-          <p>当前版本保留轻量账户体系，注册成功后即可直接进入后台继续操作</p>
+          <p>创建账号后可立即进入后台，管理数据集并开展分析</p>
         </div>
 <n-form class="auth-form" label-placement="top" @submit.prevent="submit">
           <n-form-item label="用户">

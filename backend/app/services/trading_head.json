@@ -1,5 +1,5 @@
 {
-  "version": "trading-head-v2",
+  "version": "trading-head-v3",
   "required_columns": [
     "stock_code",
     "trade_date",
@@ -16,34 +16,74 @@
   ],
   "columns": {
     "stock_code": {
-      "aliases": []
+      "aliases": {
+        "strong": ["stock_code", "股票代码", "证券代码", "ts_code"],
+        "medium": ["instrument_code", "sec_code", "ticker", "security_code"],
+        "weak": ["code", "symbol"]
+      }
     },
     "stock_name": {
-      "aliases": []
+      "aliases": {
+        "strong": ["stock_name", "股票名称", "证券名称"],
+        "medium": ["instrument_name", "security_name"],
+        "weak": ["name"]
+      }
     },
     "trade_date": {
-      "aliases": []
+      "aliases": {
+        "strong": ["trade_date", "交易日期", "交易日", "日期"],
+        "medium": ["trading_date", "trade_day"],
+        "weak": ["date"]
+      }
     },
     "open": {
-      "aliases": []
+      "aliases": {
+        "strong": ["open", "开盘价", "开盘"],
+        "medium": ["open_price"],
+        "weak": []
+      }
     },
     "high": {
-      "aliases": []
+      "aliases": {
+        "strong": ["high", "最高价", "最高"],
+        "medium": ["high_price"],
+        "weak": []
+      }
     },
     "low": {
-      "aliases": []
+      "aliases": {
+        "strong": ["low", "最低价", "最低"],
+        "medium": ["low_price"],
+        "weak": []
+      }
     },
     "close": {
-      "aliases": []
+      "aliases": {
+        "strong": ["close", "收盘价", "收盘"],
+        "medium": ["close_price"],
+        "weak": []
+      }
     },
     "volume": {
-      "aliases": []
+      "aliases": {
+        "strong": ["volume", "成交量", "成交股数", "成交手"],
+        "medium": ["trade_volume", "total_volume", "vol"],
+        "weak": []
+      }
     },
     "amount": {
-      "aliases": []
+      "aliases": {
+        "strong": ["amount", "成交额", "成交金额"],
+        "medium": ["trade_amount", "total_amount"],
+        "weak": []
+      }
     },
     "turnover": {
-      "aliases": []
+      "aliases": {
+        "strong": ["turnover", "换手率", "换手"],
+        "medium": ["turnover_rate", "turnover_ratio", "turnoverratio", "volume_turnover"],
+        "weak": []
+      }
     }
   }
 }
