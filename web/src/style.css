@@ -171,6 +171,137 @@ a {
   flex-wrap: wrap;
 }
 
+.filter-form {
+  align-items: flex-end;
+}
+
+.filter-form .n-form-item {
+  margin-bottom: 0;
+}
+
+.filter-form .n-form-item-label {
+  margin-bottom: 8px;
+}
+
+.filter-form__action-item .n-form-item-label {
+  visibility: hidden;
+}
+
+.filter-form__action-btn {
+  height: 40px;
+  min-width: 92px;
+}
+
+.filter-form input[type="datetime-local"] {
+  width: 100%;
+  min-width: 210px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-primary);
+}
+
+.filter-form--audit {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(160px, 1fr) minmax(140px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.filter-form--audit .n-form-item {
+  margin-bottom: 0;
+}
+
+.filter-form--audit .n-form-item-blank {
+  width: 100%;
+}
+
+.filter-form--audit .n-input,
+.filter-form--audit .n-select {
+  width: 100%;
+}
+
+.filter-form--audit input[type="datetime-local"] {
+  min-width: 0;
+}
+
+.filter-form--audit .filter-form__action-item {
+  justify-self: start;
+}
+
+.filter-form__action-btn--highlight {
+  min-width: 112px;
+}
+
+.filter-form--users {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(170px, 240px) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.filter-form--users .n-form-item {
+  margin-bottom: 0;
+}
+
+.filter-form--users .n-input,
+.filter-form--users .n-select {
+  width: 100%;
+}
+
+.filter-form--users .filter-form__action-item {
+  justify-self: start;
+}
+
+.filter-form--compact {
+  display: grid;
+  grid-template-columns: minmax(240px, 420px) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.filter-form--compact .n-form-item {
+  margin-bottom: 0;
+}
+
+.filter-form--compact .n-input {
+  width: 100%;
+}
+
+.filter-form--compact .filter-form__action-item {
+  justify-self: start;
+}
+
+@media (max-width: 1360px) {
+  .filter-form--audit {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+  }
+
+  .filter-form--audit .filter-form__action-item {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 960px) {
+  .filter-form--users {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-form--users .filter-form__action-item {
+    grid-column: 1 / -1;
+  }
+
+  .filter-form--compact {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-form--compact .filter-form__action-item {
+    grid-column: 1 / -1;
+  }
+}
+
 .inline-hint {
   color: var(--text-secondary);
   font-size: 13px;

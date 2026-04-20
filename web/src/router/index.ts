@@ -85,14 +85,7 @@ const router = createRouter({
     },
     {
       path: "/admin/health",
-      name: "admin-health",
-      component: () => import("@/pages/AdminHealthPage.vue"),
-      meta: {
-        requiresAuth: true,
-        audience: "admin",
-        title: "系统健康",
-        sectionTitle: "管理员后台",
-      },
+      redirect: "/admin/overview",
     },
     {
       path: "/admin/users",

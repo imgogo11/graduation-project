@@ -9,6 +9,7 @@ import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
 import StatCard from "@/components/StatCard.vue";
 import { useRuntimeStore } from "@/stores/runtime";
+import { formatAuditCategory, formatAuditEvent } from "@/utils/audit";
 import { formatDateTime, getErrorMessage } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
 
@@ -18,7 +19,7 @@ type SuccessFilter = "all" | "success" | "failed";
 const runtime = useRuntimeStore();
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Admin Activity Error");
+usePageErrorNotification(error, "调用记录加载失败");
 const logs = ref<AuditLogListRead | null>(null);
 const stats = ref<AuditLogStatsRead | null>(null);
 const page = ref(1);
@@ -38,7 +39,7 @@ const successOptions = [
 
 const categoryOptions = computed(() =>
   (stats.value?.category_breakdown || []).map((item) => ({
-    label: `${item.category} (${item.total})`,
+    label: `${formatAuditCategory(item.category)} (${item.total})`,
     value: item.category,
   }))
 );
@@ -153,7 +154,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Admin / Activity</div>
+        <div class="page__eyebrow">管理后台 / 调用记录</div>
         <h2 class="page__title">用户调用记录</h2>
         <p class="page__subtitle">汇总关键操作与分析访问审计日志，用于管理员追踪系统后台行为</p>
       </div>
@@ -161,7 +162,7 @@ onMounted(() => {
         <n-button type="primary" :loading="loading" @click="refreshPage">刷新</n-button>
       </div>
     </section>
-<section class="page__grid page__grid--stats">
+    <section class="page__grid page__grid--stats">
       <StatCard
         v-for="item in cards"
         :key="item.label"
@@ -172,8 +173,30 @@ onMounted(() => {
       />
     </section>
 
+    <PanelCard title="审计统计概览" description="帮助定位近期异常操作与失败趋势">
+      <div v-if="stats" class="detail-grid">
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">总事件数</span>
+          <div class="detail-grid__value">{{ stats.total_events }}</div>
+        </div>
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">成功事件</span>
+          <div class="detail-grid__value">{{ stats.success_events }}</div>
+        </div>
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">失败事件</span>
+          <div class="detail-grid__value">{{ stats.failed_events }}</div>
+        </div>
+        <div class="detail-grid__item">
+          <span class="detail-grid__label">活跃操作</span>
+          <div class="detail-grid__value">{{ stats.unique_actor_count }}</div>
+        </div>
+      </div>
+      <EmptyState v-else title="暂无审计统计" description="点击刷新后展示审计统计结果" />
+    </PanelCard>
+
     <PanelCard title="审计日志" description="支持按用户、分类、结果和时间范围筛选">
-      <n-form inline class="toolbar-row" style="margin-bottom: 16px;">
+      <n-form class="filter-form filter-form--audit" style="margin-bottom: 16px;">
         <n-form-item label="用户ID">
           <n-input v-model:value="actorUserIdInput" clearable placeholder="输入用户ID" />
         </n-form-item>
@@ -200,7 +223,16 @@ onMounted(() => {
         <n-form-item label="结束时间">
           <input v-model="endAt" type="datetime-local" />
         </n-form-item>
-        <n-button :loading="loading" @click="applyFilter">应用筛选</n-button>
+        <n-form-item label="&nbsp;" class="filter-form__action-item">
+          <n-button
+            class="filter-form__action-btn filter-form__action-btn--highlight"
+            type="warning"
+            :loading="loading"
+            @click="applyFilter"
+          >
+            应用筛选
+          </n-button>
+        </n-form-item>
       </n-form>
 
       <div v-if="logs?.rows.length" class="data-table-wrap">
@@ -219,8 +251,8 @@ onMounted(() => {
           <tbody>
             <tr v-for="row in logs?.rows" :key="row.id">
               <td>{{ formatDateTime(row.occurred_at) }}</td>
-              <td>{{ row.category }}</td>
-              <td>{{ row.event_type }}</td>
+              <td>{{ formatAuditCategory(row.category) }}</td>
+              <td>{{ formatAuditEvent(row.event_type) }}</td>
               <td>{{ row.actor_username_snapshot || "--" }}</td>
               <td>{{ row.target_label || "--" }}</td>
               <td>{{ row.request_path || "--" }}</td>

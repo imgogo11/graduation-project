@@ -16,7 +16,7 @@ import { usePageErrorNotification } from "@/composables/usePageErrorNotification
 const runtime = useRuntimeStore();
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Admin Assets Error");
+usePageErrorNotification(error, "数据资产加载失败");
 const stats = ref<ImportStatsRead | null>(null);
 const runs = ref<ImportRunRead[]>([]);
 
@@ -80,9 +80,9 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Admin / Assets</div>
+        <div class="page__eyebrow">管理后台 / 数据资产</div>
         <h2 class="page__title">数据资产总览</h2>
-        <p class="page__subtitle">从管理员维度查看全体用户的数据规模、Owner 分布和最近导入动态</p>
+        <p class="page__subtitle">从管理员维度查看全体用户的数据规模、所属用户分布和最近导入动态</p>
       </div>
       <div class="page__actions">
         <n-button type="primary" :loading="loading" @click="loadPage">刷新数据</n-button>
@@ -100,7 +100,7 @@ onMounted(() => {
     </section>
 
     <section class="page__grid page__grid--double">
-      <PanelCard title="Owner 数据分布" description="按用户查看导入批次与记录规模">
+      <PanelCard title="所属用户数据分布" description="按用户查看导入批次与记录规模">
         <div v-if="stats?.owner_summaries.length" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">
             <thead>
@@ -121,7 +121,7 @@ onMounted(() => {
             </tbody>
           </n-table>
         </div>
-        <EmptyState v-else title="暂无 Owner 分布" description="当前没有可展示的用户数据分布统计" />
+        <EmptyState v-else title="暂无所属用户分布" description="当前没有可展示的用户数据分布统计" />
       </PanelCard>
 
       <PanelCard title="最近导入批次" description="按时间回看导入批次和归属用户">
@@ -131,7 +131,7 @@ onMounted(() => {
               <tr>
                 <th>批次</th>
                 <th>数据</th>
-                <th>Owner</th>
+                <th>所属用户</th>
                 <th>记录</th>
                 <th>完成时间</th>
               </tr>

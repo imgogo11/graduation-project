@@ -28,6 +28,7 @@ import PanelCard from "@/components/PanelCard.vue";
 import { useTablePager } from "@/composables/useTablePager";
 import { formatDateTime, getErrorMessage } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
+import { formatRoleText } from "@/utils/displayText";
 
 
 const message = useMessage();
@@ -36,7 +37,7 @@ const activeFilter = ref<"all" | "active" | "inactive">("all");
 const loading = ref(false);
 const saving = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "User Management Error");
+usePageErrorNotification(error, "用户管理加载失败");
 const dialogVisible = ref(false);
 const users = ref<AdminManagedUserRead[]>([]);
 const editingUser = ref<AdminManagedUserRead | null>(null);
@@ -199,7 +200,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Admin / Users</div>
+        <div class="page__eyebrow">管理后台 / 用户管理</div>
         <h2 class="page__title">管理员用户管理</h2>
         <p class="page__subtitle">
           页面以后台运维交互为主：支持用户名筛选、启停切换、账号编辑与删除。管理员账号会显示在列表中，但仅支持查看，不在此页执行修改。
@@ -208,19 +209,28 @@ onMounted(() => {
       <div class="page__actions">
         <span class="pill">总用户 {{ users.length }}</span>
         <span class="pill">启用数 {{ activeCount }}</span>
-        <span class="pill">admin {{ adminCount }}</span>
+        <span class="pill">管理员 {{ adminCount }}</span>
         <n-button type="primary" :loading="loading" @click="loadUsers">刷新</n-button>
       </div>
     </section>
-<PanelCard title="用户列表" description="筛选、启停、编辑、删除集中在一张后台表格中">
-      <n-form inline class="toolbar-row" style="margin-bottom: 16px;">
+    <PanelCard title="用户列表" description="筛选、启停、编辑、删除集中在一张后台表格中">
+      <n-form class="filter-form filter-form--users" style="margin-bottom: 16px;">
         <n-form-item label="用户">
           <n-input v-model:value="search" clearable placeholder="输入用户名关键字" @keyup.enter="loadUsers" />
         </n-form-item>
         <n-form-item label="状态">
           <n-select v-model:value="activeFilter" :options="activeFilterOptions" style="min-width: 150px;" />
         </n-form-item>
-        <n-button :loading="loading" @click="loadUsers">搜索</n-button>
+        <n-form-item label="&nbsp;" class="filter-form__action-item">
+          <n-button
+            class="filter-form__action-btn filter-form__action-btn--highlight"
+            type="warning"
+            :loading="loading"
+            @click="loadUsers"
+          >
+            搜索
+          </n-button>
+        </n-form-item>
       </n-form>
 
       <div v-if="usersPager.total.value" class="data-table-wrap">
@@ -240,7 +250,9 @@ onMounted(() => {
             <tr v-for="user in usersPager.pagedRows.value" :key="user.id">
               <td>{{ user.username }}</td>
               <td>
-                <n-tag :type="user.role === 'admin' ? 'warning' : 'info'" round size="small">{{ user.role }}</n-tag>
+                <n-tag :type="user.role === 'admin' ? 'warning' : 'info'" round size="small">
+                  {{ formatRoleText(user.role) }}
+                </n-tag>
               </td>
               <td>
                 <n-switch

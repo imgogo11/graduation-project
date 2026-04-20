@@ -46,6 +46,7 @@ import {
   toStatusTagType,
 } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
+import { formatStatusText } from "@/utils/displayText";
 
 
 const message = useMessage();
@@ -62,7 +63,7 @@ const previewingImport = ref(false);
 const committingImport = ref(false);
 const deletingRunId = ref<number | null>(null);
 const error = ref("");
-usePageErrorNotification(error, "Dataset Page Error");
+usePageErrorNotification(error, "数据集页面加载失败");
 const selectedFile = ref<File | null>(null);
 const ownerFilterInput = ref("");
 const importPreview = ref<ImportPreviewRead | null>(null);
@@ -203,7 +204,7 @@ const summaryCards = computed(() => [
   {
     label: "当前可见批次",
     value: String(importRuns.value.length),
-    hint: auth.isAdmin.value ? "会受到管理员 owner 过滤条件影响" : "当前账号可见的数据集批次",
+    hint: auth.isAdmin.value ? "会受到管理员所属用户过滤条件影响" : "当前账号可见的数据集批次",
     tone: "teal" as const,
   },
   {
@@ -649,7 +650,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Datasets / 数据集管理</div>
+        <div class="page__eyebrow">数据集管理 / 共享范围</div>
         <h2 class="page__title">在数据集管理中完成导入、范围设置与交易样本预览</h2>
         <p class="page__subtitle">
           该页面用于上传交易文件、切换当前数据集并预览交易样本，分析中心与算法雷达会复用同一共享范围。
@@ -682,7 +683,7 @@ onMounted(() => {
               @update:value="handleDatasetChange"
             />
           </n-form-item>
-          <n-form-item v-if="auth.isAdmin.value" label="Owner 用户 ID">
+          <n-form-item v-if="auth.isAdmin.value" label="所属用户ID">
             <n-input v-model:value="ownerFilterInput" placeholder="留空表示全部用户，仅管理员可用" />
           </n-form-item>
           <n-form-item label="股票">
@@ -709,7 +710,9 @@ onMounted(() => {
           <span class="pill">{{ currentDatasetLabel }}</span>
           <span class="pill">范围：{{ workspaceForm.startDate || "起始不限" }} ~ {{ workspaceForm.endDate || "结束不限" }}</span>
           <n-button type="primary" :loading="loadingPreview" @click="loadPreview">应用范围</n-button>
-          <n-button v-if="auth.isAdmin.value" secondary @click="loadDatasets(workspaceForm.importRunId)">应用 owner 过滤</n-button>
+          <n-button v-if="auth.isAdmin.value" secondary @click="loadDatasets(workspaceForm.importRunId)">
+            应用所属用户过滤
+          </n-button>
         </div>
       </PanelCard>
 
@@ -851,7 +854,9 @@ onMounted(() => {
           <div class="detail-grid__item">
             <span class="detail-grid__label">状态</span>
             <div class="detail-grid__value">
-              <n-tag :type="toStatusTagType(currentDataset.status)" round>{{ currentDataset.status }}</n-tag>
+              <n-tag :type="toStatusTagType(currentDataset.status)" round>
+                {{ formatStatusText(currentDataset.status) }}
+              </n-tag>
             </div>
           </div>
           <div class="detail-grid__item">
@@ -863,7 +868,7 @@ onMounted(() => {
             <div class="detail-grid__value">{{ formatCompact(currentDataset.record_count ?? null, 2) }}</div>
           </div>
           <div class="detail-grid__item">
-            <span class="detail-grid__label">Owner</span>
+            <span class="detail-grid__label">所属用户</span>
             <div class="detail-grid__value">{{ currentDataset.owner_username || "--" }}</div>
           </div>
           <div class="detail-grid__item">
@@ -888,7 +893,7 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <PanelCard title="导入历史" description="按时间查看导入批次，管理员可结合 owner 过滤进行巡检">
+    <PanelCard title="导入历史" description="按时间查看导入批次，管理员可结合所属用户过滤进行巡检">
       <div v-if="importRunsPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>
@@ -896,7 +901,7 @@ onMounted(() => {
               <th>批次</th>
               <th>数据</th>
               <th>状态</th>
-              <th>Owner</th>
+              <th>所属用户</th>
               <th>记录</th>
               <th>开始时间</th>
               <th>操作</th>
@@ -911,7 +916,9 @@ onMounted(() => {
               <td>#{{ item.display_id }}</td>
               <td>{{ item.dataset_name }}</td>
               <td>
-                <n-tag :type="toStatusTagType(item.status)" round size="small">{{ item.status }}</n-tag>
+                <n-tag :type="toStatusTagType(item.status)" round size="small">
+                  {{ formatStatusText(item.status) }}
+                </n-tag>
               </td>
               <td>{{ item.owner_username || "--" }}</td>
               <td>{{ formatCompact(item.record_count ?? null, 2) }}</td>

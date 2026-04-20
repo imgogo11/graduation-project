@@ -29,6 +29,25 @@ ANALYSIS_AUDIT_PREFIXES = (
     f"{settings.api_prefix}/algo/trading",
 )
 
+ANALYSIS_AUDIT_EVENT_TYPES = {
+    f"{settings.api_prefix}/trading/analysis/summary": "analysis.summary.view",
+    f"{settings.api_prefix}/trading/analysis/quality": "analysis.quality.view",
+    f"{settings.api_prefix}/trading/analysis/indicators": "analysis.indicators.view",
+    f"{settings.api_prefix}/trading/analysis/risk": "analysis.risk.view",
+    f"{settings.api_prefix}/trading/analysis/anomalies": "analysis.anomalies.view",
+    f"{settings.api_prefix}/trading/analysis/cross-section": "analysis.cross_section.view",
+    f"{settings.api_prefix}/trading/analysis/correlation": "analysis.correlation.view",
+    f"{settings.api_prefix}/trading/analysis/compare-scopes": "analysis.scope_compare.view",
+    f"{settings.api_prefix}/algo/risk-radar/overview": "algo.radar.overview.view",
+    f"{settings.api_prefix}/algo/risk-radar/events": "algo.radar.events.view",
+    f"{settings.api_prefix}/algo/risk-radar/stocks": "algo.radar.stocks.view",
+    f"{settings.api_prefix}/algo/risk-radar/calendar": "algo.radar.calendar.view",
+    f"{settings.api_prefix}/algo/risk-radar/event-context": "algo.radar.event_context.view",
+    f"{settings.api_prefix}/algo/trading/range-max-amount": "algo.trading.range_max_amount.query",
+    f"{settings.api_prefix}/algo/trading/range-kth-volume": "algo.trading.range_kth_volume.query",
+    f"{settings.api_prefix}/algo/trading/joint-anomaly-ranking": "algo.trading.joint_anomaly_ranking.query",
+}
+
 
 def _is_analysis_request(path: str, method: str) -> bool:
     if method.upper() != "GET":
@@ -37,8 +56,7 @@ def _is_analysis_request(path: str, method: str) -> bool:
 
 
 def _build_analysis_event_type(path: str) -> str:
-    normalized = path.strip("/").replace("/", ".")
-    return f"{normalized}.access"
+    return ANALYSIS_AUDIT_EVENT_TYPES.get(path, "analysis.endpoint.view")
 
 
 @app.middleware("http")

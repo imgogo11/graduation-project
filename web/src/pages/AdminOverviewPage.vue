@@ -4,19 +4,22 @@ import { computed, onMounted, ref } from "vue";
 import { NButton, NTable, NTag } from "naive-ui";
 
 import { fetchAdminOverview } from "@/api/admin";
-import type { AdminOverviewRead } from "@/api/types";
+import { fetchHealth } from "@/api/health";
+import type { AdminOverviewRead, HealthResponse } from "@/api/types";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
 import StatCard from "@/components/StatCard.vue";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
 import { useRuntimeStore } from "@/stores/runtime";
 import { formatCompact, formatDateTime, getErrorMessage, toStatusTagType } from "@/utils/format";
+import { formatStatusText } from "@/utils/displayText";
 
 const runtime = useRuntimeStore();
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Admin Overview Error");
+usePageErrorNotification(error, "管理概览加载失败");
 const overview = ref<AdminOverviewRead | null>(null);
+const health = ref<HealthResponse | null>(null);
 
 const cards = computed(() => {
   if (!overview.value) {
@@ -56,7 +59,7 @@ const cards = computed(() => {
       tone: "teal" as const,
     },
     {
-      label: "24h失败事件",
+      label: "24小时失败事件",
       value: String(metrics.failed_events_24h),
       hint: "最近24小时失败操作数量",
       tone: "orange" as const,
@@ -69,7 +72,9 @@ async function loadOverview() {
   error.value = "";
 
   try {
-    overview.value = await fetchAdminOverview();
+    const [overviewResponse, healthResponse] = await Promise.all([fetchAdminOverview(), fetchHealth()]);
+    overview.value = overviewResponse;
+    health.value = healthResponse;
     runtime.markSynced();
   } catch (err) {
     error.value = getErrorMessage(err);
@@ -87,9 +92,9 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Admin / Overview</div>
+        <div class="page__eyebrow">管理后台 / 系统概览</div>
         <h2 class="page__title">管理员后台概览</h2>
-        <p class="page__subtitle">集中查看系统规模、运行状态与最近关键操作，作为管理员登录后的默认首页。</p>
+        <p class="page__subtitle">集中查看系统规模、系统健康详情与运行状态，作为管理员登录后的默认首页。</p>
       </div>
       <div class="page__actions">
         <n-button type="primary" :loading="loading" @click="loadOverview">刷新概览</n-button>
@@ -108,34 +113,28 @@ onMounted(() => {
     </section>
 
     <section class="page__grid page__grid--double">
-      <PanelCard title="最近审计事件" description="用于快速回看关键操作与分析访问轨迹。">
-        <div v-if="overview?.recent_audit_logs.length" class="data-table-wrap">
-          <n-table class="data-table" striped size="small" :single-line="false">
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>分类</th>
-                <th>事件</th>
-                <th>执行人</th>
-                <th>结果</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in overview?.recent_audit_logs" :key="row.id">
-                <td>{{ formatDateTime(row.occurred_at) }}</td>
-                <td>{{ row.category }}</td>
-                <td>{{ row.event_type }}</td>
-                <td>{{ row.actor_username_snapshot || "--" }}</td>
-                <td>
-                  <n-tag :type="row.success ? 'success' : 'error'" round size="small">
-                    {{ row.success ? "成功" : "失败" }}
-                  </n-tag>
-                </td>
-              </tr>
-            </tbody>
-          </n-table>
+      <PanelCard title="健康详情" description="来自 /api/health 的实时信息">
+        <div v-if="health" class="detail-grid">
+          <div class="detail-grid__item">
+            <span class="detail-grid__label">状态</span>
+            <div class="detail-grid__value">
+              <n-tag :type="toStatusTagType(health.status)" round>{{ formatStatusText(health.status) }}</n-tag>
+            </div>
+          </div>
+          <div class="detail-grid__item">
+            <span class="detail-grid__label">环境</span>
+            <div class="detail-grid__value">{{ health.environment }}</div>
+          </div>
+          <div class="detail-grid__item">
+            <span class="detail-grid__label">数据库</span>
+            <div class="detail-grid__value">{{ health.database_ok ? "连接正常" : "连接失败" }}</div>
+          </div>
+          <div class="detail-grid__item">
+            <span class="detail-grid__label">说明</span>
+            <div class="detail-grid__value">{{ health.detail }}</div>
+          </div>
         </div>
-        <EmptyState v-else title="暂无审计事件" description="当前还没有可展示的审计事件。" />
+        <EmptyState v-else title="暂无健康数据" description="点击刷新后展示最新健康检查结果" />
       </PanelCard>
 
       <PanelCard title="最近运行批次" description="快速查看导入批次与算法索引状态。">
@@ -145,7 +144,7 @@ onMounted(() => {
               <tr>
                 <th>批次</th>
                 <th>数据集</th>
-                <th>Owner</th>
+                <th>所属用户</th>
                 <th>运行状态</th>
                 <th>索引状态</th>
                 <th>完成时间</th>
@@ -157,11 +156,13 @@ onMounted(() => {
                 <td>{{ row.dataset_name }}</td>
                 <td>{{ row.owner_username || "--" }}</td>
                 <td>
-                  <n-tag :type="toStatusTagType(row.run_status)" round size="small">{{ row.run_status }}</n-tag>
+                  <n-tag :type="toStatusTagType(row.run_status)" round size="small">
+                    {{ formatStatusText(row.run_status) }}
+                  </n-tag>
                 </td>
                 <td>
                   <n-tag :type="toStatusTagType(row.algo_index_status)" round size="small">
-                    {{ row.algo_index_status }}
+                    {{ formatStatusText(row.algo_index_status) }}
                   </n-tag>
                 </td>
                 <td>{{ formatDateTime(row.completed_at || row.started_at) }}</td>

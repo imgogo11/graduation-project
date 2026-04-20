@@ -5,6 +5,7 @@ import { NButton, NForm, NFormItem, NInput } from "naive-ui";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import { loginUser } from "@/api/auth";
+import { APP_BRAND_NAME } from "@/constants/branding";
 import { useAuthStore } from "@/stores/auth";
 import { getErrorMessage } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
@@ -15,7 +16,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Login Error");
+usePageErrorNotification(error, "登录失败");
 const form = reactive({
   username: "",
   password: "",
@@ -59,8 +60,8 @@ async function submit() {
     <section class="auth-shell">
       <div class="auth-shell__visual">
         <div class="auth-shell__headline">
-          <div class="auth-shell__eyebrow">Naive Admin Refresh</div>
-          <h1 class="auth-shell__title">股票交易数据管理与分析系统</h1>
+          <div class="auth-shell__eyebrow">{{ APP_BRAND_NAME }}</div>
+          <h1 class="auth-shell__title">{{ APP_BRAND_NAME }}</h1>
           <p class="auth-shell__subtitle">
             系统覆盖数据导入、统计分析、区间算法与风险雷达，支持完整研究流程。
           </p>

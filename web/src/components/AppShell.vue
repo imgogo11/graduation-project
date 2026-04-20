@@ -16,10 +16,13 @@ import {
 import { NAlert, NAvatar, NButton, NDropdown, NIcon } from "naive-ui";
 import { RouterView, useRoute, useRouter } from "vue-router";
 
+import logo from "@/assets/branding/logo.png";
+import { APP_BRAND_NAME, APP_BRAND_SUBTITLE } from "@/constants/branding";
 import { useAuthStore } from "@/stores/auth";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useLayoutStore } from "@/stores/layout";
 import { useRuntimeStore } from "@/stores/runtime";
+import { formatRoleText } from "@/utils/displayText";
 
 
 interface NavItem {
@@ -46,7 +49,7 @@ const routeRenderError = ref("");
 const tabs = layout.tabs;
 const isAdmin = auth.isAdmin;
 const defaultPath = computed(() => (isAdmin.value ? "/admin/overview" : "/workbench"));
-const brandSubtitle = computed(() => (isAdmin.value ? "系统运维与后台管理" : "交易数据分析工作区"));
+const brandSubtitle = computed(() => (isAdmin.value ? APP_BRAND_SUBTITLE.admin : APP_BRAND_SUBTITLE.user));
 
 const userItems: NavItem[] = [
   {
@@ -81,12 +84,6 @@ const adminItems: NavItem[] = [
     subtitle: "用户规模、运行与审计总览",
     path: "/admin/overview",
     icon: SpeedometerOutline,
-  },
-  {
-    title: "系统健康",
-    subtitle: "服务连通性与失败事件",
-    path: "/admin/health",
-    icon: PulseOutline,
   },
   {
     title: "用户管理",
@@ -264,9 +261,11 @@ onBeforeUnmount(() => {
       }"
     >
       <div class="shell__brand">
-        <div class="shell__brand-badge">S</div>
+        <div class="shell__brand-logo-wrap">
+          <img class="shell__brand-logo" :src="logo" :alt="APP_BRAND_NAME" />
+        </div>
         <div v-if="!layout.state.sidebarCollapsed || isMobile" class="shell__brand-copy">
-          <div class="shell__brand-title">Stock FastAPI Admin</div>
+          <div class="shell__brand-title">{{ APP_BRAND_NAME }}</div>
           <div class="shell__brand-subtitle">{{ brandSubtitle }}</div>
         </div>
       </div>
@@ -340,7 +339,7 @@ onBeforeUnmount(() => {
               </n-avatar>
               <span class="shell__user-copy">
                 <strong>{{ auth.state.user?.username || "未登录" }}</strong>
-                <span>{{ auth.state.user?.role || "--" }}</span>
+                <span>{{ auth.state.user?.role ? formatRoleText(auth.state.user.role) : "--" }}</span>
               </span>
             </button>
           </n-dropdown>
@@ -422,17 +421,22 @@ onBeforeUnmount(() => {
   padding: 8px 10px 18px;
 }
 
-.shell__brand-badge {
+.shell__brand-logo-wrap {
   width: 42px;
   height: 42px;
   border-radius: 14px;
-  display: grid;
-  place-items: center;
-  font-size: 18px;
-  font-weight: 800;
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent-primary), #ff8050);
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid rgba(82, 96, 114, 0.14);
   box-shadow: 0 12px 30px rgba(240, 90, 40, 0.22);
+  flex-shrink: 0;
+}
+
+.shell__brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .shell__brand-copy {

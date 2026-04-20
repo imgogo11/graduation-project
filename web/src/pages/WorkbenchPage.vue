@@ -24,6 +24,7 @@ import {
   getErrorMessage,
   toStatusTagType,
 } from "@/utils/format";
+import { formatStatusText } from "@/utils/displayText";
 
 const runtime = useRuntimeStore();
 const auth = useAuthStore();
@@ -31,7 +32,7 @@ const datasetContext = useDatasetContextStore();
 
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Workbench Error");
+usePageErrorNotification(error, "工作台加载失败");
 
 const health = ref<HealthResponse | null>(null);
 const stats = ref<ImportStatsRead | null>(null);
@@ -253,7 +254,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Workbench / 工作台</div>
+        <div class="page__eyebrow">工作台 / 总览</div>
         <h2 class="page__title">后台工作台集中展示系统状态、导入趋势与当前数据集摘要</h2>
         <p class="page__subtitle">
           工作台用于快速确认系统可用性、导入状态与当前共享分析范围。
@@ -288,7 +289,7 @@ onMounted(() => {
           <div class="detail-grid__item">
             <span class="detail-grid__label">状态</span>
             <div class="detail-grid__value">
-              <n-tag :type="toStatusTagType(health.status)" round>{{ health.status }}</n-tag>
+              <n-tag :type="toStatusTagType(health.status)" round>{{ formatStatusText(health.status) }}</n-tag>
             </div>
           </div>
           <div v-if="isAdmin" class="detail-grid__item">
@@ -408,7 +409,9 @@ onMounted(() => {
               <td>{{ item.dataset_name }}</td>
               <td>{{ item.original_file_name || item.source_name }}</td>
               <td>
-                <n-tag :type="toStatusTagType(item.status)" round size="small">{{ item.status }}</n-tag>
+                <n-tag :type="toStatusTagType(item.status)" round size="small">
+                  {{ formatStatusText(item.status) }}
+                </n-tag>
               </td>
               <td>{{ formatCompact(item.record_count ?? null, 2) }}</td>
               <td>{{ formatDateTime(item.completed_at || item.started_at) }}</td>

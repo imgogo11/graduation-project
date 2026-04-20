@@ -16,14 +16,78 @@ service = AuthService()
 
 
 @router.post("/register", response_model=AuthTokenRead)
-def register_user(payload: RegisterRequest, session: Session = Depends(get_db_session)) -> AuthTokenRead:
+def register_user(
+    payload: RegisterRequest,
+    request: Request,
+    session: Session = Depends(get_db_session),
+) -> AuthTokenRead:
+    normalized_username = payload.username.strip().lower()
     try:
         user = service.register_user(session, username=payload.username, password=payload.password)
     except AuthConflictError as exc:
+        audit_log_service.record_event(
+            category="auth",
+            event_type="register",
+            success=False,
+            status_code=status.HTTP_409_CONFLICT,
+            target_type="user",
+            target_label=normalized_username,
+            request_path="/api/auth/register",
+            http_method="POST",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            detail_json={"reason": str(exc)},
+        )
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except AuthValidationError as exc:
+        audit_log_service.record_event(
+            category="auth",
+            event_type="register",
+            success=False,
+            status_code=status.HTTP_400_BAD_REQUEST,
+            target_type="user",
+            target_label=normalized_username,
+            request_path="/api/auth/register",
+            http_method="POST",
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            detail_json={"reason": str(exc)},
+        )
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return service.build_token_response(user)
+    response = service.build_token_response(user)
+    audit_log_service.record_event(
+        category="auth",
+        event_type="register",
+        success=True,
+        status_code=status.HTTP_200_OK,
+        actor_user_id=user.id,
+        actor_username_snapshot=user.username,
+        actor_role=user.role,
+        target_type="user",
+        target_label=user.username,
+        request_path="/api/auth/register",
+        http_method="POST",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    # Register API returns token and logs the user in immediately.
+    audit_log_service.record_event(
+        category="auth",
+        event_type="login",
+        success=True,
+        status_code=status.HTTP_200_OK,
+        actor_user_id=user.id,
+        actor_username_snapshot=user.username,
+        actor_role=user.role,
+        target_type="user",
+        target_label=user.username,
+        request_path="/api/auth/register",
+        http_method="POST",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        detail_json={"via": "register_auto_signin"},
+    )
+    return response
 
 
 @router.post("/login", response_model=AuthTokenRead)

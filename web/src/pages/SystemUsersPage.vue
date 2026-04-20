@@ -34,7 +34,7 @@ const search = ref("");
 const loading = ref(false);
 const saving = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "User Management Error");
+usePageErrorNotification(error, "用户管理加载失败");
 const dialogVisible = ref(false);
 const users = ref<AdminManagedUserRead[]>([]);
 const editingUser = ref<AdminManagedUserRead | null>(null);
@@ -147,7 +147,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">System / 用户管理</div>
+        <div class="page__eyebrow">系统管理 / 用户管理</div>
         <h2 class="page__title">管理员维护普通用户状态与基础资料</h2>
         <p class="page__subtitle">
           本页支持按用户名筛选普通用户，并提供编辑、启停和删除等账号管理操作。
@@ -159,11 +159,22 @@ onMounted(() => {
         <n-button type="primary" :loading="loading" @click="loadUsers">刷新用户列表</n-button>
       </div>
     </section>
-<PanelCard title="用户列表" description="支持按用户名筛选普通用户，并对账号进行编辑、启停和删除">
-      <div class="toolbar-row" style="margin-bottom: 16px;">
-        <n-input v-model:value="search" placeholder="输入用户名关键字" clearable />
-        <n-button :loading="loading" @click="loadUsers">搜索</n-button>
-      </div>
+    <PanelCard title="用户列表" description="支持按用户名筛选普通用户，并对账号进行编辑、启停和删除">
+      <n-form class="filter-form filter-form--compact" style="margin-bottom: 16px;">
+        <n-form-item label="用户">
+          <n-input v-model:value="search" clearable placeholder="输入用户名关键字" @keyup.enter="loadUsers" />
+        </n-form-item>
+        <n-form-item label="&nbsp;" class="filter-form__action-item">
+          <n-button
+            class="filter-form__action-btn filter-form__action-btn--highlight"
+            type="warning"
+            :loading="loading"
+            @click="loadUsers"
+          >
+            搜索
+          </n-button>
+        </n-form-item>
+      </n-form>
 
       <div v-if="usersPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">

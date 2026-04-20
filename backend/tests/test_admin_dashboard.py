@@ -174,6 +174,36 @@ class AdminDashboardRouteTests(unittest.TestCase):
         self.assertEqual(success_payload["success_events"], success_payload["total_events"])
         self.assertEqual(success_payload["failed_events"], 0)
 
+    def test_overview_includes_register_and_auto_login_for_new_user(self) -> None:
+        register_response = self.client.post(
+            "/api/auth/register",
+            json={"username": "gogo11", "password": "password123"},
+        )
+        self.assertEqual(register_response.status_code, 200, register_response.text)
+
+        admin_overview = self.client.get("/api/admin/overview", headers=self._auth_headers(self.admin_token))
+        self.assertEqual(admin_overview.status_code, 200, admin_overview.text)
+        rows = admin_overview.json()["recent_audit_logs"]
+
+        self.assertTrue(
+            any(
+                item["category"] == "auth"
+                and item["event_type"] == "register"
+                and item["actor_username_snapshot"] == "gogo11"
+                and item["success"] is True
+                for item in rows
+            )
+        )
+        self.assertTrue(
+            any(
+                item["category"] == "auth"
+                and item["event_type"] == "login"
+                and item["actor_username_snapshot"] == "gogo11"
+                and item["success"] is True
+                for item in rows
+            )
+        )
+
     def _register_and_login(self, username: str, password: str) -> str:
         self.client.post("/api/auth/register", json={"username": username, "password": password})
         return self._login(username, password)

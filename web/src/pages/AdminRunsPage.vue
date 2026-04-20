@@ -13,13 +13,14 @@ import { useTablePager } from "@/composables/useTablePager";
 import { useRuntimeStore } from "@/stores/runtime";
 import { formatCompact, formatDateTime, getErrorMessage, toStatusTagType } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
+import { formatStatusText } from "@/utils/displayText";
 
 
 const message = useMessage();
 const runtime = useRuntimeStore();
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Admin Runs Error");
+usePageErrorNotification(error, "运行监控加载失败");
 const monitor = ref<AdminRunMonitorRead | null>(null);
 const limit = ref(60);
 const rowLoading = reactive<Record<number, boolean>>({});
@@ -107,7 +108,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Admin / Runs</div>
+        <div class="page__eyebrow">管理后台 / 运行监控</div>
         <h2 class="page__title">运行监控</h2>
         <p class="page__subtitle">监控导入批次和算法索引状态，重建索引用于重新计算风险雷达异常分析依赖的索引结果</p>
       </div>
@@ -138,7 +139,7 @@ onMounted(() => {
             <tr>
               <th>批次</th>
               <th>数据</th>
-              <th>Owner</th>
+              <th>所属用户</th>
               <th>运行状态</th>
               <th>索引状态</th>
               <th>记录</th>
@@ -154,12 +155,12 @@ onMounted(() => {
               <td>{{ row.owner_username || "--" }}</td>
               <td>
                 <n-tag :type="toStatusTagType(row.run_status)" round size="small">
-                  {{ row.run_status }}
+                  {{ formatStatusText(row.run_status) }}
                 </n-tag>
               </td>
               <td>
                 <n-tag :type="toStatusTagType(row.algo_index_status)" round size="small">
-                  {{ row.algo_index_status }}
+                  {{ formatStatusText(row.algo_index_status) }}
                 </n-tag>
               </td>
               <td>{{ formatCompact(row.record_count ?? null, 2) }}</td>

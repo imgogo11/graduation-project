@@ -5,6 +5,7 @@ import { NButton, NForm, NFormItem, NInput } from "naive-ui";
 import { RouterLink, useRouter } from "vue-router";
 
 import { registerUser } from "@/api/auth";
+import { APP_BRAND_NAME } from "@/constants/branding";
 import { useAuthStore } from "@/stores/auth";
 import { getErrorMessage } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
@@ -14,7 +15,7 @@ const router = useRouter();
 const auth = useAuthStore();
 const loading = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Register Error");
+usePageErrorNotification(error, "注册失败");
 const form = reactive({
   username: "",
   password: "",
@@ -50,8 +51,8 @@ async function submit() {
     <section class="auth-shell">
       <div class="auth-shell__visual">
         <div class="auth-shell__headline">
-          <div class="auth-shell__eyebrow">Create Account</div>
-          <h1 class="auth-shell__title">快速创建研究账号</h1>
+          <div class="auth-shell__eyebrow">{{ APP_BRAND_NAME }}</div>
+          <h1 class="auth-shell__title">快速加入{{ APP_BRAND_NAME }}</h1>
           <p class="auth-shell__subtitle">
             注册成功后将自动登录并进入工作台，可直接开始导入交易文件和执行分析。
           </p>

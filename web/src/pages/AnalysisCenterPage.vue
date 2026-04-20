@@ -38,6 +38,7 @@ import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
 import { formatCompact, formatDate, formatNumberish, formatPercent, getErrorMessage, toNumber, toStatusTagType } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
+import { formatSeverityText, TECHNICAL_TEXT } from "@/utils/displayText";
 
 
 const runtime = useRuntimeStore();
@@ -45,7 +46,7 @@ const datasetContext = useDatasetContextStore();
 const loadingRuns = ref(false);
 const loadingAnalysis = ref(false);
 const error = ref("");
-usePageErrorNotification(error, "Analysis Center Error");
+usePageErrorNotification(error, "分析中心加载失败");
 
 const importRuns = ref<ImportRunRead[]>([]);
 const stocks = ref<TradingStockRead[]>([]);
@@ -147,12 +148,12 @@ const indicatorChartOption = computed<EChartsOption | null>(() => {
     legend: { top: 0 },
     grid: { left: 48, right: 32, top: 56, bottom: 28 },
     xAxis: { type: "category", boundaryGap: false, data: indicators.value.points.map((item) => item.trade_date) },
-    yAxis: [{ type: "value", name: "Price" }, { type: "value", name: "Volume" }],
+    yAxis: [{ type: "value", name: TECHNICAL_TEXT.price }, { type: "value", name: TECHNICAL_TEXT.volume }],
     series: [
-      { type: "line", name: "Close", smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.close)) },
-      { type: "line", name: "MA5", smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.ma5)) },
-      { type: "line", name: "MA20", smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.ma20)) },
-      { type: "bar", name: "Volume", yAxisIndex: 1, barMaxWidth: 14, data: indicators.value.points.map((item) => toNumber(item.volume)) },
+      { type: "line", name: TECHNICAL_TEXT.close, smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.close)) },
+      { type: "line", name: TECHNICAL_TEXT.ma5, smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.ma5)) },
+      { type: "line", name: TECHNICAL_TEXT.ma20, smooth: true, showSymbol: false, data: indicators.value.points.map((item) => toNumber(item.ma20)) },
+      { type: "bar", name: TECHNICAL_TEXT.volume, yAxisIndex: 1, barMaxWidth: 14, data: indicators.value.points.map((item) => toNumber(item.volume)) },
     ],
   };
 });
@@ -224,7 +225,7 @@ function parseTopN() {
   }
   const value = Number(raw);
   if (!Number.isInteger(value) || value <= 0) {
-    throw new Error("Top N 必须是正整数");
+    throw new Error("前N(Top N)必须是正整数");
   }
   return value;
 }
@@ -444,7 +445,7 @@ onMounted(() => {
   <div class="page">
     <section class="page__header">
       <div>
-        <div class="page__eyebrow">Analysis Center / 分析中心</div>
+        <div class="page__eyebrow">分析中心 / 核心分析</div>
         <h2 class="page__title">围绕当前数据集执行统计分析、指标分析与范围对比</h2>
         <p class="page__subtitle">分析中心基于当前数据集提供统计分析、指标分析与范围对比能力。</p>
       </div>
@@ -476,7 +477,7 @@ onMounted(() => {
         <n-form-item label="横截面指标">
           <n-select v-model:value="filters.crossMetric" :options="crossMetricOptions" />
         </n-form-item>
-        <n-form-item label="横截面 Top N">
+        <n-form-item label="横截面前N(Top N)">
           <n-input v-model:value="filters.topNInput" placeholder="留空表示返回全部结果" />
         </n-form-item>
         <n-form-item label="对比批次">
@@ -535,15 +536,15 @@ onMounted(() => {
     </section>
 
     <section class="page__grid page__grid--double">
-      <PanelCard title="指标序列" description="Close、均线与成交量序列">
+      <PanelCard title="指标序列" :description="`${TECHNICAL_TEXT.close}、均线与${TECHNICAL_TEXT.volume}序列`">
         <n-alert v-if="panelNotices.indicators" type="warning" :show-icon="true">{{ panelNotices.indicators }}</n-alert>
         <EChartPanel v-else-if="indicatorChartOption" :option="indicatorChartOption" :loading="loadingAnalysis" />
         <EmptyState v-else title="暂无指标图表" description="选择主股票并执行分析后，这里会展示指标序列" />
         <div v-if="latestIndicatorPoint" class="detail-grid" style="margin-top: 16px;">
           <div class="detail-grid__item"><span class="detail-grid__label">最新日期</span><div class="detail-grid__value">{{ formatDate(latestIndicatorPoint.trade_date) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">MACD</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.macd, 4) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">RSI14</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.rsi14, 2) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">ATR14</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.atr14, 4) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">{{ TECHNICAL_TEXT.macd }}</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.macd, 4) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">{{ TECHNICAL_TEXT.rsi14 }}</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.rsi14, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">{{ TECHNICAL_TEXT.atr14 }}</span><div class="detail-grid__value">{{ formatNumberish(latestIndicatorPoint.atr14, 4) }}</div></div>
         </div>
       </PanelCard>
 
@@ -571,7 +572,7 @@ onMounted(() => {
               <tr v-for="item in anomalyPager.pagedRows.value" :key="`${item.trade_date}-${item.anomaly_type}`">
                 <td>{{ formatDate(item.trade_date) }}</td>
                 <td>{{ item.anomaly_type }}</td>
-                <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ item.severity }}</n-tag></td>
+                <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ formatSeverityText(item.severity) }}</n-tag></td>
                 <td>{{ formatNumberish(item.metric_value, 4) }}</td>
                 <td>{{ formatNumberish(item.baseline_value, 4) }}</td>
                 <td>{{ formatNumberish(item.threshold_value, 4) }}</td>
@@ -689,8 +690,8 @@ onMounted(() => {
               <td>{{ item.stock_code }}</td>
               <td>{{ formatDate(item.trade_date) }}</td>
               <td>{{ item.mismatched_fields.join("、") }}</td>
-              <td class="mono">O {{ formatNumberish(item.base_values.open, 2) }} / H {{ formatNumberish(item.base_values.high, 2) }} / C {{ formatNumberish(item.base_values.close, 2) }}</td>
-              <td class="mono">O {{ formatNumberish(item.target_values.open, 2) }} / H {{ formatNumberish(item.target_values.high, 2) }} / C {{ formatNumberish(item.target_values.close, 2) }}</td>
+              <td class="mono">开(O) {{ formatNumberish(item.base_values.open, 2) }} / 高(H) {{ formatNumberish(item.base_values.high, 2) }} / 收(C) {{ formatNumberish(item.base_values.close, 2) }}</td>
+              <td class="mono">开(O) {{ formatNumberish(item.target_values.open, 2) }} / 高(H) {{ formatNumberish(item.target_values.high, 2) }} / 收(C) {{ formatNumberish(item.target_values.close, 2) }}</td>
             </tr>
           </tbody>
         </n-table>
