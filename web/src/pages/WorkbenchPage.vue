@@ -1,19 +1,17 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 
 import type { EChartsOption } from "echarts";
 import { NButton, NTable, NTag } from "naive-ui";
 
 import { fetchTradingSummary } from "@/api/analysis";
-import { fetchHealth } from "@/api/health";
 import { fetchImportRuns, fetchImportStats } from "@/api/imports";
-import type { HealthResponse, ImportRunRead, ImportStatsRead, TradingSummaryRead } from "@/api/types";
+import type { ImportRunRead, ImportStatsRead, TradingSummaryRead } from "@/api/types";
 import EChartPanel from "@/components/EChartPanel.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
-import StatCard from "@/components/StatCard.vue";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
-import { useAuthStore } from "@/stores/auth";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
 import {
@@ -26,35 +24,22 @@ import {
 } from "@/utils/format";
 import { formatStatusText } from "@/utils/displayText";
 
+type TrendGranularity = "day" | "month";
+
 const runtime = useRuntimeStore();
-const auth = useAuthStore();
 const datasetContext = useDatasetContextStore();
+const router = useRouter();
 
 const loading = ref(false);
 const error = ref("");
+const trendGranularity = ref<TrendGranularity>("month");
 usePageErrorNotification(error, "工作台加载失败");
 
-const health = ref<HealthResponse | null>(null);
 const stats = ref<ImportStatsRead | null>(null);
 const importRuns = ref<ImportRunRead[]>([]);
 const currentSummary = ref<TradingSummaryRead | null>(null);
 
-const isAdmin = auth.isAdmin;
-
 const currentRunId = computed(() => datasetContext.state.importRunId ?? importRuns.value[0]?.id);
-const currentRun = computed(() => importRuns.value.find((item) => item.id === currentRunId.value) ?? null);
-const currentRunDisplayId = computed(() => currentRun.value?.display_id ?? currentRunId.value ?? null);
-
-const currentRunName = computed(() => {
-  if (currentRun.value) {
-    return currentRun.value.dataset_name;
-  }
-  return currentRunId.value ? "当前上下文批次（不在最近列表）" : "";
-});
-
-const currentScopeLabel = computed(
-  () => `${datasetContext.state.startDate || "起始不限"} ~ ${datasetContext.state.endDate || "结束不限"}`
-);
 
 const recentImportRuns = computed(() => {
   const latestRuns = importRuns.value.slice(0, 8);
@@ -90,49 +75,71 @@ const recentImportRuns = computed(() => {
   ];
 });
 
-const summaryCards = computed(() => [
+const recentImportTitlePills = computed(() => [
   {
-    label: isAdmin.value ? "当前可见批次" : "我的导入批次",
+    label: "我的导入批次",
     value: String(stats.value?.total_runs ?? 0),
-    hint: isAdmin.value ? "管理员可切换查看不同用户的数据集" : "当前账号可见范围内的全部批次",
-    tone: "teal" as const,
   },
   {
     label: "成功批次",
     value: String(stats.value?.completed_runs ?? 0),
-    hint: "已完成解析并写入数据库的导入批次数量",
-    tone: "orange" as const,
   },
   {
     label: "累计记录",
     value: formatCompact(stats.value?.total_records ?? null, 2),
-    hint: "当前可见范围内的交易记录总量",
-    tone: "berry" as const,
   },
   {
     label: "可用数据集",
     value: String(stats.value?.available_datasets ?? 0),
-    hint: "去重后的成功数据集数量",
-    tone: "neutral" as const,
   },
+]);
+
+const currentDatasetTitlePills = computed(() => [
   {
     label: "当前范围记录",
     value: String(currentSummary.value?.record_count ?? 0),
-    hint: currentRun.value ? `当前批次 #${currentRun.value.display_id}` : "先选择一个数据集",
-    tone: "teal" as const,
   },
   {
     label: "当前范围股票",
     value: String(currentSummary.value?.stock_count ?? 0),
-    hint: datasetContext.state.stockCode || "当前数据集全部股票",
-    tone: "orange" as const,
   },
 ]);
 
-const monthlyChartOption = computed<EChartsOption | null>(() => {
-  if (!stats.value?.monthly_imports.length) {
+const trendGranularityOptions: Array<{ label: string; value: TrendGranularity }> = [
+  { label: "日", value: "day" },
+  { label: "月", value: "month" },
+];
+
+const importTrendRows = computed(() => {
+  const buckets = new Map<string, { label: string; runs: number; records: number }>();
+
+  for (const item of importRuns.value) {
+    const timestamp = item.completed_at || item.started_at;
+    if (!timestamp) {
+      continue;
+    }
+
+    const label = trendGranularity.value === "day" ? timestamp.slice(0, 10) : timestamp.slice(0, 7);
+    const bucket = buckets.get(label) ?? {
+      label,
+      runs: 0,
+      records: 0,
+    };
+
+    bucket.runs += 1;
+    bucket.records += item.record_count ?? 0;
+    buckets.set(label, bucket);
+  }
+
+  return [...buckets.values()].sort((left, right) => left.label.localeCompare(right.label));
+});
+
+const importTrendOption = computed<EChartsOption | null>(() => {
+  if (!importTrendRows.value.length) {
     return null;
   }
+
+  const isDaily = trendGranularity.value === "day";
 
   return {
     backgroundColor: "transparent",
@@ -143,19 +150,24 @@ const monthlyChartOption = computed<EChartsOption | null>(() => {
       textStyle: { color: "#f8fafc" },
     },
     legend: {
-      top: 0,
+      top: 4,
       textStyle: { color: "#526072" },
     },
     grid: {
-      left: 44,
-      right: 24,
-      top: 54,
-      bottom: 28,
+      left: 56,
+      right: 56,
+      top: 68,
+      bottom: isDaily ? 56 : 36,
+      containLabel: true,
     },
     xAxis: {
       type: "category",
-      data: stats.value.monthly_imports.map((item) => item.month),
-      axisLabel: { color: "#526072" },
+      data: importTrendRows.value.map((item) => item.label),
+      axisLabel: {
+        color: "#526072",
+        rotate: isDaily ? 35 : 0,
+        hideOverlap: true,
+      },
     },
     yAxis: [
       {
@@ -181,18 +193,18 @@ const monthlyChartOption = computed<EChartsOption | null>(() => {
         showSymbol: false,
         lineStyle: { width: 3, color: "#2f6fed" },
         areaStyle: { color: "rgba(47, 111, 237, 0.12)" },
-        data: stats.value.monthly_imports.map((item) => item.runs),
+        data: importTrendRows.value.map((item) => item.runs),
       },
       {
         type: "bar",
         name: "导入记录",
         yAxisIndex: 1,
-        barMaxWidth: 22,
+        barMaxWidth: isDaily ? 18 : 22,
         itemStyle: {
           color: "#f05a28",
           borderRadius: [6, 6, 0, 0],
         },
-        data: stats.value.monthly_imports.map((item) => item.records),
+        data: importTrendRows.value.map((item) => item.records),
       },
     ],
   };
@@ -203,12 +215,11 @@ async function loadWorkbench() {
   error.value = "";
 
   try {
-    const [healthResponse, statsResponse] = await Promise.all([fetchHealth(), fetchImportStats()]);
+    const statsResponse = await fetchImportStats();
     const runsResponse = await fetchImportRuns({
       limit: Math.max(statsResponse.total_runs, 1),
     });
 
-    health.value = healthResponse;
     stats.value = statsResponse;
     importRuns.value = runsResponse;
 
@@ -216,13 +227,19 @@ async function loadWorkbench() {
       datasetContext.state.importRunId && runsResponse.some((item) => item.id === datasetContext.state.importRunId)
         ? datasetContext.state.importRunId
         : runsResponse[0]?.id;
+    const selectedRun = runsResponse.find((item) => item.id === selectedRunId) ?? null;
 
     if (selectedRunId !== datasetContext.state.importRunId) {
       datasetContext.applyScope({
         importRunId: selectedRunId,
+        importRunDisplayId: selectedRun?.display_id,
         stockCode: "",
         startDate: "",
         endDate: "",
+      });
+    } else if (selectedRun?.display_id !== datasetContext.state.importRunDisplayId) {
+      datasetContext.applyScope({
+        importRunDisplayId: selectedRun?.display_id,
       });
     }
 
@@ -245,6 +262,10 @@ async function loadWorkbench() {
   }
 }
 
+function goToDatasets() {
+  void router.push({ name: "datasets" });
+}
+
 onMounted(() => {
   void loadWorkbench();
 });
@@ -252,110 +273,24 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <section class="page__header">
-      <div>
-        <div class="page__eyebrow">工作台 / 总览</div>
-        <h2 class="page__title">后台工作台集中展示系统状态、导入趋势与当前数据集摘要</h2>
-        <p class="page__subtitle">
-          工作台用于快速确认系统可用性、导入状态与当前共享分析范围。
-        </p>
-      </div>
-      <div class="page__actions">
-        <n-button type="primary" :loading="loading" @click="loadWorkbench">刷新工作台</n-button>
-      </div>
-    </section>
-
-    <section class="page__grid page__grid--stats">
-      <StatCard
-        v-for="item in summaryCards"
-        :key="item.label"
-        :label="item.label"
-        :value="item.value"
-        :hint="item.hint"
-        :tone="item.tone"
-      />
-    </section>
-
     <section class="page__grid page__grid--double">
-      <PanelCard
-        :title="isAdmin ? '系统健康状态' : '系统可用状态'"
-        :description="
-          isAdmin
-            ? '管理员可以查看完整的服务与数据库状态。'
-            : '普通用户可快速确认当前系统是否可正常使用。'
-        "
-      >
-        <div v-if="health" class="detail-grid">
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">状态</span>
-            <div class="detail-grid__value">
-              <n-tag :type="toStatusTagType(health.status)" round>{{ formatStatusText(health.status) }}</n-tag>
-            </div>
+      <PanelCard title="导入趋势">
+        <template #actions>
+          <div class="trend-segmented" aria-label="导入趋势切换">
+            <button
+              v-for="option in trendGranularityOptions"
+              :key="option.value"
+              type="button"
+              class="trend-segmented__button"
+              :class="{ 'trend-segmented__button--active': trendGranularity === option.value }"
+              :aria-pressed="trendGranularity === option.value"
+              @click="trendGranularity = option.value"
+            >
+              {{ option.label }}
+            </button>
           </div>
-          <div v-if="isAdmin" class="detail-grid__item">
-            <span class="detail-grid__label">环境</span>
-            <div class="detail-grid__value">{{ health.environment }}</div>
-          </div>
-          <div v-if="isAdmin" class="detail-grid__item">
-            <span class="detail-grid__label">数据库</span>
-            <div class="detail-grid__value">{{ health.database_ok ? "连接正常" : "连接失败" }}</div>
-          </div>
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">详情</span>
-            <div class="detail-grid__value">
-              {{
-                isAdmin
-                  ? health.detail
-                  : health.status === "ok"
-                    ? "当前系统服务可正常使用"
-                    : "当前系统存在异常，请稍后重试。"
-              }}
-            </div>
-          </div>
-        </div>
-        <EmptyState
-          v-else
-          title="暂无健康状态"
-          description="点击刷新工作台后，这里会显示当前后端服务和数据库的连通情况。"
-        />
-      </PanelCard>
-
-      <PanelCard title="当前分析上下文" description="共享数据集范围会在工作台、分析中心和算法雷达之间同步。">
-        <div v-if="currentRunId" class="detail-grid">
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">批次</span>
-            <div class="detail-grid__value">#{{ currentRunDisplayId }} · {{ currentRunName }}</div>
-          </div>
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">股票</span>
-            <div class="detail-grid__value">{{ datasetContext.state.stockCode || "全部股票" }}</div>
-          </div>
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">日期范围</span>
-            <div class="detail-grid__value">{{ currentScopeLabel }}</div>
-          </div>
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">当前摘要</span>
-            <div class="detail-grid__value">
-              {{
-                currentSummary
-                  ? `收盘均价 ${formatNumberish(currentSummary.average_close, 2)}，成交额 ${formatCompact(currentSummary.total_amount, 2)}`
-                  : "尚未选择可分析的数据范围。"
-              }}
-            </div>
-          </div>
-        </div>
-        <EmptyState
-          v-else
-          title="暂无共享数据"
-          description="导入成功后，工作台会自动以最近批次作为默认分析范围。"
-        />
-      </PanelCard>
-    </section>
-
-    <section class="page__grid page__grid--double">
-      <PanelCard title="月度导入趋势" description="展示最近各月份导入批次和记录量的变化。">
-        <EChartPanel v-if="monthlyChartOption" :option="monthlyChartOption" :loading="loading" height="320px" />
+        </template>
+        <EChartPanel v-if="importTrendOption" :option="importTrendOption" :loading="loading" height="320px" />
         <EmptyState
           v-else
           title="暂无导入趋势数据"
@@ -363,7 +298,17 @@ onMounted(() => {
         />
       </PanelCard>
 
-      <PanelCard title="当前数据集摘要" description="工作台优先展示当前共享范围下的核心交易概览。">
+      <PanelCard title="当前数据集摘要">
+        <template #title>
+          <span class="page-card__title">
+            <span>当前数据集摘要</span>
+            <span class="page-card__stats">
+              <span v-for="item in currentDatasetTitlePills" :key="item.label" class="pill page-card__pill">
+                {{ item.label }} {{ item.value }}
+              </span>
+            </span>
+          </span>
+        </template>
         <div v-if="currentSummary" class="detail-grid">
           <div class="detail-grid__item">
             <span class="detail-grid__label">时间跨度</span>
@@ -390,8 +335,21 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <PanelCard title="最近导入批次" description="展示最近批次的状态与规模，便于快速回看。">
-      <div v-if="importRuns.length" class="data-table-wrap">
+    <PanelCard title="最近导入批次">
+      <template #title>
+        <span class="page-card__title">
+          <span>最近导入批次</span>
+          <span class="page-card__stats">
+            <span v-for="item in recentImportTitlePills" :key="item.label" class="pill page-card__pill">
+              {{ item.label }} {{ item.value }}
+            </span>
+          </span>
+        </span>
+      </template>
+      <template #actions>
+        <n-button quaternary size="small" @click="goToDatasets">查看全部</n-button>
+      </template>
+      <div v-if="importRuns.length" class="data-table-wrap workbench-recent-runs-table">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>
             <tr>
@@ -427,3 +385,57 @@ onMounted(() => {
     </PanelCard>
   </div>
 </template>
+
+<style scoped>
+.page-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page-card__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-card__pill {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.trend-segmented {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(47, 111, 237, 0.08);
+}
+
+.trend-segmented__button {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trend-segmented__button--active {
+  background: #fff;
+  color: var(--accent-blue);
+  box-shadow: 0 8px 20px rgba(47, 111, 237, 0.12);
+}
+
+.workbench-recent-runs-table {
+  min-height: 0;
+  max-height: none;
+  overflow-y: visible;
+  overflow-x: auto;
+  resize: none;
+}
+</style>

@@ -18,11 +18,12 @@ algo-module/build/
 /web/.vite/
 /images/
 
-backend/.tmp-tests/
 __pycache__/
 *.pyc
 *.docx
 /docs/
+datatable.md
+formula.md
 
 # Editor settings
 .vscode/
@@ -46,8 +47,6 @@ coverage/
 
 # Local runtime artifacts
 *.log
-*.sqlite
-*.sqlite3
 *.db
 
 # OS cruft

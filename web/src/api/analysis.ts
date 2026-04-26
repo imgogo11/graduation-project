@@ -7,6 +7,7 @@ import type {
   TradingJointAnomalyRankingRead,
   TradingQualityReportRead,
   TradingRiskMetricsRead,
+  TradingSnapshotRead,
   TradingScopeComparisonRead,
   TradingSummaryRead,
 } from "@/api/types";
@@ -66,6 +67,10 @@ export function fetchTradingIndicators(params: AnalysisScopeParams & { stock_cod
 
 export function fetchTradingRisk(params: AnalysisScopeParams & { stock_code: string }) {
   return getJson<TradingRiskMetricsRead>("/api/trading/analysis/risk", params);
+}
+
+export function fetchTradingSnapshot(params: AnalysisScopeParams & { stock_code: string }) {
+  return getJson<TradingSnapshotRead>("/api/trading/analysis/snapshot", params);
 }
 
 export function fetchTradingAnomalies(params: AnalysisScopeParams & { stock_code: string }) {

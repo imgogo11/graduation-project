@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+import tempfile
 import time
 import unittest
 
@@ -10,7 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-ARTIFACT_ROOT = REPO_ROOT / "data" / "processed" / "test_artifacts" / "benchmarks_common"
+ARTIFACT_ROOT = Path(tempfile.gettempdir()) / "graduation-project-benchmarks-tests"
 ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
 
 from benchmarks.common.io import prepare_suite_paths  # noqa: E402

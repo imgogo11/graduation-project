@@ -31,7 +31,6 @@ import DateInputField from "@/components/DateInputField.vue";
 import EChartPanel from "@/components/EChartPanel.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
-import StatCard from "@/components/StatCard.vue";
 import { useTablePager } from "@/composables/useTablePager";
 import { useAuthStore } from "@/stores/auth";
 import { useDatasetContextStore } from "@/stores/datasetContext";
@@ -73,7 +72,20 @@ const optionalColumnEnabled = reactive<Record<string, boolean>>({});
 const mappingModalVisible = ref(false);
 const mappingModalTab = ref<"required" | "optional">("required");
 
-const optionalCanonicalColumns = ["stock_name", "amount", "turnover"] as const;
+const optionalCanonicalColumns = [
+  "benchmark_close",
+  "amount",
+  "turnover",
+  "pe_ttm",
+  "pb",
+  "roe",
+  "asset_liability_ratio",
+  "revenue_yoy",
+  "net_profit_yoy",
+  "valuation_as_of",
+  "fundamental_report_date",
+  "stock_name",
+] as const;
 const canonicalLabelMap: Record<string, string> = {
   stock_code: "股票代码",
   trade_date: "交易日期",
@@ -82,9 +94,18 @@ const canonicalLabelMap: Record<string, string> = {
   low: "最低价",
   close: "收盘价",
   volume: "成交量",
-  stock_name: "股票名称",
+  benchmark_close: "基准收盘价",
   amount: "成交额",
   turnover: "换手率",
+  pe_ttm: "PE(TTM)",
+  pb: "PB",
+  roe: "ROE",
+  asset_liability_ratio: "资产负债率",
+  revenue_yoy: "营收同比",
+  net_profit_yoy: "净利同比",
+  valuation_as_of: "估值时间",
+  fundamental_report_date: "报告期",
+  stock_name: "股票名称",
 };
 
 const workspaceForm = reactive({
@@ -200,32 +221,22 @@ const recordsPager = useTablePager(records, {
   resetTriggers: [recordsScopeKey],
 });
 
-const summaryCards = computed(() => [
+const historyTitlePills = computed(() => [
   {
     label: "当前可见批次",
     value: String(importRuns.value.length),
-    hint: auth.isAdmin.value ? "会受到管理员所属用户过滤条件影响" : "当前账号可见的数据集批次",
-    tone: "teal" as const,
-  },
-  {
-    label: "当前股票",
-    value: String(stocks.value.length),
-    hint: currentDataset.value ? currentDatasetLabel.value : "先选择一个批次",
-    tone: "orange" as const,
-  },
-  {
-    label: "当前样本",
-    value: String(records.value.length),
-    hint: workspaceForm.stockCode || "当前筛选范围内的记录样本",
-    tone: "berry" as const,
-  },
-  {
-    label: "可用数据",
-    value: String(stats.value?.available_datasets ?? 0),
-    hint: "成功且未删除的数据集数量",
-    tone: "neutral" as const,
   },
 ]);
+
+const currentDatasetTitlePill = computed(() => ({
+  label: "当前股票",
+  value: String(stocks.value.length),
+}));
+
+const recordsTitlePill = computed(() => ({
+  label: "当前样本",
+  value: String(records.value.length),
+}));
 
 function pickVisibleRunId(runRows: ImportRunRead[], candidates: Array<number | undefined>) {
   for (const candidate of candidates) {
@@ -329,6 +340,7 @@ function syncWorkspaceFromStore() {
 function applySharedScope() {
   datasetContext.applyScope({
     importRunId: workspaceForm.importRunId,
+    importRunDisplayId: currentDataset.value?.display_id,
     stockCode: workspaceForm.stockCode,
     startDate: workspaceForm.startDate,
     endDate: workspaceForm.endDate,
@@ -648,32 +660,8 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <section class="page__header">
-      <div>
-        <div class="page__eyebrow">数据集管理 / 共享范围</div>
-        <h2 class="page__title">在数据集管理中完成导入、范围设置与交易样本预览</h2>
-        <p class="page__subtitle">
-          该页面用于上传交易文件、切换当前数据集并预览交易样本，分析中心与算法雷达会复用同一共享范围。
-        </p>
-      </div>
-      <div class="page__actions">
-        <n-button :loading="loading" @click="loadDatasets(workspaceForm.importRunId)">刷新数据</n-button>
-        <n-button type="primary" :loading="loadingPreview" @click="loadPreview">刷新预览</n-button>
-      </div>
-    </section>
-<section class="page__grid page__grid--stats">
-      <StatCard
-        v-for="item in summaryCards"
-        :key="item.label"
-        :label="item.label"
-        :value="item.value"
-        :hint="item.hint"
-        :tone="item.tone"
-      />
-    </section>
-
     <section class="page__grid page__grid--double">
-      <PanelCard title="共享范围设置" description="当前选择会同步到分析中心和算法雷达">
+      <PanelCard title="共享范围设置">
         <n-form class="form-grid" label-placement="top">
           <n-form-item label="导入批次">
             <n-select
@@ -716,7 +704,7 @@ onMounted(() => {
         </div>
       </PanelCard>
 
-      <PanelCard title="上传新数据集" description="上传交易文件并完成列头映射后创建新数据集">
+      <PanelCard title="上传新数据集">
         <n-form class="form-grid" label-placement="top">
           <n-form-item label="数据集名" class="form-grid--wide">
             <n-input v-model:value="uploadForm.datasetName" placeholder="例如 2024 全市场日线数据" />
@@ -761,7 +749,12 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <n-modal v-model:show="mappingModalVisible" preset="card" title="列头映射确认" style="width: min(980px, 92vw);">
+    <n-modal
+      v-model:show="mappingModalVisible"
+      preset="card"
+      title="列头映射确认"
+      style="width: min(980px, 92vw);"
+    >
       <template v-if="importPreview">
         <div class="inline-hint">
           必要列有问题时会自动打开此弹窗；你也可以随时手动打开进行自定义映射。
@@ -775,77 +768,91 @@ onMounted(() => {
               <n-button size="small" secondary @click="setAllRequiredColumns(true)">全开</n-button>
               <n-button size="small" secondary @click="setAllRequiredColumns(false)">全关</n-button>
             </div>
-            <n-table striped size="small">
-              <thead>
-                <tr>
-                  <th>目标列</th>
-                  <th>建议置信度</th>
-                  <th>映射源列</th>
-                  <th>确认导入</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="field in requiredMappingFields" :key="field.canonical_column">
-                  <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
-                  <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
-                  <td style="min-width: 280px;">
-                    <n-select
-                      v-model:value="mappingSelections[field.canonical_column]"
-                      :options="importMappingOptions"
-                      placeholder="选择源列"
-                      clearable
-                      @update:value="(value) => onRequiredMappingChange(field.canonical_column, value)"
-                    />
-                  </td>
-                  <td>
-                    <n-switch
-                      v-model:value="requiredColumnEnabled[field.canonical_column]"
-                      :disabled="!mappingSelections[field.canonical_column]"
-                    />
-                  </td>
-                </tr>
-              </tbody>
-            </n-table>
+            <div class="mapping-table-scroll">
+              <n-table striped size="small">
+                <thead>
+                  <tr>
+                    <th>目标列</th>
+                    <th>建议置信度</th>
+                    <th>映射源列</th>
+                    <th>确认导入</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="field in requiredMappingFields" :key="field.canonical_column">
+                    <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
+                    <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
+                    <td style="min-width: 280px;">
+                      <n-select
+                        v-model:value="mappingSelections[field.canonical_column]"
+                        :options="importMappingOptions"
+                        placeholder="选择源列"
+                        clearable
+                        @update:value="(value) => onRequiredMappingChange(field.canonical_column, value)"
+                      />
+                    </td>
+                    <td>
+                      <n-switch
+                        v-model:value="requiredColumnEnabled[field.canonical_column]"
+                        :disabled="!mappingSelections[field.canonical_column]"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </n-table>
+            </div>
           </n-tab-pane>
           <n-tab-pane name="optional" tab="可选列映射">
             <div class="toolbar-row" style="margin-bottom: 12px;">
               <n-button size="small" secondary @click="setAllOptionalColumns(true)">全开</n-button>
               <n-button size="small" secondary @click="setAllOptionalColumns(false)">全关</n-button>
             </div>
-            <n-table striped size="small">
-              <thead>
-                <tr>
-                  <th>目标列</th>
-                  <th>建议置信度</th>
-                  <th>映射源列</th>
-                  <th>确认导入</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="field in optionalMappingFields" :key="field.canonical_column">
-                  <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
-                  <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
-                  <td style="min-width: 260px;">
-                    <n-select
-                      v-model:value="mappingSelections[field.canonical_column]"
-                      :options="importMappingOptions"
-                      placeholder="选择源列"
-                      clearable
-                    />
-                  </td>
-                  <td>
-                    <n-switch v-model:value="optionalColumnEnabled[field.canonical_column]" />
-                  </td>
-                </tr>
-              </tbody>
-            </n-table>
+            <div class="mapping-table-scroll">
+              <n-table striped size="small">
+                <thead>
+                  <tr>
+                    <th>目标列</th>
+                    <th>建议置信度</th>
+                    <th>映射源列</th>
+                    <th>确认导入</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="field in optionalMappingFields" :key="field.canonical_column">
+                    <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
+                    <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
+                    <td style="min-width: 260px;">
+                      <n-select
+                        v-model:value="mappingSelections[field.canonical_column]"
+                        :options="importMappingOptions"
+                        placeholder="选择源列"
+                        clearable
+                      />
+                    </td>
+                    <td>
+                      <n-switch v-model:value="optionalColumnEnabled[field.canonical_column]" />
+                    </td>
+                  </tr>
+                </tbody>
+              </n-table>
+            </div>
           </n-tab-pane>
         </n-tabs>
       </template>
     </n-modal>
 
     <section class="page__grid page__grid--double">
-      <PanelCard title="当前数据集摘要" description="优先展示当前批次的元数据与范围信息">
+      <PanelCard title="当前数据集摘要">
+        <template #title>
+          <span class="page-card__title">
+            <span>当前数据集摘要</span>
+            <span class="page-card__stats">
+              <span class="pill page-card__pill">
+                {{ currentDatasetTitlePill.label }} {{ currentDatasetTitlePill.value }}
+              </span>
+            </span>
+          </span>
+        </template>
         <div v-if="currentDataset" class="detail-grid">
           <div class="detail-grid__item">
             <span class="detail-grid__label">批次</span>
@@ -883,17 +890,27 @@ onMounted(() => {
         />
       </PanelCard>
 
-      <PanelCard title="样本预览" description="用当前样本快速确认价格与成交额走势是否正常">
+      <PanelCard title="样本预览">
         <EChartPanel v-if="previewChartOption" :option="previewChartOption" :loading="loadingPreview" height="320px" />
         <EmptyState
           v-else
           title="暂无样本图表"
-          description="选定批次后刷新预览，这里会展示当前筛选范围的收盘价与成交额"
+          description="选定批次后，这里会展示当前筛选范围的收盘价与成交额"
         />
       </PanelCard>
     </section>
 
-    <PanelCard title="导入历史" description="按时间查看导入批次，管理员可结合所属用户过滤进行巡检">
+    <PanelCard title="导入历史">
+      <template #title>
+        <span class="page-card__title">
+          <span>导入历史</span>
+          <span class="page-card__stats">
+            <span v-for="item in historyTitlePills" :key="item.label" class="pill page-card__pill">
+              {{ item.label }} {{ item.value }}
+            </span>
+          </span>
+        </span>
+      </template>
       <div v-if="importRunsPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>
@@ -958,7 +975,17 @@ onMounted(() => {
       />
     </PanelCard>
 
-    <PanelCard title="交易样本" description="表格展示当前范围内交易记录的关键字段，便于校验数据质量">
+    <PanelCard title="交易样本">
+      <template #title>
+        <span class="page-card__title">
+          <span>交易样本</span>
+          <span class="page-card__stats">
+            <span class="pill page-card__pill">
+              {{ recordsTitlePill.label }} {{ recordsTitlePill.value }}
+            </span>
+          </span>
+        </span>
+      </template>
       <div v-if="recordsPager.total.value" class="data-table-wrap">
         <n-table class="data-table" striped size="small" :single-line="false">
           <thead>
@@ -1001,10 +1028,36 @@ onMounted(() => {
       <EmptyState
         v-else
         title="暂无样本记录"
-        description="选择有效批次并点击刷新预览后，这里会展示当前范围的交易记录样本"
+        description="选择有效批次后，这里会展示当前范围的交易记录样本"
       />
     </PanelCard>
   </div>
 </template>
+
+<style scoped>
+.page-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page-card__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-card__pill {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.mapping-table-scroll {
+  max-height: min(45vh, 440px);
+  overflow-y: auto;
+}
+</style>
 
 

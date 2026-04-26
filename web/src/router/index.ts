@@ -17,7 +17,7 @@ const router = createRouter({
       meta: {
         guestOnly: true,
         layout: "auth",
-        title: "登录",
+        title: "\u767b\u5f55",
       },
     },
     {
@@ -27,7 +27,7 @@ const router = createRouter({
       meta: {
         guestOnly: true,
         layout: "auth",
-        title: "注册",
+        title: "\u6ce8\u518c",
       },
     },
     {
@@ -37,7 +37,7 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "user",
-        title: "工作台",
+        title: "\u5de5\u4f5c\u53f0",
         affix: true,
       },
     },
@@ -48,44 +48,68 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "user",
-        title: "数据集管理",
+        title: "\u6570\u636e\u96c6\u7ba1\u7406",
       },
     },
     {
       path: "/analysis",
-      name: "analysis",
+      redirect: "/analysis/market",
+    },
+    {
+      path: "/analysis/market",
+      name: "analysis-market",
       component: () => import("@/pages/AnalysisCenterPage.vue"),
       meta: {
         requiresAuth: true,
         audience: "user",
-        title: "分析中心",
+        title: "\u5206\u6790\u4e2d\u5fc3 / \u91d1\u878d\u5206\u6790",
+        sectionTitle: "\u5206\u6790\u4e2d\u5fc3",
+      },
+    },
+    {
+      path: "/analysis/governance",
+      name: "analysis-governance",
+      component: () => import("@/pages/AnalysisCenterPage.vue"),
+      meta: {
+        requiresAuth: true,
+        audience: "user",
+        title: "\u5206\u6790\u4e2d\u5fc3 / \u6570\u636e\u6cbb\u7406\u4e0e\u5feb\u7167",
+        sectionTitle: "\u5206\u6790\u4e2d\u5fc3",
       },
     },
     {
       path: "/algo-radar",
-      name: "algo-radar",
+      redirect: "/algo-radar/risk",
+    },
+    {
+      path: "/algo-radar/risk",
+      name: "algo-radar-risk",
       component: () => import("@/pages/AlgoRadarPage.vue"),
       meta: {
         requiresAuth: true,
         audience: "user",
-        title: "算法雷达",
+        title: "\u7b97\u6cd5\u96f7\u8fbe / \u98ce\u9669\u96f7\u8fbe",
+        sectionTitle: "\u7b97\u6cd5\u96f7\u8fbe",
+      },
+    },
+    {
+      path: "/algo-radar/algorithms",
+      name: "algo-radar-algorithms",
+      component: () => import("@/pages/AlgoRadarPage.vue"),
+      meta: {
+        requiresAuth: true,
+        audience: "user",
+        title: "\u7b97\u6cd5\u96f7\u8fbe / \u7b97\u6cd5\u67e5\u8be2\u4e0e\u4e8b\u4ef6\u4e0a\u4e0b\u6587",
+        sectionTitle: "\u7b97\u6cd5\u96f7\u8fbe",
       },
     },
     {
       path: "/admin/overview",
-      name: "admin-overview",
-      component: () => import("@/pages/AdminOverviewPage.vue"),
-      meta: {
-        requiresAuth: true,
-        audience: "admin",
-        title: "系统概览",
-        sectionTitle: "管理员后台",
-        affix: true,
-      },
+      redirect: "/admin/assets",
     },
     {
       path: "/admin/health",
-      redirect: "/admin/overview",
+      redirect: "/admin/assets",
     },
     {
       path: "/admin/users",
@@ -94,8 +118,8 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "admin",
-        title: "用户管理",
-        sectionTitle: "管理员后台",
+        title: "\u7528\u6237\u7ba1\u7406",
+        sectionTitle: "\u7ba1\u7406\u5458\u540e\u53f0",
       },
     },
     {
@@ -105,8 +129,8 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "admin",
-        title: "用户调用记录",
-        sectionTitle: "管理员后台",
+        title: "\u7528\u6237\u8c03\u7528\u8bb0\u5f55",
+        sectionTitle: "\u7ba1\u7406\u5458\u540e\u53f0",
       },
     },
     {
@@ -116,8 +140,9 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "admin",
-        title: "数据资产总览",
-        sectionTitle: "管理员后台",
+        title: "\u6570\u636e\u8d44\u4ea7\u603b\u89c8",
+        sectionTitle: "\u7ba1\u7406\u5458\u540e\u53f0",
+        affix: true,
       },
     },
     {
@@ -127,8 +152,8 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "admin",
-        title: "运行监控",
-        sectionTitle: "管理员后台",
+        title: "\u8fd0\u884c\u76d1\u63a7",
+        sectionTitle: "\u7ba1\u7406\u5458\u540e\u53f0",
       },
     },
     {
@@ -141,13 +166,17 @@ const router = createRouter({
     },
     {
       path: "/analysis-center",
-      redirect: "/analysis",
+      redirect: "/analysis/market",
     },
   ],
 });
 
 router.beforeEach((to) => {
   const auth = useAuthStore();
+
+  if (to.path === "/admin/overview" || to.path === "/admin/health") {
+    return { path: "/admin/assets" };
+  }
 
   if (to.meta.requiresAuth && !auth.isAuthenticated.value) {
     return {
@@ -159,7 +188,7 @@ router.beforeEach((to) => {
   }
 
   if (to.meta.guestOnly && auth.isAuthenticated.value) {
-    return auth.isAdmin.value ? { path: "/admin/overview" } : { path: "/workbench" };
+    return auth.isAdmin.value ? { path: "/admin/assets" } : { path: "/workbench" };
   }
 
   const audience = to.meta.audience;
@@ -168,7 +197,7 @@ router.beforeEach((to) => {
   }
 
   if (audience === "user" && auth.isAdmin.value) {
-    return { path: "/admin/overview" };
+    return { path: "/admin/assets" };
   }
 
   return true;

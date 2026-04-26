@@ -4,7 +4,7 @@
 
 ## 当前项目定位
 
-当前仓库的主线已经不是早期的“股票抓取 + 电商演示 + benchmark 预留”组合方案，而是一个已经落地到可联调、可验证状态的：
+当前仓库的主线已经收敛为单一股票交易分析系统，并已落地到可联调、可验证状态：
 
 `股票交易数据管理与分析系统的设计与实现（Design and Implementation of Stock Trading Data Management and Analysis System）`
 
@@ -15,8 +15,6 @@
 已经退出主链、只剩历史痕迹或文档痕迹的旧方向包括：
 
 - 股票爬虫导入主链
-- 电商演示数据导入主链
-- synthetic 电商数据主链
 - benchmark 业务接口主链（当前仅保留离线 benchmark 脚本痕迹，不属于产品主链）
 
 ## 实时技术框架
@@ -42,7 +40,7 @@
 ### 数据与运行环境
 
 - PostgreSQL：主数据库
-- SQLite：测试场景使用
+- PostgreSQL：生产与集成测试统一使用
 - `uv`：Python 依赖与虚拟环境工作流
 - `.venv`：本地 Python 运行环境
 - `npm`：前端依赖与构建
@@ -165,7 +163,7 @@ graduation-project/
 │  └─ data-source-strategy.md
 ├─ data/
 │  ├─ uploads/                       用户上传文件落盘目录
-│  └─ processed/test_artifacts/      后端与算法测试产物
+│  └─ uploads/                       上传数据与测试运行时文件（可按需清理）
 ├─ README.md
 ├─ pyproject.toml
 └─ progress.md
@@ -284,7 +282,7 @@ stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 以下说法已经不符合仓库现状，不应再出现在进度文档里：
 
 - “frontend 还是空目录”
-- “项目仍以股票抓取和电商演示为主线”
+- “项目仍以早期多分支实验方案为主线”
 - “系统仍保留 Trading 独立页面”
 - “后端只有基础导入接口，没有分析接口”
 - “算法模块只有占位结构”
@@ -324,6 +322,7 @@ stock_code,stock_name,trade_date,open,high,low,close,volume,amount
 
 `一个具备 Web 界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化、三页式分析工作流，以及 C++ / Python 混合算法能力（区间最大成交额、区间第 K 大成交量、联合异常排序、风险雷达）的全栈 MVP。`
 
-它不再是旧版 stock / ecommerce 多分支实验骨架，而是已经收敛到“股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
+它不再是旧版多分支实验骨架，而是已经收敛到“股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
+
 
 

@@ -32,7 +32,7 @@ import { formatRoleText } from "@/utils/displayText";
 
 
 const message = useMessage();
-const search = ref("");
+const userIdInput = ref("");
 const activeFilter = ref<"all" | "active" | "inactive">("all");
 const loading = ref(false);
 const saving = ref(false);
@@ -66,7 +66,7 @@ const filteredUsers = computed(() =>
 const usersPager = useTablePager(filteredUsers, {
   initialPageSize: 10,
   pageSizes: [10, 20, 50],
-  resetTriggers: [search, activeFilter],
+  resetTriggers: [userIdInput, activeFilter],
 });
 
 const activeFilterOptions = [
@@ -104,7 +104,9 @@ async function loadUsers() {
   error.value = "";
 
   try {
-    users.value = await fetchAdminUsers(search.value.trim() || undefined);
+    users.value = await fetchAdminUsers({
+      query: userIdInput.value.trim() || undefined,
+    });
   } catch (err) {
     error.value = getErrorMessage(err);
   } finally {
@@ -198,25 +200,20 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <section class="page__header">
-      <div>
-        <div class="page__eyebrow">管理后台 / 用户管理</div>
-        <h2 class="page__title">管理员用户管理</h2>
-        <p class="page__subtitle">
-          页面以后台运维交互为主：支持用户名筛选、启停切换、账号编辑与删除。管理员账号会显示在列表中，但仅支持查看，不在此页执行修改。
-        </p>
-      </div>
-      <div class="page__actions">
-        <span class="pill">总用户 {{ users.length }}</span>
-        <span class="pill">启用数 {{ activeCount }}</span>
-        <span class="pill">管理员 {{ adminCount }}</span>
-        <n-button type="primary" :loading="loading" @click="loadUsers">刷新</n-button>
-      </div>
-    </section>
-    <PanelCard title="用户列表" description="筛选、启停、编辑、删除集中在一张后台表格中">
+    <PanelCard title="用户列表">
+      <template #title>
+        <span class="users-card__title">
+          <span>用户列表</span>
+          <span class="users-card__stats">
+            <span class="pill users-card__pill">总用户 {{ users.length }}</span>
+            <span class="pill users-card__pill">启用数 {{ activeCount }}</span>
+            <span class="pill users-card__pill">管理员 {{ adminCount }}</span>
+          </span>
+        </span>
+      </template>
       <n-form class="filter-form filter-form--users" style="margin-bottom: 16px;">
         <n-form-item label="用户">
-          <n-input v-model:value="search" clearable placeholder="输入用户名关键字" @keyup.enter="loadUsers" />
+          <n-input v-model:value="userIdInput" clearable placeholder="输入用户名" @keyup.enter="loadUsers" />
         </n-form-item>
         <n-form-item label="状态">
           <n-select v-model:value="activeFilter" :options="activeFilterOptions" style="min-width: 150px;" />
@@ -340,4 +337,25 @@ onMounted(() => {
     </n-modal>
   </div>
 </template>
+
+<style scoped>
+.users-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.users-card__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.users-card__pill {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+</style>
 

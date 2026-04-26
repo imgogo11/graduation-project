@@ -27,10 +27,27 @@ CONFLICT_GAP_THRESHOLD = 0.10
 MIN_CANDIDATE_SCORE = 0.20
 SAMPLE_LIMIT = 300
 
-NUMERIC_COLUMNS = {"open", "high", "low", "close", "volume", "amount", "turnover"}
+NUMERIC_COLUMNS = {
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "amount",
+    "turnover",
+    "benchmark_close",
+    "pe_ttm",
+    "pb",
+    "roe",
+    "asset_liability_ratio",
+    "revenue_yoy",
+    "net_profit_yoy",
+}
 STOCK_CODE_PATTERN = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$", re.IGNORECASE)
+PREFIXED_STOCK_CODE_PATTERN = re.compile(r"^(?:SH|SZ|BJ)\d{6}$", re.IGNORECASE)
 GENERIC_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9._-]{1,15}$")
 NUMERIC_CODE_PATTERN = re.compile(r"^\d{6}$")
+DECIMAL_INTEGER_PATTERN = re.compile(r"^(?P<int>\d+)\.0+$")
 
 
 def normalize_header_token(value: Any) -> str:
@@ -39,6 +56,24 @@ def normalize_header_token(value: Any) -> str:
     collapsed = re.sub(r"[\s\-./\\]+", "_", lowered)
     collapsed = re.sub(r"_+", "_", collapsed).strip("_")
     return collapsed
+
+
+def normalize_stock_code_value(value: Any) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+
+    text = unicodedata.normalize("NFKC", str(value)).replace("\ufeff", "").strip().upper()
+    if not text:
+        return None
+
+    decimal_match = DECIMAL_INTEGER_PATTERN.match(text)
+    if decimal_match:
+        text = decimal_match.group("int")
+
+    if text.isdigit() and len(text) <= 6:
+        return text.zfill(6)
+
+    return text
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,8 +345,12 @@ class ColumnMatcher:
         if canonical == "stock_code":
             score = 0.0
             for item in sampled:
-                text = str(item).strip().upper()
+                text = normalize_stock_code_value(item)
+                if not text:
+                    continue
                 if STOCK_CODE_PATTERN.match(text):
+                    score += 1.0
+                elif PREFIXED_STOCK_CODE_PATTERN.match(text):
                     score += 1.0
                 elif GENERIC_CODE_PATTERN.match(text):
                     score += 0.9
@@ -320,7 +359,7 @@ class ColumnMatcher:
             ratio = score / len(sampled)
             return ratio, [f"代码模式命中率={ratio:.3f}"]
 
-        if canonical == "trade_date":
+        if canonical in {"trade_date", "fundamental_report_date", "valuation_as_of"}:
             parsed = pd.to_datetime(pd.Series(sampled), errors="coerce", format="mixed")
             ratio = float(parsed.notna().mean())
             return ratio, [f"日期可解析率={ratio:.3f}"]

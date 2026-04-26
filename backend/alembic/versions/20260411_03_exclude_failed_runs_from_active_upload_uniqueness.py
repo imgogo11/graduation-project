@@ -56,7 +56,6 @@ def _recreate_index(filter_sql: str) -> None:
         "import_runs",
         ["owner_user_id", "dataset_name"],
         unique=True,
-        sqlite_where=sa.text(filter_sql),
         postgresql_where=sa.text(filter_sql),
     )
 

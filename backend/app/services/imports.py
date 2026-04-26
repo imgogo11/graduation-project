@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
 import hashlib
@@ -37,7 +37,7 @@ from app.schemas.trading import (
     ImportRunRead,
     ImportStatsRead,
 )
-from app.services.import_matcher import ColumnMatcher, normalize_header_token
+from app.services.import_matcher import ColumnMatcher, normalize_header_token, normalize_stock_code_value
 
 
 class ImportExecutionError(RuntimeError):
@@ -68,7 +68,19 @@ class ImportPreviewStateError(ValueError):
 
 HEAD_FILE_PATH = Path(__file__).with_name("trading_head.json")
 NUMERIC_REQUIRED_COLUMNS = ("open", "high", "low", "close", "volume")
-DECIMAL_QUANTUM = Decimal("0.0001")
+NUMERIC_OPTIONAL_COLUMNS = (
+    "amount",
+    "turnover",
+    "benchmark_close",
+    "pe_ttm",
+    "pb",
+    "roe",
+    "asset_liability_ratio",
+    "revenue_yoy",
+    "net_profit_yoy",
+)
+DECIMAL_QUANTUM_4 = Decimal("0.0001")
+DECIMAL_QUANTUM_6 = Decimal("0.000001")
 IMPORT_FORMAT_ERROR_PREFIX = "导入失败，数据不符合格式"
 VISIBLE_HISTORY_STATUSES = ("completed",)
 PREVIEW_TTL_HOURS = 2
@@ -685,8 +697,8 @@ class ImportService:
 
     def _read_uploaded_frame(self, path: Path, file_format: str) -> pd.DataFrame:
         if file_format == "csv":
-            return pd.read_csv(path)
-        return pd.read_excel(path, engine="openpyxl")
+            return pd.read_csv(path, dtype=object)
+        return pd.read_excel(path, engine="openpyxl", dtype=object)
 
     def _normalize_dataset_from_frame(
         self,
@@ -703,7 +715,7 @@ class ImportService:
         selected_columns = [column for column in head_dictionary.canonical_columns if column in canonical_to_original]
         normalized = frame.rename(columns=rename_map)[selected_columns].copy()
 
-        normalized["stock_code"] = normalized["stock_code"].map(self._normalize_text)
+        normalized["stock_code"] = normalized["stock_code"].map(normalize_stock_code_value)
         if normalized["stock_code"].isna().any():
             raise ImportValidationError(build_import_format_error("stock_code 存在空值"))
         parsed_dates = pd.to_datetime(normalized["trade_date"], errors="coerce")
@@ -719,20 +731,13 @@ class ImportService:
             normalized["stock_name"] = normalized["stock_name"].map(self._normalize_nullable_text)
         else:
             normalized["stock_name"] = None
-        if "amount" in normalized.columns:
-            parsed_amount = pd.to_numeric(normalized["amount"], errors="coerce")
-            if parsed_amount.isna().any():
-                raise ImportValidationError(build_import_format_error("amount 存在非法数值"))
-            normalized["amount"] = parsed_amount
-        else:
-            normalized["amount"] = None
-        if "turnover" in normalized.columns:
-            parsed_turnover = pd.to_numeric(normalized["turnover"], errors="coerce")
-            if parsed_turnover.isna().any():
-                raise ImportValidationError(build_import_format_error("turnover 存在非法数值"))
-            normalized["turnover"] = parsed_turnover
-        else:
-            normalized["turnover"] = None
+        for optional_numeric_column in NUMERIC_OPTIONAL_COLUMNS:
+            self._normalize_optional_numeric_column(normalized, optional_numeric_column)
+        self._normalize_optional_datetime_column(normalized, "valuation_as_of")
+        self._normalize_optional_date_column(normalized, "fundamental_report_date")
+        for optional_column in head_dictionary.optional_columns:
+            if optional_column not in normalized.columns:
+                normalized[optional_column] = None
 
         normalized = normalized[list(head_dictionary.canonical_columns)]
         duplicate_mask = normalized.duplicated(subset=["stock_code", "trade_date"], keep=False)
@@ -748,12 +753,22 @@ class ImportService:
                 "stock_code": str(row["stock_code"]),
                 "stock_name": row["stock_name"],
                 "trade_date": row["trade_date"],
-                "open": self._to_decimal(row["open"]),
-                "high": self._to_decimal(row["high"]),
-                "low": self._to_decimal(row["low"]),
-                "close": self._to_decimal(row["close"]),
-                "volume": self._to_decimal(row["volume"]),
-                "amount": self._to_optional_decimal(row["amount"]),
+                "open": self._to_decimal(row["open"], quantum=DECIMAL_QUANTUM_4),
+                "high": self._to_decimal(row["high"], quantum=DECIMAL_QUANTUM_4),
+                "low": self._to_decimal(row["low"], quantum=DECIMAL_QUANTUM_4),
+                "close": self._to_decimal(row["close"], quantum=DECIMAL_QUANTUM_4),
+                "volume": self._to_decimal(row["volume"], quantum=DECIMAL_QUANTUM_4),
+                "amount": self._to_optional_decimal(row["amount"], quantum=DECIMAL_QUANTUM_4),
+                "turnover": self._to_optional_decimal(row["turnover"], quantum=DECIMAL_QUANTUM_6),
+                "benchmark_close": self._to_optional_decimal(row["benchmark_close"], quantum=DECIMAL_QUANTUM_4),
+                "pe_ttm": self._to_optional_decimal(row["pe_ttm"], quantum=DECIMAL_QUANTUM_6),
+                "pb": self._to_optional_decimal(row["pb"], quantum=DECIMAL_QUANTUM_6),
+                "roe": self._to_optional_decimal(row["roe"], quantum=DECIMAL_QUANTUM_6),
+                "asset_liability_ratio": self._to_optional_decimal(row["asset_liability_ratio"], quantum=DECIMAL_QUANTUM_6),
+                "revenue_yoy": self._to_optional_decimal(row["revenue_yoy"], quantum=DECIMAL_QUANTUM_6),
+                "net_profit_yoy": self._to_optional_decimal(row["net_profit_yoy"], quantum=DECIMAL_QUANTUM_6),
+                "valuation_as_of": self._to_optional_datetime(row["valuation_as_of"]),
+                "fundamental_report_date": self._to_optional_date(row["fundamental_report_date"]),
             }
             for row in normalized.to_dict(orient="records")
         ]
@@ -866,13 +881,84 @@ class ImportService:
     def _normalize_nullable_text(self, value: Any) -> str | None:
         return self._normalize_text(value)
 
-    def _to_decimal(self, value: Any) -> Decimal:
-        return Decimal(str(value)).quantize(DECIMAL_QUANTUM)
+    def _normalize_optional_numeric_column(self, frame: pd.DataFrame, column: str) -> None:
+        if column not in frame.columns:
+            frame[column] = None
+            return
+        raw = frame[column].map(self._normalize_optional_cell)
+        parsed = pd.to_numeric(raw, errors="coerce")
+        invalid_mask = raw.notna() & parsed.isna()
+        if invalid_mask.any():
+            raise ImportValidationError(build_import_format_error(f"{column} 存在非法数值"))
+        frame[column] = parsed
 
-    def _to_optional_decimal(self, value: Any) -> Decimal | None:
+    def _normalize_optional_datetime_column(self, frame: pd.DataFrame, column: str) -> None:
+        if column not in frame.columns:
+            frame[column] = None
+            return
+        raw = frame[column].map(self._normalize_optional_cell)
+        parsed = pd.to_datetime(raw, errors="coerce")
+        invalid_mask = raw.notna() & parsed.isna()
+        if invalid_mask.any():
+            raise ImportValidationError(build_import_format_error(f"{column} 存在无法识别的日期时间"))
+        frame[column] = parsed
+
+    def _normalize_optional_date_column(self, frame: pd.DataFrame, column: str) -> None:
+        if column not in frame.columns:
+            frame[column] = None
+            return
+        raw = frame[column].map(self._normalize_optional_cell)
+        parsed = pd.to_datetime(raw, errors="coerce")
+        invalid_mask = raw.notna() & parsed.isna()
+        if invalid_mask.any():
+            raise ImportValidationError(build_import_format_error(f"{column} 存在无法识别的日期"))
+        frame[column] = parsed.dt.date
+
+    def _normalize_optional_cell(self, value: Any) -> Any:
         if value is None or pd.isna(value):
             return None
-        return self._to_decimal(value)
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    def _to_decimal(self, value: Any, *, quantum: Decimal = DECIMAL_QUANTUM_4) -> Decimal:
+        return Decimal(str(value)).quantize(quantum)
+
+    def _to_optional_decimal(self, value: Any, *, quantum: Decimal = DECIMAL_QUANTUM_4) -> Decimal | None:
+        if value is None or pd.isna(value):
+            return None
+        return self._to_decimal(value, quantum=quantum)
+
+    def _to_optional_datetime(self, value: Any) -> datetime | None:
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.to_pydatetime()
+        if isinstance(value, datetime):
+            return value
+        parsed = pd.to_datetime(value, errors="coerce")
+        if pd.isna(parsed):
+            return None
+        if isinstance(parsed, pd.Timestamp):
+            return parsed.to_pydatetime()
+        return None
+
+    def _to_optional_date(self, value: Any) -> date | None:
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.date()
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        parsed = pd.to_datetime(value, errors="coerce")
+        if pd.isna(parsed):
+            return None
+        if isinstance(parsed, pd.Timestamp):
+            return parsed.date()
+        return None
 
     def _build_header_fingerprint(self, original_columns: list[str]) -> str:
         normalized = sorted(normalize_header_token(column) for column in original_columns if normalize_header_token(column))

@@ -44,7 +44,7 @@ async function submit() {
   try {
     const response = await loginUser(form);
     auth.applySession(response);
-    const fallback = response.user.role === "admin" ? "/admin/overview" : "/workbench";
+    const fallback = response.user.role === "admin" ? "/admin/assets" : "/workbench";
     const redirect = typeof route.query.redirect === "string" ? route.query.redirect : fallback;
     await router.replace(redirect);
   } catch (err) {

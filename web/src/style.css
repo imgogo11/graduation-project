@@ -23,6 +23,27 @@
   --shell-header-height: 68px;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-base: #0f172a;
+  --bg-muted: #111c31;
+  --panel-bg: #162033;
+  --panel-strong: #1b2740;
+  --panel-border: #24334f;
+  --panel-border-strong: #314567;
+  --text-primary: #e5edf8;
+  --text-secondary: #b3c1d7;
+  --text-soft: #8da0ba;
+  --accent-primary: #ff8456;
+  --accent-primary-soft: rgba(255, 132, 86, 0.14);
+  --accent-blue: #7aa2ff;
+  --accent-success: #36c98a;
+  --accent-warning: #ffbd59;
+  --accent-danger: #ff6b87;
+  --shadow-soft: 0 18px 48px rgba(2, 8, 23, 0.32);
+  --shadow-card: 0 12px 30px rgba(2, 8, 23, 0.24);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -42,6 +63,13 @@ body {
   color: var(--text-primary);
 }
 
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at top left, rgba(255, 132, 86, 0.10), transparent 24%),
+    radial-gradient(circle at top right, rgba(122, 162, 255, 0.12), transparent 30%),
+    linear-gradient(180deg, #0b1220 0%, var(--bg-base) 100%);
+}
+
 body,
 button,
 input,
@@ -59,39 +87,6 @@ a {
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.page__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--accent-primary);
-  font-weight: 700;
-}
-
-.page__title {
-  margin: 10px 0 0;
-  font-size: clamp(28px, 3.8vw, 36px);
-  line-height: 1.08;
-}
-
-.page__subtitle {
-  max-width: 840px;
-  margin: 12px 0 0;
-  color: var(--text-secondary);
-  line-height: 1.7;
-  font-size: 15px;
 }
 
 .page__actions {
@@ -334,9 +329,6 @@ a {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
-  position: sticky;
-  top: 0;
-  z-index: 1;
 }
 
 .data-table th,
@@ -589,14 +581,6 @@ a {
 }
 
 @media (max-width: 768px) {
-  .page__title {
-    font-size: 28px;
-  }
-
-  .page__subtitle {
-    font-size: 14px;
-  }
-
   .date-range-group {
     grid-template-columns: 1fr;
   }

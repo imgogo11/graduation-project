@@ -139,7 +139,6 @@ def upgrade() -> None:
             "import_runs",
             ["owner_user_id", "dataset_name"],
             unique=True,
-            sqlite_where=ACTIVE_UPLOAD_FILTER_SQL,
             postgresql_where=ACTIVE_UPLOAD_FILTER_SQL,
         )
 

@@ -73,7 +73,9 @@ async function loadUsers() {
   error.value = "";
 
   try {
-    users.value = await fetchAdminUsers(search.value.trim() || undefined);
+    users.value = await fetchAdminUsers({
+      query: search.value.trim() || undefined,
+    });
   } catch (err) {
     error.value = getErrorMessage(err);
   } finally {
@@ -145,21 +147,11 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <section class="page__header">
-      <div>
-        <div class="page__eyebrow">系统管理 / 用户管理</div>
-        <h2 class="page__title">管理员维护普通用户状态与基础资料</h2>
-        <p class="page__subtitle">
-          本页支持按用户名筛选普通用户，并提供编辑、启停和删除等账号管理操作。
-        </p>
-      </div>
-      <div class="page__actions">
-        <span class="pill">总用户 {{ users.length }}</span>
-        <span class="pill">启用数 {{ activeCount }}</span>
-        <n-button type="primary" :loading="loading" @click="loadUsers">刷新用户列表</n-button>
-      </div>
-    </section>
-    <PanelCard title="用户列表" description="支持按用户名筛选普通用户，并对账号进行编辑、启停和删除">
+    <div class="page__actions">
+      <span class="pill">总用户 {{ users.length }}</span>
+      <span class="pill">启用数 {{ activeCount }}</span>
+    </div>
+    <PanelCard title="用户列表">
       <n-form class="filter-form filter-form--compact" style="margin-bottom: 16px;">
         <n-form-item label="用户">
           <n-input v-model:value="search" clearable placeholder="输入用户名关键字" @keyup.enter="loadUsers" />

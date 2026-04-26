@@ -82,6 +82,7 @@ class AuditLogService:
         page: int,
         page_size: int,
         actor_user_id: int | None = None,
+        actor_username: str | None = None,
         category: str | None = None,
         success: bool | None = None,
         start_at: datetime | str | None = None,
@@ -92,6 +93,7 @@ class AuditLogService:
         offset = (normalized_page - 1) * normalized_page_size
         query = AuditLogQuery(
             actor_user_id=actor_user_id,
+            actor_username=(actor_username or "").strip() or None,
             category=(category or "").strip() or None,
             success=success,
             start_at=_normalize_datetime(start_at),
@@ -118,6 +120,7 @@ class AuditLogService:
         self,
         *,
         actor_user_id: int | None = None,
+        actor_username: str | None = None,
         category: str | None = None,
         success: bool | None = None,
         start_at: datetime | str | None = None,
@@ -125,6 +128,7 @@ class AuditLogService:
     ) -> AuditLogStatsRead:
         query = AuditLogQuery(
             actor_user_id=actor_user_id,
+            actor_username=(actor_username or "").strip() or None,
             category=(category or "").strip() or None,
             success=success,
             start_at=_normalize_datetime(start_at),
@@ -146,6 +150,7 @@ class AuditLogService:
                     session,
                     query=AuditLogQuery(
                         actor_user_id=query.actor_user_id,
+                        actor_username=query.actor_username,
                         category=query.category,
                         success=True,
                         start_at=query.start_at,
@@ -156,6 +161,7 @@ class AuditLogService:
                     session,
                     query=AuditLogQuery(
                         actor_user_id=query.actor_user_id,
+                        actor_username=query.actor_username,
                         category=query.category,
                         success=False,
                         start_at=query.start_at,
@@ -167,6 +173,7 @@ class AuditLogService:
                 session,
                 query=AuditLogQuery(
                     actor_user_id=query.actor_user_id,
+                    actor_username=query.actor_username,
                     category=query.category,
                     success=query.success,
                     start_at=max(query.start_at, start_of_today) if query.start_at else start_of_today,

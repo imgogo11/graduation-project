@@ -1,23 +1,22 @@
 ﻿from __future__ import annotations
 
-import os
 from pathlib import Path
 import sys
-import time
 import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_DIR.parent
-ARTIFACT_ROOT = REPO_ROOT / "data" / "processed" / "test_artifacts" / "algo_trading"
-ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+TESTS_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
-from app.core.database import create_all_tables, get_session_factory, reset_database_state
+from app.core.database import get_session_factory
 from app.algo_bridge.adapters.trading import load_algo_module
 from app.services.auth import AuthService
+from postgres_integration import PostgresIntegrationTestCase
 
 
 def build_algo_frame() -> pd.DataFrame:
@@ -243,7 +242,9 @@ def build_expected_joint_anomaly_rows(
     return filtered_rows[:top_n]
 
 
-class AlgoTradingRouteTests(unittest.TestCase):
+class AlgoTradingRouteTests(PostgresIntegrationTestCase):
+    jwt_secret = "algo-test-secret"
+
     @classmethod
     def setUpClass(cls) -> None:
         try:
@@ -252,25 +253,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
             raise unittest.SkipTest(str(exc)) from exc
 
     def setUp(self) -> None:
-        self.temp_path = ARTIFACT_ROOT / f"case_{time.time_ns()}"
-        self.temp_path.mkdir(parents=True, exist_ok=True)
-        self.db_path = self.temp_path / "algo.sqlite3"
-        self.previous_env = {
-            "DATABASE_URL": os.environ.get("DATABASE_URL"),
-            "APP_ENV": os.environ.get("APP_ENV"),
-            "JWT_SECRET": os.environ.get("JWT_SECRET"),
-            "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME"),
-            "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD"),
-            "UPLOAD_ROOT": os.environ.get("UPLOAD_ROOT"),
-        }
-        os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{self.db_path.resolve().as_posix()}"
-        os.environ["APP_ENV"] = "test"
-        os.environ["JWT_SECRET"] = "algo-test-secret"
-        os.environ["ADMIN_USERNAME"] = "admin"
-        os.environ["ADMIN_PASSWORD"] = "admin123456"
-        os.environ["UPLOAD_ROOT"] = str((self.temp_path / "uploads").resolve())
-        reset_database_state()
-        create_all_tables()
+        super().setUp()
         session = get_session_factory()()
         try:
             AuthService().ensure_admin_user(session, username="admin", password="admin123456")
@@ -289,12 +272,7 @@ class AlgoTradingRouteTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
-        reset_database_state()
-        for key, value in self.previous_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        super().tearDown()
 
     def test_range_max_amount_returns_all_duplicate_max_dates(self) -> None:
         response = self.client.get(
@@ -658,7 +636,10 @@ class AlgoTradingRouteTests(unittest.TestCase):
             headers=self._auth_headers(self.token),
         )
         self.assertEqual(failed_response.status_code, 400)
-        self.assertIn("/api/imports/trading/preview", failed_response.json()["detail"])
+        detail = str(failed_response.json()["detail"])
+        self.assertTrue(
+            "/api/imports/trading/preview" in detail or "请先完成文件预览并确认列头映射" in detail
+        )
 
         response = self.client.get(
             "/api/algo/trading/range-max-amount",

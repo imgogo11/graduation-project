@@ -70,10 +70,6 @@ class ImportRun(Base):
             "owner_user_id",
             "dataset_name",
             unique=True,
-            sqlite_where=text(
-                "owner_user_id IS NOT NULL AND deleted_at IS NULL AND status IN ('running', 'completed') "
-                "AND source_type = 'upload' AND source_name = 'user.upload'"
-            ),
             postgresql_where=text(
                 "owner_user_id IS NOT NULL AND deleted_at IS NULL AND status IN ('running', 'completed') "
                 "AND source_type = 'upload' AND source_name = 'user.upload'"
@@ -179,4 +175,14 @@ class TradingRecord(Base):
     close: Mapped[Decimal] = mapped_column(Numeric(18, 4))
     volume: Mapped[Decimal] = mapped_column(Numeric(20, 4))
     amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    turnover: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    benchmark_close: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    pe_ttm: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    pb: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    roe: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    asset_liability_ratio: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    revenue_yoy: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    net_profit_yoy: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    valuation_as_of: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    fundamental_report_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 

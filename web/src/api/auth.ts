@@ -32,10 +32,14 @@ export function fetchCurrentUser() {
   return getJson<UserRead>("/api/auth/me");
 }
 
-export async function fetchAdminUsers(query?: string) {
+export async function fetchAdminUsers(params: { query?: string; userId?: number } = {}) {
+  const { query, userId } = params;
   const payload = await getJson<AdminManagedUserRead[] | AdminManagedUserRead | null>(
     "/api/admin/users",
-    query ? { query } : undefined
+    {
+      ...(query ? { query } : {}),
+      ...(userId !== undefined ? { user_id: userId } : {}),
+    }
   );
   return ensureArray(payload);
 }

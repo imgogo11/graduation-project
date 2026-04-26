@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models import ImportRun
+from app.models import AuditLog, ImportRun
 from app.models import User, utc_now
 
 
@@ -23,10 +23,13 @@ class UserRepository:
         *,
         role: str | None = None,
         query: str | None = None,
+        user_id: int | None = None,
     ) -> list[User]:
         stmt = select(User)
         if role is not None:
             stmt = stmt.where(User.role == role)
+        if user_id is not None:
+            stmt = stmt.where(User.id == user_id)
         if query:
             stmt = stmt.where(User.username.ilike(f"%{query}%"))
         stmt = stmt.order_by(User.created_at.desc(), User.id.desc())
@@ -76,5 +79,10 @@ class UserRepository:
 
     @staticmethod
     def delete_user(session: Session, user: User) -> None:
+        session.execute(
+            update(AuditLog)
+            .where(AuditLog.actor_user_id == user.id)
+            .values(actor_user_id=None)
+        )
         session.delete(user)
         session.commit()

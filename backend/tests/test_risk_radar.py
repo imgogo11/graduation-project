@@ -1,26 +1,25 @@
 ﻿from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import sys
-import time
 import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_DIR.parent
-ARTIFACT_ROOT = REPO_ROOT / "data" / "processed" / "test_artifacts" / "risk_radar"
-ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+TESTS_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
-from app.core.database import create_all_tables, reset_database_state
+from app.core.database import get_session_factory
 from app.algo_bridge.adapters.trading import load_algo_module
 from app.services.algo_indexes import algo_index_manager
 from app.services.auth import AuthService
+from postgres_integration import PostgresIntegrationTestCase
 
 
 def build_risk_radar_frame() -> pd.DataFrame:
@@ -86,6 +85,7 @@ def build_risk_radar_frame() -> pd.DataFrame:
                     "close": round(close_value, 4),
                     "volume": round(volume_value, 4),
                     "amount": round(close_value * volume_value, 4),
+                    "turnover": round((volume_value / 100000.0) * 100.0, 6),
                 }
             )
             previous_close = close_value
@@ -93,7 +93,9 @@ def build_risk_radar_frame() -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values(["stock_code", "trade_date"]).reset_index(drop=True)
 
 
-class RiskRadarRouteTests(unittest.TestCase):
+class RiskRadarRouteTests(PostgresIntegrationTestCase):
+    jwt_secret = "risk-radar-test-secret"
+
     @classmethod
     def setUpClass(cls) -> None:
         try:
@@ -102,25 +104,7 @@ class RiskRadarRouteTests(unittest.TestCase):
             raise unittest.SkipTest(str(exc)) from exc
 
     def setUp(self) -> None:
-        self.temp_path = ARTIFACT_ROOT / f"case_{time.time_ns()}"
-        self.temp_path.mkdir(parents=True, exist_ok=True)
-        self.db_path = self.temp_path / "risk-radar.sqlite3"
-        self.previous_env = {
-            "DATABASE_URL": os.environ.get("DATABASE_URL"),
-            "APP_ENV": os.environ.get("APP_ENV"),
-            "JWT_SECRET": os.environ.get("JWT_SECRET"),
-            "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME"),
-            "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD"),
-            "UPLOAD_ROOT": os.environ.get("UPLOAD_ROOT"),
-        }
-        os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{self.db_path.resolve().as_posix()}"
-        os.environ["APP_ENV"] = "test"
-        os.environ["JWT_SECRET"] = "risk-radar-test-secret"
-        os.environ["ADMIN_USERNAME"] = "admin"
-        os.environ["ADMIN_PASSWORD"] = "admin123456"
-        os.environ["UPLOAD_ROOT"] = str((self.temp_path / "uploads").resolve())
-        reset_database_state()
-        create_all_tables()
+        super().setUp()
         session = get_session_factory()()
         try:
             AuthService().ensure_admin_user(session, username="admin", password="admin123456")
@@ -136,12 +120,7 @@ class RiskRadarRouteTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
-        reset_database_state()
-        for key, value in self.previous_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        super().tearDown()
 
     def test_algo_index_status_and_rebuild_flow(self) -> None:
         status_response = self.client.get(
@@ -202,7 +181,7 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertEqual(events_response.status_code, 200, events_response.text)
         events = events_response.json()["rows"]
         self.assertTrue(events)
-        self.assertIn("amplitude_ratio20", events[0])
+        self.assertIn("rvol20", events[0])
         self.assertTrue(events[0]["cause_label"])
 
         calendar_response = self.client.get(
@@ -225,9 +204,9 @@ class RiskRadarRouteTests(unittest.TestCase):
         )
         self.assertEqual(context_response.status_code, 200, context_response.text)
         context = context_response.json()
-        self.assertEqual(len(context["volume_windows"]), 3)
-        self.assertEqual(len(context["amplitude_windows"]), 3)
-        self.assertEqual(len(context["distribution_changes"]), 2)
+        self.assertEqual(len(context["window_groups"]), 3)
+        self.assertEqual(len(context["window_groups"][0]["windows"]), 3)
+        self.assertEqual(len(context["distribution_changes"]), 3)
         self.assertIsNotNone(context["local_amount_peak"])
 
     def test_legacy_snapshot_is_rebuilt_instead_of_normalized(self) -> None:
@@ -289,7 +268,7 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertTrue(stocks_response.json()["rows"])
 
         rewritten_payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        self.assertEqual(rewritten_payload["schema_version"], "stock-v2")
+        self.assertEqual(rewritten_payload["schema_version"], "stock-v3")
         self.assertIn("stock_code", rewritten_payload["events"][0])
         self.assertNotIn("instrument_code", rewritten_payload["events"][0])
 
@@ -312,7 +291,7 @@ class RiskRadarRouteTests(unittest.TestCase):
         self.assertEqual(preview_response.status_code, 200, preview_response.text)
         preview_body = preview_response.json()
         mapping_overrides: dict[str, str] = {}
-        for optional_column in ("stock_name", "amount"):
+        for optional_column in ("stock_name", "amount", "turnover"):
             selected = preview_body.get("suggested_mapping", {}).get(optional_column)
             if selected:
                 mapping_overrides[optional_column] = selected
@@ -330,10 +309,6 @@ class RiskRadarRouteTests(unittest.TestCase):
 
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
-
-
-from app.core.database import get_session_factory  # noqa: E402
-
 
 if __name__ == "__main__":
     unittest.main()

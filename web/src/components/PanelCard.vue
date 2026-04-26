@@ -9,7 +9,9 @@ defineProps<{
   <section class="panel-card">
     <header class="panel-card__header">
       <div>
-        <h2 class="panel-card__title">{{ title }}</h2>
+        <h2 class="panel-card__title">
+          <slot name="title">{{ title }}</slot>
+        </h2>
         <p v-if="description" class="panel-card__description">{{ description }}</p>
       </div>
       <div v-if="$slots.actions" class="panel-card__actions">

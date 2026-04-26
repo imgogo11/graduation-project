@@ -122,7 +122,7 @@ class TradingRepository:
         session: Session,
         *,
         import_run_id: int,
-    ) -> list[tuple[str, str | None, date, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal | None]]:
+    ) -> list[tuple[str, str | None, date, Decimal, Decimal, Decimal, Decimal, Decimal, Decimal | None, Decimal | None]]:
         stmt = (
             select(
                 TradingRecord.stock_code,
@@ -134,6 +134,7 @@ class TradingRepository:
                 TradingRecord.close,
                 TradingRecord.volume,
                 TradingRecord.amount,
+                TradingRecord.turnover,
             )
             .where(TradingRecord.import_run_id == import_run_id)
             .order_by(TradingRecord.stock_code.asc(), TradingRecord.trade_date.asc())
@@ -150,7 +151,8 @@ class TradingRepository:
                 close_value,
                 volume_value,
                 amount_value,
+                turnover_value,
             )
-            for stock_code, stock_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in rows
+            for stock_code, stock_name, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value, turnover_value in rows
         ]
 

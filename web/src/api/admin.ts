@@ -1,11 +1,12 @@
 import { getJson } from "@/api/http";
-import type { AdminOverviewRead, AdminRunMonitorRead, AuditLogListRead, AuditLogStatsRead } from "@/api/types";
+import type { AdminAssetOverviewRead, AdminRunMonitorRead, AuditLogListRead, AuditLogStatsRead } from "@/api/types";
 
 
 export interface AuditLogListParams {
   page?: number;
   page_size?: number;
   actor_user_id?: number;
+  actor_username?: string;
   category?: string;
   success?: boolean;
   start_at?: string;
@@ -14,6 +15,7 @@ export interface AuditLogListParams {
 
 export interface AuditLogStatsParams {
   actor_user_id?: number;
+  actor_username?: string;
   category?: string;
   success?: boolean;
   start_at?: string;
@@ -22,10 +24,6 @@ export interface AuditLogStatsParams {
 
 export interface AdminRunsMonitorParams {
   limit?: number;
-}
-
-export function fetchAdminOverview() {
-  return getJson<AdminOverviewRead>("/api/admin/overview");
 }
 
 export function fetchAdminAuditLogs(params: AuditLogListParams = {}) {
@@ -38,4 +36,8 @@ export function fetchAdminAuditLogStats(params: AuditLogStatsParams = {}) {
 
 export function fetchAdminRunsMonitor(params: AdminRunsMonitorParams = {}) {
   return getJson<AdminRunMonitorRead>("/api/admin/runs/monitor", params);
+}
+
+export function fetchAdminAssetOverview() {
+  return getJson<AdminAssetOverviewRead>("/api/admin/assets/overview");
 }

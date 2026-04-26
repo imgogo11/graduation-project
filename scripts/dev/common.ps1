@@ -145,6 +145,105 @@ function Invoke-InProjectRoot {
     }
 }
 
+function Get-CachedCMakeGeneratorArgs {
+    param(
+        [Parameter(Mandatory)]
+        [string]$BuildDirectoryRelativePath
+    )
+
+    $cachePath = Resolve-ProjectPath (Join-Path $BuildDirectoryRelativePath "CMakeCache.txt")
+    if (-not (Test-Path -LiteralPath $cachePath)) {
+        return $null
+    }
+
+    $generator = $null
+    $platform = $null
+    $toolset = $null
+
+    foreach ($line in Get-Content -LiteralPath $cachePath -Encoding utf8) {
+        if ($line -match '^CMAKE_GENERATOR:INTERNAL=(.+)$') {
+            $generator = $matches[1].Trim()
+            continue
+        }
+        if ($line -match '^CMAKE_GENERATOR_PLATFORM:INTERNAL=(.*)$') {
+            $platform = $matches[1].Trim()
+            continue
+        }
+        if ($line -match '^CMAKE_GENERATOR_TOOLSET:INTERNAL=(.*)$') {
+            $toolset = $matches[1].Trim()
+            continue
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($generator)) {
+        return $null
+    }
+
+    $args = @("-G", $generator)
+    if (-not [string]::IsNullOrWhiteSpace($platform)) {
+        $args += @("-A", $platform)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($toolset)) {
+        $args += @("-T", $toolset)
+    }
+
+    return $args
+}
+
+function Get-CMakeGeneratorArgs {
+    param(
+        [string]$BuildDirectoryRelativePath = "algo-module/build"
+    )
+
+    $mingwMake = Get-Command mingw32-make -ErrorAction SilentlyContinue
+    $gxx = Get-Command g++ -ErrorAction SilentlyContinue
+    if ($mingwMake -and $gxx) {
+        return @("-G", "MinGW Makefiles")
+    }
+
+    throw @"
+MinGW toolchain was not detected for CMake.
+This project is configured to use MinGW Makefiles.
+Please make sure both commands are available in PowerShell and reopen the terminal:
+1) g++
+2) mingw32-make
+"@
+}
+
+function Test-VisualStudioGenerator {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$GeneratorArgs
+    )
+
+    return (
+        $GeneratorArgs.Count -ge 2 -and
+        $GeneratorArgs[0] -eq "-G" -and
+        $GeneratorArgs[1] -eq "Visual Studio 17 2022"
+    )
+}
+
+function Test-CMakeGeneratorArgsEqual {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Left,
+        [Parameter(Mandatory)]
+        [string[]]$Right
+    )
+
+    if ($Left.Count -ne $Right.Count) {
+        return $false
+    }
+
+    for ($index = 0; $index -lt $Left.Count; $index += 1) {
+        if ($Left[$index] -ne $Right[$index]) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 function Start-PostgresContainer {
     Invoke-InProjectRoot {
         docker compose -f deploy/docker-compose.yml up -d postgres

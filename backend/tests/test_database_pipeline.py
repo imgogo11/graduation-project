@@ -2,10 +2,8 @@
 
 from datetime import timedelta
 from io import BytesIO
-import os
 from pathlib import Path
 import sys
-import time
 import unittest
 
 from fastapi.testclient import TestClient
@@ -13,15 +11,16 @@ import pandas as pd
 from sqlalchemy import select
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_DIR.parent
-ARTIFACT_ROOT = REPO_ROOT / "data" / "processed" / "test_artifacts" / "database_pipeline"
-ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+TESTS_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
-from app.core.database import create_all_tables, get_session_factory, reset_database_state
+from app.core.database import get_session_factory
 from app.models import ImportMappingTemplate, ImportPreviewSession, ImportRun, utc_now
 from app.services.auth import AuthService
+from postgres_integration import PostgresIntegrationTestCase
 
 
 def build_trading_frame() -> pd.DataFrame:
@@ -89,27 +88,40 @@ def build_turnover_frame() -> pd.DataFrame:
     return frame
 
 
-class DatabasePipelineTests(unittest.TestCase):
+def build_numeric_stock_code_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "stock_code": "000001",
+                "stock_name": "平安银行",
+                "trade_date": "2024-01-02",
+                "open": 9.39,
+                "high": 9.42,
+                "low": 9.21,
+                "close": 9.21,
+                "volume": 115836645,
+                "amount": 1075742252,
+            },
+            {
+                "stock_code": "000001",
+                "stock_name": "平安银行",
+                "trade_date": "2024-01-03",
+                "open": 9.19,
+                "high": 9.22,
+                "low": 9.15,
+                "close": 9.20,
+                "volume": 73361031,
+                "amount": 673673614,
+            },
+        ]
+    )
+
+
+class DatabasePipelineTests(PostgresIntegrationTestCase):
+    jwt_secret = "unit-test-secret"
+
     def setUp(self) -> None:
-        self.temp_path = ARTIFACT_ROOT / f"case_{time.time_ns()}"
-        self.temp_path.mkdir(parents=True, exist_ok=True)
-        self.db_path = self.temp_path / "pipeline.sqlite3"
-        self.previous_env = {
-            "DATABASE_URL": os.environ.get("DATABASE_URL"),
-            "APP_ENV": os.environ.get("APP_ENV"),
-            "JWT_SECRET": os.environ.get("JWT_SECRET"),
-            "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME"),
-            "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD"),
-            "UPLOAD_ROOT": os.environ.get("UPLOAD_ROOT"),
-        }
-        os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{self.db_path.resolve().as_posix()}"
-        os.environ["APP_ENV"] = "test"
-        os.environ["JWT_SECRET"] = "unit-test-secret"
-        os.environ["ADMIN_USERNAME"] = "admin"
-        os.environ["ADMIN_PASSWORD"] = "admin123456"
-        os.environ["UPLOAD_ROOT"] = str((self.temp_path / "uploads").resolve())
-        reset_database_state()
-        create_all_tables()
+        super().setUp()
         session = get_session_factory()()
         try:
             AuthService().ensure_admin_user(session, username="admin", password="admin123456")
@@ -122,12 +134,7 @@ class DatabasePipelineTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
-        reset_database_state()
-        for key, value in self.previous_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        super().tearDown()
 
     def test_auth_endpoints_and_protected_routes(self) -> None:
         response = self.client.post(
@@ -414,7 +421,10 @@ class DatabasePipelineTests(unittest.TestCase):
             headers=self._auth_headers(token),
         )
         self.assertEqual(old_alias_response.status_code, 400)
-        self.assertIn("/api/imports/trading/preview", old_alias_response.json()["detail"])
+        old_alias_detail = str(old_alias_response.json()["detail"])
+        self.assertTrue(
+            "/api/imports/trading/preview" in old_alias_detail or "请先完成文件预览并确认列头映射" in old_alias_detail
+        )
 
         old_alias_preview = self._preview_csv(token=token, dataset_name="old_alias_columns", frame=old_alias_frame)
         self.assertFalse(old_alias_preview["can_auto_commit"])
@@ -495,6 +505,45 @@ class DatabasePipelineTests(unittest.TestCase):
         finally:
             session.close()
 
+    def test_numeric_stock_codes_keep_leading_zero_in_preview_and_commit(self) -> None:
+        token = self._register_and_login("leading_zero_user", "password123")
+        frame = build_numeric_stock_code_frame()
+
+        preview = self._preview_csv(
+            token=token,
+            dataset_name="leading_zero_preview",
+            frame=frame,
+        )
+        self.assertEqual(preview["suggested_mapping"]["stock_code"], "stock_code")
+        self.assertNotIn("stock_code", preview["required_issue_columns"])
+        self.assertTrue(preview["can_auto_commit"])
+
+        run = self._upload_csv(
+            token=token,
+            dataset_name="leading_zero_commit",
+            frame=frame,
+        )
+
+        records = self.client.get(
+            "/api/trading/records",
+            params={"import_run_id": run["id"], "stock_code": "000001"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(records.status_code, 200, records.text)
+        record_rows = records.json()
+        self.assertEqual(len(record_rows), 2)
+        self.assertTrue(all(item["stock_code"] == "000001" for item in record_rows))
+
+        stocks = self.client.get(
+            "/api/trading/stocks",
+            params={"import_run_id": run["id"]},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(stocks.status_code, 200, stocks.text)
+        stock_rows = stocks.json()
+        self.assertEqual(len(stock_rows), 1)
+        self.assertEqual(stock_rows[0]["stock_code"], "000001")
+
     def test_failed_uploads_are_hidden_allow_name_reuse_and_block_data_access(self) -> None:
         token = self._register_and_login("failed_upload_user", "password123")
         invalid_frame = build_trading_frame().drop(columns=["stock_code"])
@@ -512,7 +561,10 @@ class DatabasePipelineTests(unittest.TestCase):
             headers=self._auth_headers(token),
         )
         self.assertEqual(failed_response.status_code, 400)
-        self.assertIn("/api/imports/trading/preview", failed_response.json()["detail"])
+        detail = str(failed_response.json()["detail"])
+        self.assertTrue(
+            "/api/imports/trading/preview" in detail or "请先完成文件预览并确认列头映射" in detail
+        )
 
         runs_after_failure = self.client.get("/api/imports/runs", headers=self._auth_headers(token))
         self.assertEqual(runs_after_failure.status_code, 200)

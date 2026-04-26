@@ -35,10 +35,11 @@ def _get_target_user_or_404(session: Session, *, user_id: int) -> User:
 @router.get("", response_model=list[AdminManagedUserRead])
 def list_admin_users(
     query: str | None = None,
+    user_id: int | None = None,
     current_admin: User = Depends(get_current_admin_user),
     session: Session = Depends(get_db_session),
 ) -> list[AdminManagedUserRead]:
-    return service.list_managed_users(session, query=query)
+    return service.list_managed_users(session, query=query, user_id=user_id)
 
 
 @router.patch("/{user_id}", response_model=AdminManagedUserRead)

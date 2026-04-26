@@ -23,8 +23,18 @@ class AdminUserDeleteBlockedError(ValueError):
 class AdminUserService:
     USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]{3,32}$")
 
-    def list_managed_users(self, session, *, query: str | None = None) -> list[AdminManagedUserRead]:
-        users = UserRepository.list_users(session, query=(query or "").strip() or None)
+    def list_managed_users(
+        self,
+        session,
+        *,
+        query: str | None = None,
+        user_id: int | None = None,
+    ) -> list[AdminManagedUserRead]:
+        users = UserRepository.list_users(
+            session,
+            query=(query or "").strip() or None,
+            user_id=user_id,
+        )
         owner_ids_with_data = UserRepository.list_owner_ids_with_import_runs(
             session,
             user_ids=[user.id for user in users],

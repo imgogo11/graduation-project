@@ -2,5 +2,6 @@
 # Generated from pyproject.toml by backend/scripts/export_requirements.py
 # Do not edit manually.
 
+locust>=2.29,<3.0
 matplotlib>=3.9,<4.0
 psutil>=6.0,<7.0

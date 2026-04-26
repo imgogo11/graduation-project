@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -84,6 +84,62 @@ class AdminRunMonitorRead(BaseModel):
     pending_indexes: int
     failed_indexes: int
     rows: list[AdminRunMonitorRowRead]
+
+
+class AdminAssetSummaryRead(BaseModel):
+    owner_count: int
+    unique_stock_count: int
+    largest_dataset_records: int
+    median_dataset_records: float
+    first_trade_date: date | None
+    last_trade_date: date | None
+    latest_imported_at: datetime | None
+
+
+class AdminAssetGrowthPointRead(BaseModel):
+    month: str
+    cumulative_datasets: int
+    cumulative_records: int
+
+
+class AdminAssetDailyGrowthPointRead(BaseModel):
+    day: date
+    cumulative_datasets: int
+    cumulative_records: int
+
+
+class AdminAssetSizeBucketRead(BaseModel):
+    bucket_label: str
+    dataset_count: int
+    record_count: int
+
+
+class AdminAssetOwnerRowRead(BaseModel):
+    owner_user_id: int
+    owner_username: str | None
+    dataset_count: int
+    record_count: int
+    record_share_ratio: float
+    avg_records_per_dataset: float
+    latest_completed_at: datetime | None
+
+
+class AdminAssetTopDatasetRead(BaseModel):
+    run_id: int
+    display_id: int
+    dataset_name: str
+    owner_username: str | None
+    record_count: int
+    completed_at: datetime | None
+
+
+class AdminAssetOverviewRead(BaseModel):
+    summary: AdminAssetSummaryRead
+    growth: list[AdminAssetGrowthPointRead]
+    growth_daily: list[AdminAssetDailyGrowthPointRead]
+    size_buckets: list[AdminAssetSizeBucketRead]
+    owner_rows: list[AdminAssetOwnerRowRead]
+    top_datasets: list[AdminAssetTopDatasetRead]
 
 
 AdminOverviewRead.model_rebuild()

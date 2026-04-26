@@ -37,7 +37,7 @@ async function submit() {
       password: form.password,
     });
     auth.applySession(response);
-    await router.replace(response.user.role === "admin" ? "/admin/overview" : "/workbench");
+    await router.replace(response.user.role === "admin" ? "/admin/assets" : "/workbench");
   } catch (err) {
     error.value = getErrorMessage(err);
   } finally {

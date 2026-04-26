@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 
 import type { EChartsOption } from "echarts";
 import { NAlert, NButton, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag } from "naive-ui";
+import { useRoute } from "vue-router";
 
 import { fetchTradingJointAnomalyRanking, fetchTradingSummary } from "@/api/analysis";
 import { fetchImportRuns, fetchImportStats } from "@/api/imports";
@@ -19,6 +20,7 @@ import { fetchTradingRangeKthVolume, fetchTradingRangeMaxAmount, fetchTradingSto
 import type {
   AlgoIndexStatusRead,
   ImportRunRead,
+  TradingDataContractRead,
   TradingJointAnomalyRankingRead,
   TradingRangeKthVolumeRead,
   TradingRangeMaxAmountRead,
@@ -49,9 +51,21 @@ import {
 } from "@/utils/displayText";
 
 
+const ALGO_SECTION_TABS = [
+  {
+    key: "risk",
+    label: "风险雷达",
+  },
+  {
+    key: "algorithms",
+    label: "算法查询与事件上下文",
+  },
+] as const;
+
 const runtime = useRuntimeStore();
 const auth = useAuthStore();
 const datasetContext = useDatasetContextStore();
+const route = useRoute();
 const loadingRuns = ref(false);
 const loadingAlgo = ref(false);
 const loadingRadar = ref(false);
@@ -106,14 +120,14 @@ const severityOptions = [
 const importRunOptions = computed(() =>
   importRuns.value.map((item) => ({ label: `#${item.display_id} · ${item.dataset_name}`, value: item.id }))
 );
+const currentImportRun = computed(() => importRuns.value.find((item) => item.id === filters.importRunId) ?? null);
 const stockOptions = computed(() =>
   stocks.value.map((item) => ({ label: `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`, value: item.stock_code }))
 );
-const contextPills = computed(() => [
-  `当前批次：${filters.importRunId ? `#${importRuns.value.find((item) => item.id === filters.importRunId)?.display_id ?? filters.importRunId}` : "--"}`,
-  `当前股票：${filters.stockCode || "--"}`,
-  `日期范围：${filters.startDate || "起始不限"} ~ ${filters.endDate || "结束不限"}`,
-]);
+const currentSection = computed<(typeof ALGO_SECTION_TABS)[number]["key"]>(() =>
+  route.path.startsWith("/algo-radar/algorithms") ? "algorithms" : "risk"
+);
+const isRiskSection = computed(() => currentSection.value === "risk");
 const algoCards = computed(() => [
   {
     label: "当前范围记录",
@@ -142,6 +156,15 @@ const algoCards = computed(() => [
     tone: "neutral" as const,
   },
 ]);
+const activeRadarEvent = computed(() => {
+  if (eventContext.value?.event) {
+    return eventContext.value.event;
+  }
+  if (!selectedEventKey.value) {
+    return events.value[0] ?? null;
+  }
+  return events.value.find((item) => `${item.stock_code}:${item.trade_date}` === selectedEventKey.value) ?? events.value[0] ?? null;
+});
 const radarCards = computed(() => [
   {
     label: "索引状态",
@@ -162,9 +185,12 @@ const radarCards = computed(() => [
     tone: "berry" as const,
   },
   {
-    label: "严重事件",
-    value: String(overview.value?.critical_count ?? 0),
-    hint: overview.value ? `${overview.value.high_count} 个高 / ${overview.value.medium_count} 个中` : "等待雷达结果",
+    label: "中心联合分位",
+    value: activeRadarEvent.value ? formatNumberish(activeRadarEvent.value.joint_percentile, 4) : "--",
+    hint:
+      activeRadarEvent.value
+        ? `${activeRadarEvent.value.stock_code} · ${formatDate(activeRadarEvent.value.trade_date)}`
+        : "等待事件数据",
     tone: "neutral" as const,
   },
 ]);
@@ -181,6 +207,7 @@ const algoScopeKey = computed(
       filters.jointTopNInput,
       filters.severity,
       filters.topNInput,
+      currentSection.value,
     ].join("|")
 );
 const jointPager = useTablePager(jointRows, {
@@ -199,32 +226,50 @@ const stockProfilePager = useTablePager(stockProfiles, {
   resetTriggers: [algoScopeKey],
 });
 
-const radarScatterOption = computed<EChartsOption | null>(() => {
-  if (!events.value.length) {
+const radarIndicators = [
+  { key: "score_return_shock", label: "收益冲击", max: 100 },
+  { key: "score_vol_regime", label: "波动体制切换", max: 100 },
+  { key: "score_range_shock", label: "真实波幅冲击", max: 100 },
+  { key: "score_rvol20", label: "成交活跃(RVOL20)", max: 100 },
+  { key: "score_drawdown_pressure", label: "回撤压力", max: 100 },
+] as const;
+
+const radarMissingAxes = computed(() => {
+  const event = activeRadarEvent.value;
+  if (!event) {
+    return [];
+  }
+  return radarIndicators
+    .filter((item) => event[item.key] === null || event[item.key] === undefined)
+    .map((item) => item.label);
+});
+
+const radarOption = computed<EChartsOption | null>(() => {
+  const event = activeRadarEvent.value;
+  if (!event || radarMissingAxes.value.length) {
     return null;
   }
-
-  const buildSeries = (rows: TradingRiskRadarEventRead[], name: string, color: string) => ({
-    type: "scatter" as const,
-    name,
-    itemStyle: { color },
-    data: rows.map((item) => ({
-      value: [toNumber(item.return_z20), toNumber(item.volume_ratio20), toNumber(item.amplitude_ratio20), item.stock_code, item.trade_date],
-      symbolSize: 10 + Math.min(toNumber(item.amplitude_ratio20) * 6, 26),
-    })),
-  });
 
   return {
     backgroundColor: "transparent",
     tooltip: { trigger: "item" },
-    legend: { top: 0 },
-    grid: { left: 64, right: 32, top: 56, bottom: 48, containLabel: true },
-    xAxis: { type: "value", name: TECHNICAL_TEXT.returnZ20 },
-    yAxis: { type: "value", name: TECHNICAL_TEXT.volumeRatio20 },
+    radar: {
+      indicator: radarIndicators.map((item) => ({ name: `${item.label}(0-100)`, max: item.max })),
+      radius: "70%",
+      splitNumber: 5,
+    },
     series: [
-      buildSeries(events.value.filter((item) => item.severity === "medium"), "中", "#f2b233"),
-      buildSeries(events.value.filter((item) => item.severity === "high"), "高", "#f28c28"),
-      buildSeries(events.value.filter((item) => item.severity === "critical"), "严重", "#b9524f"),
+      {
+        type: "radar",
+        name: `${event.stock_code} ${formatDate(event.trade_date)}`,
+        data: [
+          {
+            value: radarIndicators.map((item) => toNumber(event[item.key])),
+            name: `${event.stock_code} ${formatDate(event.trade_date)}`,
+            areaStyle: { opacity: 0.25 },
+          },
+        ],
+      },
     ],
   };
 });
@@ -292,10 +337,22 @@ function resolveAlgoPanelResult<T>(result: PromiseSettledResult<T>, key: Exclude
 function syncContext() {
   datasetContext.applyScope({
     importRunId: filters.importRunId,
+    importRunDisplayId: currentImportRun.value?.display_id,
     stockCode: filters.stockCode,
     startDate: filters.startDate,
     endDate: filters.endDate,
   });
+}
+
+function formatModuleSummary(contract: TradingDataContractRead | null | undefined) {
+  if (!contract) {
+    return "";
+  }
+  const parts = [`频率：${contract.data_frequency}`, `字段：${contract.required_fields.join("、") || "--"}`];
+  if (contract.missing_fields.length) {
+    parts.push(`缺字段：${contract.missing_fields.join("、")}`);
+  }
+  return parts.join(" · ");
 }
 
 async function loadStocks() {
@@ -423,6 +480,9 @@ async function loadRadar() {
     selectedEventKey.value = "";
     indexStatus.value = await fetchAlgoIndexStatus({ import_run_id: filters.importRunId });
     if (!indexStatus.value.is_ready) {
+      if (indexStatus.value.status === "failed" && indexStatus.value.last_error) {
+        error.value = `算法雷达不可用：${indexStatus.value.last_error}`;
+      }
       return;
     }
 
@@ -526,23 +586,13 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <section class="page__header">
-      <div>
-        <div class="page__eyebrow">算法雷达 / 风险检测</div>
-        <h2 class="page__title">在同一页面执行区间算法、联合异常排名与风险雷达分析</h2>
-        <p class="page__subtitle">基于统一筛选范围查看算法结果、风险分布与事件上下文。</p>
-      </div>
-      <div class="page__actions">
-        <n-button :loading="loadingRuns || loadingAlgo || loadingRadar" @click="loadRuns(filters.importRunId)">刷新算法</n-button>
-        <n-button type="primary" :loading="loadingAlgo || loadingRadar" @click="applyScope">应用范围</n-button>
-        <n-button v-if="auth.isAdmin.value" secondary :loading="rebuilding" @click="handleRebuild">重建索引</n-button>
-      </div>
-    </section>
-    <PanelCard title="共享上下文" description="算法页与数据集管理、分析中心共享同一批次范围">
-      <div class="toolbar-row"><span v-for="item in contextPills" :key="item" class="pill">{{ item }}</span></div>
-    </PanelCard>
-
-    <PanelCard title="算法筛选器" description="区间算法、联合异常和风险雷达共用同一套范围选择">
+    <PanelCard title="算法筛选器">
+      <template #actions>
+        <div class="toolbar-row">
+          <n-button type="primary" :loading="loadingAlgo || loadingRadar" @click="applyScope">应用范围</n-button>
+          <n-button v-if="auth.isAdmin.value" secondary :loading="rebuilding" @click="handleRebuild">重建索引</n-button>
+        </div>
+      </template>
       <n-form class="form-grid" label-placement="top">
         <n-form-item label="批次">
           <n-select v-model:value="filters.importRunId" :options="importRunOptions" @update:value="handleRunChange" />
@@ -574,12 +624,12 @@ onMounted(() => {
       </n-form>
     </PanelCard>
 
-    <section class="page__grid page__grid--stats">
+    <section v-if="!isRiskSection" class="page__grid page__grid--stats">
       <StatCard v-for="item in algoCards" :key="item.label" :label="item.label" :value="item.value" :hint="item.hint" :tone="item.tone" />
     </section>
 
-    <section class="page__grid page__grid--double">
-      <PanelCard title="区间算法结果" description="当前股票范围内的最大成交额和第 K 大成交量查询">
+    <section v-if="!isRiskSection" class="page__grid page__grid--double">
+      <PanelCard title="区间算法结果">
         <div v-if="algoSummary" class="detail-grid">
           <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ algoSummary.stock_code }}{{ algoSummary.stock_name ? ` · ${algoSummary.stock_name}` : "" }}</div></div>
           <div class="detail-grid__item"><span class="detail-grid__label">时间范围</span><div class="detail-grid__value">{{ algoSummary.start_date }} ~ {{ algoSummary.end_date }}</div></div>
@@ -593,9 +643,9 @@ onMounted(() => {
         <EmptyState v-else-if="!algoSummary" title="暂无区间算法结果" description="选择批次和股票后，这里会展示区间算法查询结果" />
       </PanelCard>
 
-      <PanelCard title="联合异常排名" description="按联合百分位对异常记录排序">
+      <PanelCard title="联合异常排名">
         <n-alert v-if="panelNotices.joint" type="warning" :show-icon="true">{{ panelNotices.joint }}</n-alert>
-        <div v-else-if="jointPager.total.value" class="data-table-wrap">
+      <div v-else-if="jointPager.total.value" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">
             <thead><tr><th>股票</th><th>日期</th><th>严重</th><th>日收益</th><th>{{ TECHNICAL_TEXT.returnZ20 }}</th><th>{{ TECHNICAL_TEXT.volumeRatio20 }}</th><th>联合百分位</th></tr></thead>
             <tbody>
@@ -622,35 +672,40 @@ onMounted(() => {
             />
           </div>
         </div>
+        <div v-if="jointAnomalies" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(jointAnomalies) }}</div>
         <EmptyState v-else title="暂无联合异常结果" description="执行算法后，这里会展示跨股票的联合异常排名" />
       </PanelCard>
     </section>
 
-    <section class="page__grid page__grid--stats">
+    <section v-if="isRiskSection" class="page__grid page__grid--stats">
       <StatCard v-for="item in radarCards" :key="item.label" :label="item.label" :value="item.value" :hint="item.hint" :tone="item.tone" />
     </section>
 
-    <section class="page__grid page__grid--double">
-      <PanelCard title="风险雷达散点" :description="`${TECHNICAL_TEXT.returnZ20}、${TECHNICAL_TEXT.volumeRatio20}与振幅共同构成异常雷达视图`">
-        <EChartPanel v-if="radarScatterOption" :option="radarScatterOption" :loading="loadingRadar" />
+    <section v-if="isRiskSection" class="page__grid page__grid--double">
+      <PanelCard title="风险雷达（5轴分位）">
+        <n-alert v-if="radarMissingAxes.length" type="warning" :show-icon="true" style="margin-bottom: 12px;">
+          当前事件样本不足，缺失轴：{{ radarMissingAxes.join("、") }}。请扩大日期范围或使用更长历史数据。
+        </n-alert>
+        <EChartPanel v-if="radarOption" :option="radarOption" :loading="loadingRadar" />
+        <div v-if="overview" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(overview) }}</div>
         <EmptyState
           v-else
           :title="indexStatus?.is_ready === false ? '索引尚未就绪' : '暂无风险雷达数据'"
-          :description="indexStatus?.is_ready === false ? '请先完成算法索引构建后再查看风险雷达。' : '执行算法后，这里会展示风险雷达散点图。'"
+          :description="indexStatus?.is_ready === false ? '请先完成算法索引构建后再查看风险雷达。' : '执行算法后，这里会展示 5 轴雷达图。'"
         />
       </PanelCard>
 
-      <PanelCard title="风险日历" description="查看各交易日的事件数量与最大百分位">
+      <PanelCard title="风险日历">
         <EChartPanel v-if="calendarChartOption" :option="calendarChartOption" :loading="loadingRadar" />
         <EmptyState v-else title="暂无风险日历" description="执行算法后，这里会展示事件时间分布" />
       </PanelCard>
     </section>
 
-    <section class="page__grid page__grid--double">
-      <PanelCard title="风险事件列表" description="点击任意事件可查看其上下文窗口">
-        <div v-if="eventPager.total.value" class="data-table-wrap">
+    <section v-if="isRiskSection" class="page__grid page__grid--double">
+      <PanelCard title="风险事件列表">
+      <div v-if="eventPager.total.value" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">
-            <thead><tr><th>股票</th><th>日期</th><th>严重</th><th>原因</th><th>{{ TECHNICAL_TEXT.returnZ20 }}</th><th>{{ TECHNICAL_TEXT.volumeRatio20 }}</th><th>{{ TECHNICAL_TEXT.amplitudeRatio20 }}</th></tr></thead>
+            <thead><tr><th>股票</th><th>日期</th><th>严重</th><th>原因</th><th>收益冲击</th><th>波动体制</th><th>波幅冲击</th><th>RVOL20</th><th>回撤压力</th><th>联合分位</th></tr></thead>
             <tbody>
               <tr
                 v-for="item in eventPager.pagedRows.value"
@@ -662,9 +717,12 @@ onMounted(() => {
                 <td>{{ formatDate(item.trade_date) }}</td>
                 <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ formatSeverityText(item.severity) }}</n-tag></td>
                 <td>{{ item.cause_label }}</td>
-                <td>{{ formatNumberish(item.return_z20, 4) }}</td>
-                <td>{{ formatNumberish(item.volume_ratio20, 4) }}</td>
-                <td>{{ formatNumberish(item.amplitude_ratio20, 4) }}</td>
+                <td>{{ formatNumberish(item.return_shock, 4) }}</td>
+                <td>{{ formatNumberish(item.vol_regime, 4) }}</td>
+                <td>{{ formatNumberish(item.range_shock, 4) }}</td>
+                <td>{{ formatNumberish(item.rvol20, 4) }}</td>
+                <td>{{ formatNumberish(item.drawdown_pressure, 4) }}</td>
+                <td>{{ formatNumberish(item.joint_percentile, 4) }}</td>
               </tr>
             </tbody>
           </n-table>
@@ -683,8 +741,8 @@ onMounted(() => {
         <EmptyState v-else title="暂无风险事件" description="索引准备好后，这里会返回当前范围内的异常事件" />
       </PanelCard>
 
-      <PanelCard title="高风险股票画像" description="按事件数和最大联合百分位聚合受影响股票">
-        <div v-if="stockProfilePager.total.value" class="data-table-wrap">
+      <PanelCard title="高风险股票画像">
+      <div v-if="stockProfilePager.total.value" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">
             <thead><tr><th>股票</th><th>事件数</th><th>严重</th><th>高</th><th>中</th><th>最大百分位</th><th>最近事件</th></tr></thead>
             <tbody>
@@ -715,7 +773,7 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <PanelCard title="事件上下文" description="展示当前选中异常事件的窗口统计与局部峰值">
+    <PanelCard v-if="!isRiskSection" title="事件上下文">
       <n-alert v-if="panelNotices.eventContext" type="warning" :show-icon="true">{{ panelNotices.eventContext }}</n-alert>
       <div v-else-if="eventContext" class="page__grid page__grid--double">
         <div class="detail-grid">
@@ -726,13 +784,16 @@ onMounted(() => {
         </div>
 
         <div class="detail-grid">
-          <div v-for="item in eventContext.volume_windows" :key="`volume-${item.window_days}`" class="detail-grid__item">
-            <span class="detail-grid__label">成交量窗口 {{ item.window_days }} 日</span>
-            <div class="detail-grid__value">当前值 {{ formatCompact(item.current_value, 2) }} / P95 {{ formatCompact(item.p95, 2) }}</div>
-          </div>
-          <div v-for="item in eventContext.amplitude_windows" :key="`amp-${item.window_days}`" class="detail-grid__item">
-            <span class="detail-grid__label">振幅窗口 {{ item.window_days }} 日</span>
-            <div class="detail-grid__value">当前值 {{ formatNumberish(item.current_value, 4) }} / P95 {{ formatNumberish(item.p95, 4) }}</div>
+          <div
+            v-for="group in eventContext.window_groups"
+            :key="group.metric"
+            class="detail-grid__item"
+            style="grid-column: 1 / -1;"
+          >
+            <span class="detail-grid__label">{{ group.label }}</span>
+            <div class="detail-grid__value">
+              {{ group.windows.map((item) => `${item.window_days}日: 当前 ${formatNumberish(item.current_value, 4)} / P95 ${formatNumberish(item.p95, 4)}`).join(" ｜ ") }}
+            </div>
           </div>
         </div>
       </div>
@@ -760,6 +821,7 @@ onMounted(() => {
       </div>
 
       <EmptyState v-else-if="!eventContext" title="暂无事件上下文" description="点击左侧任一风险事件后，这里会展示对应的窗口统计" />
+      <div v-if="eventContext" class="inline-hint" style="margin-top: 12px;">{{ formatModuleSummary(eventContext) }}</div>
     </PanelCard>
   </div>
 </template>

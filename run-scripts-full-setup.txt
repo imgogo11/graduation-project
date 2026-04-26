@@ -1,35 +1,38 @@
-# 如果根目录 .env 不存在，就从模板生成
+# 如果 .env 不存在则从模板创建
 if (-not (Test-Path .env)) { Copy-Item .env.template .env }
 
-# 同步 Python 依赖并确保 .venv 可用
+# 同步 Python 依赖并确保 .venv 就绪
 uv sync
 
 # 安装前端依赖
 npm.cmd --prefix web install
 
-# 生成 algo-module 的 CMake 构建目录
-cmake -S algo-module -B algo-module/build "-DPython_EXECUTABLE=$(Resolve-Path .\.venv\Scripts\python.exe)" "-Dpybind11_DIR=$(uv run python -m pybind11 --cmakedir)"
+# 生成 algo-module 的 CMake 构建配置（使用 CMake 默认自动发现）
+cmake -S algo-module -B algo-module/build
 
 # 编译 algo-module
-cmake --build algo-module/build
+cmake --build algo-module/build --config Release
 
 # 启动 PostgreSQL 容器
 docker compose -f deploy/docker-compose.yml up -d postgres
 
-# 执行数据库迁移
+# 执行数据库迁移到最新版本
 uv run python -m alembic -c backend/alembic.ini upgrade head
 
 # 初始化管理员账号
 uv run python backend/scripts/init_admin.py
 
-# 导入示例交易数据
-uv run python backend/scripts/import_data.py
+# 启动 PostgreSQL 容器
+docker compose -f deploy/docker-compose.yml up -d postgres
 
-# 初始化完成后，启动 FastAPI 后端
+# 启动后端服务
 uv run uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8200 --reload
 
-# 初始化完成后，在另一个终端切换到前端目录
+# 切换到前端目录
 cd web
 
-# 初始化完成后，在另一个终端按根目录 .env 启动前端
+# 启动前端开发服务
 npm run dev
+
+# 在默认浏览器打开前端地址
+Start-Process http://127.0.0.1:4173/

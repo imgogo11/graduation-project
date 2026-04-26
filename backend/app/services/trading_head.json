@@ -1,5 +1,5 @@
 {
-  "version": "trading-head-v3",
+  "version": "trading-head-v4",
   "required_columns": [
     "stock_code",
     "trade_date",
@@ -10,78 +10,150 @@
     "volume"
   ],
   "optional_columns": [
-    "stock_name",
+    "benchmark_close",
     "amount",
-    "turnover"
+    "turnover",
+    "pe_ttm",
+    "pb",
+    "roe",
+    "asset_liability_ratio",
+    "revenue_yoy",
+    "net_profit_yoy",
+    "valuation_as_of",
+    "fundamental_report_date",
+    "stock_name"
   ],
   "columns": {
     "stock_code": {
       "aliases": {
-        "strong": ["stock_code", "股票代码", "证券代码", "ts_code"],
-        "medium": ["instrument_code", "sec_code", "ticker", "security_code"],
+        "strong": ["stock_code", "ts_code"],
+        "medium": ["instrument_code", "security_code", "ticker", "sec_code"],
         "weak": ["code", "symbol"]
-      }
-    },
-    "stock_name": {
-      "aliases": {
-        "strong": ["stock_name", "股票名称", "证券名称"],
-        "medium": ["instrument_name", "security_name"],
-        "weak": ["name"]
       }
     },
     "trade_date": {
       "aliases": {
-        "strong": ["trade_date", "交易日期", "交易日", "日期"],
-        "medium": ["trading_date", "trade_day"],
-        "weak": ["date"]
+        "strong": ["trade_date", "trading_date", "trade_day", "date"],
+        "medium": ["dt", "trade_dt"],
+        "weak": []
       }
     },
     "open": {
       "aliases": {
-        "strong": ["open", "开盘价", "开盘"],
-        "medium": ["open_price"],
+        "strong": ["open", "open_price"],
+        "medium": ["o"],
         "weak": []
       }
     },
     "high": {
       "aliases": {
-        "strong": ["high", "最高价", "最高"],
-        "medium": ["high_price"],
+        "strong": ["high", "high_price"],
+        "medium": ["h"],
         "weak": []
       }
     },
     "low": {
       "aliases": {
-        "strong": ["low", "最低价", "最低"],
-        "medium": ["low_price"],
+        "strong": ["low", "low_price"],
+        "medium": ["l"],
         "weak": []
       }
     },
     "close": {
       "aliases": {
-        "strong": ["close", "收盘价", "收盘"],
-        "medium": ["close_price"],
+        "strong": ["close", "close_price"],
+        "medium": ["c", "last_price"],
         "weak": []
       }
     },
     "volume": {
       "aliases": {
-        "strong": ["volume", "成交量", "成交股数", "成交手"],
+        "strong": ["volume"],
         "medium": ["trade_volume", "total_volume", "vol"],
         "weak": []
       }
     },
+    "benchmark_close": {
+      "aliases": {
+        "strong": ["benchmark_close", "index_close"],
+        "medium": ["benchmark_price", "benchmark_close_price", "market_close"],
+        "weak": ["close_benchmark"]
+      }
+    },
     "amount": {
       "aliases": {
-        "strong": ["amount", "成交额", "成交金额"],
-        "medium": ["trade_amount", "total_amount"],
+        "strong": ["amount"],
+        "medium": ["trade_amount", "total_amount", "turnover_value"],
         "weak": []
       }
     },
     "turnover": {
       "aliases": {
-        "strong": ["turnover", "换手率", "换手"],
+        "strong": ["turnover"],
         "medium": ["turnover_rate", "turnover_ratio", "turnoverratio", "volume_turnover"],
+        "weak": []
+      }
+    },
+    "pe_ttm": {
+      "aliases": {
+        "strong": ["pe_ttm", "pe_ttm_ratio"],
+        "medium": ["pettm", "pe_ratio_ttm", "pe"],
+        "weak": ["price_earnings_ttm"]
+      }
+    },
+    "pb": {
+      "aliases": {
+        "strong": ["pb", "pb_ratio"],
+        "medium": ["price_to_book", "pb_lf"],
+        "weak": []
+      }
+    },
+    "roe": {
+      "aliases": {
+        "strong": ["roe", "roe_avg"],
+        "medium": ["return_on_equity"],
+        "weak": []
+      }
+    },
+    "asset_liability_ratio": {
+      "aliases": {
+        "strong": ["asset_liability_ratio", "debt_to_asset_ratio"],
+        "medium": ["liability_to_asset", "liabilitytoasset"],
+        "weak": []
+      }
+    },
+    "revenue_yoy": {
+      "aliases": {
+        "strong": ["revenue_yoy", "revenue_growth_yoy"],
+        "medium": ["yoy_revenue", "operating_revenue_yoy"],
+        "weak": []
+      }
+    },
+    "net_profit_yoy": {
+      "aliases": {
+        "strong": ["net_profit_yoy", "net_profit_growth_yoy"],
+        "medium": ["yoy_net_profit", "yoyni", "yoypni"],
+        "weak": []
+      }
+    },
+    "valuation_as_of": {
+      "aliases": {
+        "strong": ["valuation_as_of", "valuation_time", "valuation_date"],
+        "medium": ["snapshot_time", "quote_time"],
+        "weak": []
+      }
+    },
+    "fundamental_report_date": {
+      "aliases": {
+        "strong": ["fundamental_report_date", "report_date", "financial_report_date"],
+        "medium": ["statement_date", "fiscal_date"],
+        "weak": []
+      }
+    },
+    "stock_name": {
+      "aliases": {
+        "strong": ["stock_name", "security_name", "instrument_name"],
+        "medium": ["name", "stock_full_name"],
         "weak": []
       }
     }

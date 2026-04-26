@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.api.deps import get_current_admin_user
 from app.models import User
 from app.schemas.admin_dashboard import (
+    AdminAssetOverviewRead,
     AdminOverviewRead,
     AdminRunMonitorRead,
     AuditLogListRead,
@@ -31,6 +32,7 @@ def list_audit_logs(
     page: int = 1,
     page_size: int = 20,
     actor_user_id: int | None = None,
+    actor_username: str | None = None,
     category: str | None = None,
     success: bool | None = None,
     start_at: datetime | None = None,
@@ -41,6 +43,7 @@ def list_audit_logs(
         page=page,
         page_size=page_size,
         actor_user_id=actor_user_id,
+        actor_username=actor_username,
         category=category,
         success=success,
         start_at=start_at,
@@ -51,6 +54,7 @@ def list_audit_logs(
 @router.get("/audit-logs/stats", response_model=AuditLogStatsRead)
 def get_audit_log_stats(
     actor_user_id: int | None = None,
+    actor_username: str | None = None,
     category: str | None = None,
     success: bool | None = None,
     start_at: datetime | None = None,
@@ -59,6 +63,7 @@ def get_audit_log_stats(
 ) -> AuditLogStatsRead:
     return audit_log_service.build_stats(
         actor_user_id=actor_user_id,
+        actor_username=actor_username,
         category=category,
         success=success,
         start_at=start_at,
@@ -72,3 +77,10 @@ def get_admin_runs_monitor(
     _current_admin: User = Depends(get_current_admin_user),
 ) -> AdminRunMonitorRead:
     return admin_dashboard_service.build_runs_monitor(limit=limit)
+
+
+@router.get("/assets/overview", response_model=AdminAssetOverviewRead)
+def get_admin_assets_overview(
+    _current_admin: User = Depends(get_current_admin_user),
+) -> AdminAssetOverviewRead:
+    return admin_dashboard_service.build_asset_overview()

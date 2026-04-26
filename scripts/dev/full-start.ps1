@@ -21,6 +21,15 @@ $pybind11CMakeDir = Invoke-InProjectRoot {
     & $pythonExe -m pybind11 --cmakedir
 }
 $pybind11CMakeDir = "$pybind11CMakeDir".Trim()
+$buildDirectoryRelativePath = "algo-module/build"
+$cmakeGeneratorArgs = Get-CMakeGeneratorArgs -BuildDirectoryRelativePath $buildDirectoryRelativePath
+$cachedGeneratorArgs = Get-CachedCMakeGeneratorArgs -BuildDirectoryRelativePath $buildDirectoryRelativePath
+$cmakeConfigureArgs = @()
+if ($cachedGeneratorArgs -and -not (Test-CMakeGeneratorArgsEqual -Left $cachedGeneratorArgs -Right $cmakeGeneratorArgs)) {
+    Write-Host ("Existing CMake cache uses a different generator ({0}); reconfiguring with --fresh." -f ($cachedGeneratorArgs -join " "))
+    $cmakeConfigureArgs += "--fresh"
+}
+Write-Host ("Using CMake generator: {0}" -f ($cmakeGeneratorArgs -join " "))
 
 $webDirectory = Resolve-ProjectPath "web"
 Push-Location $webDirectory
@@ -32,11 +41,16 @@ finally {
 }
 
 Invoke-InProjectRoot {
-    cmake -S algo-module -B algo-module/build "-DPython_EXECUTABLE=$pythonExe" "-Dpybind11_DIR=$pybind11CMakeDir"
+    & cmake @cmakeConfigureArgs -S algo-module -B algo-module/build @cmakeGeneratorArgs "-DPython_EXECUTABLE=$pythonExe" "-Dpybind11_DIR=$pybind11CMakeDir"
 }
 
 Invoke-InProjectRoot {
-    cmake --build algo-module/build
+    if (Test-VisualStudioGenerator -GeneratorArgs $cmakeGeneratorArgs) {
+        & cmake --build algo-module/build --config Release
+    }
+    else {
+        & cmake --build algo-module/build
+    }
 }
 
 Start-PostgresContainer
@@ -47,10 +61,6 @@ Invoke-InProjectRoot {
 
 Invoke-InProjectRoot {
     & $pythonExe backend/scripts/init_admin.py
-}
-
-Invoke-InProjectRoot {
-    & $pythonExe backend/scripts/import_data.py
 }
 
 $frontendHost = Get-EnvValue -Name "VITE_DEV_HOST" -Default "127.0.0.1"

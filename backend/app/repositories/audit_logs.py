@@ -13,6 +13,7 @@ from app.models import AuditLog
 @dataclass(slots=True)
 class AuditLogQuery:
     actor_user_id: int | None = None
+    actor_username: str | None = None
     category: str | None = None
     success: bool | None = None
     start_at: datetime | None = None
@@ -118,6 +119,8 @@ class AuditLogRepository:
             return stmt
         if query.actor_user_id is not None:
             stmt = stmt.where(AuditLog.actor_user_id == query.actor_user_id)
+        if query.actor_username:
+            stmt = stmt.where(AuditLog.actor_username_snapshot.ilike(f"%{query.actor_username}%"))
         if query.category:
             stmt = stmt.where(AuditLog.category == query.category)
         if query.success is not None:

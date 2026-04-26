@@ -16,6 +16,7 @@ from app.schemas.trading import (
     TradingIndicatorSeriesRead,
     TradingQualityReportRead,
     TradingRiskMetricsRead,
+    TradingSnapshotRead,
     TradingScopeComparisonRead,
     TradingSummaryRead,
 )
@@ -132,6 +133,28 @@ def get_trading_risk_metrics(
     _ensure_run_visible(session, import_run_id=import_run_id, current_user=current_user)
     try:
         return service.build_risk_metrics(
+            session,
+            import_run_id=import_run_id,
+            stock_code=stock_code,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _handle_analysis_error(exc) from exc
+
+
+@router.get("/snapshot", response_model=TradingSnapshotRead)
+def get_trading_snapshot(
+    import_run_id: int,
+    stock_code: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_db_session),
+) -> TradingSnapshotRead:
+    _ensure_run_visible(session, import_run_id=import_run_id, current_user=current_user)
+    try:
+        return service.build_snapshot(
             session,
             import_run_id=import_run_id,
             stock_code=stock_code,

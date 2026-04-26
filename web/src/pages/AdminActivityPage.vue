@@ -7,7 +7,6 @@ import { fetchAdminAuditLogStats, fetchAdminAuditLogs } from "@/api/admin";
 import type { AuditLogListRead, AuditLogStatsRead } from "@/api/types";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
-import StatCard from "@/components/StatCard.vue";
 import { useRuntimeStore } from "@/stores/runtime";
 import { formatAuditCategory, formatAuditEvent } from "@/utils/audit";
 import { formatDateTime, getErrorMessage } from "@/utils/format";
@@ -25,7 +24,7 @@ const stats = ref<AuditLogStatsRead | null>(null);
 const page = ref(1);
 const pageSize = ref(20);
 
-const actorUserIdInput = ref("");
+const actorUsernameInput = ref("");
 const category = ref("");
 const successFilter = ref<SuccessFilter>("all");
 const startAt = ref("");
@@ -44,10 +43,7 @@ const categoryOptions = computed(() =>
   }))
 );
 
-const actorUserId = computed(() => {
-  const parsed = Number(actorUserIdInput.value.trim());
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
-});
+const actorUsernameKeyword = computed(() => actorUsernameInput.value.trim() || undefined);
 
 const successValue = computed(() => {
   if (successFilter.value === "success") {
@@ -59,30 +55,22 @@ const successValue = computed(() => {
   return undefined;
 });
 
-const cards = computed(() => [
+const statPills = computed(() => [
   {
     label: "总事件数",
     value: String(stats.value?.total_events ?? 0),
-    hint: "当前筛选条件下审计事件总量",
-    tone: "teal" as const,
   },
   {
     label: "成功事件",
     value: String(stats.value?.success_events ?? 0),
-    hint: "状态码 < 400 的事件数",
-    tone: "neutral" as const,
   },
   {
     label: "失败事件",
     value: String(stats.value?.failed_events ?? 0),
-    hint: "状态码 >= 400 的事件数",
-    tone: "berry" as const,
   },
   {
     label: "今日事件",
     value: String(stats.value?.today_events ?? 0),
-    hint: "当天累计审计事件",
-    tone: "orange" as const,
   },
 ]);
 
@@ -96,7 +84,7 @@ function toIso(value: string) {
 
 async function loadStats() {
   stats.value = await fetchAdminAuditLogStats({
-    actor_user_id: actorUserId.value,
+    actor_username: actorUsernameKeyword.value,
     category: category.value || undefined,
     success: successValue.value,
     start_at: toIso(startAt.value),
@@ -108,7 +96,7 @@ async function loadLogs() {
   logs.value = await fetchAdminAuditLogs({
     page: page.value,
     page_size: pageSize.value,
-    actor_user_id: actorUserId.value,
+    actor_username: actorUsernameKeyword.value,
     category: category.value || undefined,
     success: successValue.value,
     start_at: toIso(startAt.value),
@@ -152,53 +140,20 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <section class="page__header">
-      <div>
-        <div class="page__eyebrow">管理后台 / 调用记录</div>
-        <h2 class="page__title">用户调用记录</h2>
-        <p class="page__subtitle">汇总关键操作与分析访问审计日志，用于管理员追踪系统后台行为</p>
-      </div>
-      <div class="page__actions">
-        <n-button type="primary" :loading="loading" @click="refreshPage">刷新</n-button>
-      </div>
-    </section>
-    <section class="page__grid page__grid--stats">
-      <StatCard
-        v-for="item in cards"
-        :key="item.label"
-        :label="item.label"
-        :value="item.value"
-        :hint="item.hint"
-        :tone="item.tone"
-      />
-    </section>
-
-    <PanelCard title="审计统计概览" description="帮助定位近期异常操作与失败趋势">
-      <div v-if="stats" class="detail-grid">
-        <div class="detail-grid__item">
-          <span class="detail-grid__label">总事件数</span>
-          <div class="detail-grid__value">{{ stats.total_events }}</div>
-        </div>
-        <div class="detail-grid__item">
-          <span class="detail-grid__label">成功事件</span>
-          <div class="detail-grid__value">{{ stats.success_events }}</div>
-        </div>
-        <div class="detail-grid__item">
-          <span class="detail-grid__label">失败事件</span>
-          <div class="detail-grid__value">{{ stats.failed_events }}</div>
-        </div>
-        <div class="detail-grid__item">
-          <span class="detail-grid__label">活跃操作</span>
-          <div class="detail-grid__value">{{ stats.unique_actor_count }}</div>
-        </div>
-      </div>
-      <EmptyState v-else title="暂无审计统计" description="点击刷新后展示审计统计结果" />
-    </PanelCard>
-
-    <PanelCard title="审计日志" description="支持按用户、分类、结果和时间范围筛选">
+    <PanelCard title="调用记录">
+      <template #title>
+        <span class="activity-card__title">
+          <span>调用记录</span>
+          <span class="activity-card__stats">
+            <span v-for="item in statPills" :key="item.label" class="pill activity-card__pill">
+              {{ item.label }} {{ item.value }}
+            </span>
+          </span>
+        </span>
+      </template>
       <n-form class="filter-form filter-form--audit" style="margin-bottom: 16px;">
-        <n-form-item label="用户ID">
-          <n-input v-model:value="actorUserIdInput" clearable placeholder="输入用户ID" />
+        <n-form-item label="执行人">
+          <n-input v-model:value="actorUsernameInput" clearable placeholder="输入执行人用户名" />
         </n-form-item>
         <n-form-item label="分类">
           <n-select
@@ -280,5 +235,26 @@ onMounted(() => {
     </PanelCard>
   </div>
 </template>
+
+<style scoped>
+.activity-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.activity-card__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activity-card__pill {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+</style>
 
 

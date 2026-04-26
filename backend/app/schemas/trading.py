@@ -6,6 +6,15 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class TradingDataContractRead(BaseModel):
+    required_fields: list[str] = Field(default_factory=list)
+    missing_fields: list[str] = Field(default_factory=list)
+    data_frequency: str = "daily"
+    evidence_refs: list[str] = Field(default_factory=list)
+    benchmark_code: str | None = None
+    benchmark_source: str | None = None
+
+
 class ImportRunRead(BaseModel):
     id: int
     display_id: int
@@ -125,6 +134,16 @@ class TradingRecordRead(BaseModel):
     close: Decimal
     volume: Decimal
     amount: Decimal | None
+    turnover: Decimal | None
+    benchmark_close: Decimal | None
+    pe_ttm: Decimal | None
+    pb: Decimal | None
+    roe: Decimal | None
+    asset_liability_ratio: Decimal | None
+    revenue_yoy: Decimal | None
+    net_profit_yoy: Decimal | None
+    valuation_as_of: datetime | None
+    fundamental_report_date: date | None
 
 
 class TradingRangeMaxMatchRead(BaseModel):
@@ -167,7 +186,7 @@ class TradingJointAnomalyRowRead(BaseModel):
     severity: str
 
 
-class TradingJointAnomalyRankingRead(BaseModel):
+class TradingJointAnomalyRankingRead(TradingDataContractRead):
     import_run_id: int
     lookback_window: int
     rows: list[TradingJointAnomalyRowRead]
@@ -194,6 +213,18 @@ class TradingRiskRadarEventRead(BaseModel):
     return_z20: float
     volume_ratio20: float
     amplitude_ratio20: float
+    return_shock: float
+    vol_regime: float | None
+    range_shock: float
+    rvol20: float
+    liquidity_shock: float
+    drawdown_pressure: float
+    score_return_shock: float | None
+    score_vol_regime: float | None
+    score_range_shock: float | None
+    score_rvol20: float | None
+    score_liquidity_shock: float | None
+    score_drawdown_pressure: float | None
     historical_dominated_count: int
     historical_sample_count: int
     joint_percentile: float
@@ -225,7 +256,7 @@ class TradingRiskRadarCalendarDayRead(BaseModel):
     max_joint_percentile: float
 
 
-class TradingRiskRadarOverviewRead(BaseModel):
+class TradingRiskRadarOverviewRead(TradingDataContractRead):
     import_run_id: int
     lookback_window: int
     generated_at: datetime | None
@@ -238,17 +269,17 @@ class TradingRiskRadarOverviewRead(BaseModel):
     busiest_dates: list[TradingRiskRadarCalendarDayRead]
 
 
-class TradingRiskRadarEventListRead(BaseModel):
+class TradingRiskRadarEventListRead(TradingDataContractRead):
     import_run_id: int
     rows: list[TradingRiskRadarEventRead]
 
 
-class TradingRiskRadarStockListRead(BaseModel):
+class TradingRiskRadarStockListRead(TradingDataContractRead):
     import_run_id: int
     rows: list[TradingStockRiskProfileRead]
 
 
-class TradingRiskRadarCalendarRead(BaseModel):
+class TradingRiskRadarCalendarRead(TradingDataContractRead):
     import_run_id: int
     rows: list[TradingRiskRadarCalendarDayRead]
 
@@ -262,6 +293,12 @@ class TradingRiskRadarWindowRead(BaseModel):
     p95: float
     top_1: float
     top_3: float | None
+
+
+class TradingRiskRadarWindowGroupRead(BaseModel):
+    metric: str
+    label: str
+    windows: list[TradingRiskRadarWindowRead]
 
 
 class TradingRiskRadarDistributionChangeRead(BaseModel):
@@ -282,16 +319,15 @@ class TradingRiskRadarAmountPeakRead(BaseModel):
     peak_dates: list[TradingRangeMaxMatchRead]
 
 
-class TradingRiskRadarEventContextRead(BaseModel):
+class TradingRiskRadarEventContextRead(TradingDataContractRead):
     import_run_id: int
     event: TradingRiskRadarEventRead
-    volume_windows: list[TradingRiskRadarWindowRead]
-    amplitude_windows: list[TradingRiskRadarWindowRead]
+    window_groups: list[TradingRiskRadarWindowGroupRead]
     distribution_changes: list[TradingRiskRadarDistributionChangeRead]
     local_amount_peak: TradingRiskRadarAmountPeakRead | None
 
 
-class TradingSummaryRead(BaseModel):
+class TradingSummaryRead(TradingDataContractRead):
     import_run_id: int
     stock_code: str | None
     stock_name: str | None
@@ -309,7 +345,7 @@ class TradingSummaryRead(BaseModel):
     average_amplitude: float
 
 
-class TradingQualityReportRead(BaseModel):
+class TradingQualityReportRead(TradingDataContractRead):
     import_run_id: int
     stock_code: str | None
     stock_name: str | None
@@ -332,33 +368,46 @@ class TradingIndicatorPointRead(BaseModel):
     close: float
     volume: float
     amount: float | None
+    turnover: float | None
     daily_return: float | None
+    log_return: float | None
     cumulative_return: float | None
     ma5: float | None
     ma10: float | None
     ma20: float | None
+    ma60: float | None
     ema12: float | None
     ema26: float | None
     macd: float | None
     macd_signal: float | None
     macd_histogram: float | None
+    bias20: float | None
     rsi14: float | None
+    roc20: float | None
+    obv: float | None
     bollinger_mid: float | None
     bollinger_upper: float | None
     bollinger_lower: float | None
+    bandwidth: float | None
     atr14: float | None
+    natr14: float | None
+    hv20: float | None
+    rvol20: float | None
+    turnover_z20: float | None
+    illiq20: float | None
 
 
-class TradingIndicatorSeriesRead(BaseModel):
+class TradingIndicatorSeriesRead(TradingDataContractRead):
     import_run_id: int
     stock_code: str
     stock_name: str | None
     start_date: date
     end_date: date
     points: list[TradingIndicatorPointRead]
+    notices: list[str] = Field(default_factory=list)
 
 
-class TradingRiskMetricsRead(BaseModel):
+class TradingRiskMetricsRead(TradingDataContractRead):
     import_run_id: int
     stock_code: str
     stock_name: str | None
@@ -373,6 +422,13 @@ class TradingRiskMetricsRead(BaseModel):
     average_amplitude: float
     max_daily_gain: float | None
     max_daily_loss: float | None
+    beta60: float | None
+    downside_volatility: float | None
+    hv20: float | None
+    rvol20: float | None
+    turnover_z20: float | None
+    illiq20: float | None
+    notices: list[str] = Field(default_factory=list)
 
 
 class TradingAnomalyRead(BaseModel):
@@ -385,7 +441,7 @@ class TradingAnomalyRead(BaseModel):
     description: str
 
 
-class TradingAnomalyReportRead(BaseModel):
+class TradingAnomalyReportRead(TradingDataContractRead):
     import_run_id: int
     stock_code: str
     stock_name: str | None
@@ -408,7 +464,7 @@ class TradingCrossSectionRowRead(BaseModel):
     latest_close: float
 
 
-class TradingCrossSectionRead(BaseModel):
+class TradingCrossSectionRead(TradingDataContractRead):
     import_run_id: int
     metric: str
     start_date: date
@@ -416,7 +472,7 @@ class TradingCrossSectionRead(BaseModel):
     rows: list[TradingCrossSectionRowRead]
 
 
-class TradingCorrelationMatrixRead(BaseModel):
+class TradingCorrelationMatrixRead(TradingDataContractRead):
     import_run_id: int
     start_date: date
     end_date: date
@@ -479,13 +535,27 @@ class TradingMismatchSampleRead(BaseModel):
     target_values: TradingComparisonValueRead
 
 
-class TradingScopeComparisonRead(BaseModel):
+class TradingScopeComparisonRead(TradingDataContractRead):
     base_scope: TradingComparisonScopeRead
     target_scope: TradingComparisonScopeRead
     stock_overlap: TradingStockOverlapRead
     record_overlap: TradingRecordOverlapRead
     mismatch_summary: TradingMismatchSummaryRead
     mismatch_samples: list[TradingMismatchSampleRead]
+
+
+class TradingSnapshotRead(TradingDataContractRead):
+    import_run_id: int
+    stock_code: str
+    stock_name: str | None
+    valuation_as_of: datetime | None
+    fundamental_report_date: date | None
+    pe_ttm: float | None
+    pb: float | None
+    roe: float | None
+    asset_liability_ratio: float | None
+    revenue_yoy: float | None
+    net_profit_yoy: float | None
 
 
 

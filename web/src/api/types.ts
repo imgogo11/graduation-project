@@ -1,5 +1,14 @@
 ﻿export type NumericLike = string | number | null;
 
+export interface TradingDataContractRead {
+  required_fields: string[];
+  missing_fields: string[];
+  data_frequency: string;
+  evidence_refs: string[];
+  benchmark_code: string | null;
+  benchmark_source: string | null;
+}
+
 export interface HealthResponse {
   status: string;
   environment: string;
@@ -78,15 +87,6 @@ export interface AuditLogListRead {
   rows: AuditLogRead[];
 }
 
-export interface AdminOverviewMetricRead {
-  total_users: number;
-  active_users: number;
-  total_runs: number;
-  total_records: number;
-  today_events: number;
-  failed_events_24h: number;
-}
-
 export interface AdminRunMonitorRowRead {
   import_run_id: number;
   display_id: number;
@@ -111,10 +111,60 @@ export interface AdminRunMonitorRead {
   rows: AdminRunMonitorRowRead[];
 }
 
-export interface AdminOverviewRead {
-  metrics: AdminOverviewMetricRead;
-  recent_audit_logs: AuditLogRead[];
-  recent_runs: AdminRunMonitorRowRead[];
+export interface AdminAssetSummaryRead {
+  owner_count: number;
+  unique_stock_count: number;
+  largest_dataset_records: number;
+  median_dataset_records: number;
+  first_trade_date: string | null;
+  last_trade_date: string | null;
+  latest_imported_at: string | null;
+}
+
+export interface AdminAssetGrowthPointRead {
+  month: string;
+  cumulative_datasets: number;
+  cumulative_records: number;
+}
+
+export interface AdminAssetDailyGrowthPointRead {
+  day: string;
+  cumulative_datasets: number;
+  cumulative_records: number;
+}
+
+export interface AdminAssetSizeBucketRead {
+  bucket_label: string;
+  dataset_count: number;
+  record_count: number;
+}
+
+export interface AdminAssetOwnerRowRead {
+  owner_user_id: number;
+  owner_username: string | null;
+  dataset_count: number;
+  record_count: number;
+  record_share_ratio: number;
+  avg_records_per_dataset: number;
+  latest_completed_at: string | null;
+}
+
+export interface AdminAssetTopDatasetRead {
+  run_id: number;
+  display_id: number;
+  dataset_name: string;
+  owner_username: string | null;
+  record_count: number;
+  completed_at: string | null;
+}
+
+export interface AdminAssetOverviewRead {
+  summary: AdminAssetSummaryRead;
+  growth: AdminAssetGrowthPointRead[];
+  growth_daily: AdminAssetDailyGrowthPointRead[];
+  size_buckets: AdminAssetSizeBucketRead[];
+  owner_rows: AdminAssetOwnerRowRead[];
+  top_datasets: AdminAssetTopDatasetRead[];
 }
 
 export interface ImportRunRead {
@@ -228,6 +278,16 @@ export interface TradingRecordRead {
   close: NumericLike;
   volume: NumericLike;
   amount: NumericLike;
+  turnover: NumericLike;
+  benchmark_close: NumericLike;
+  pe_ttm: NumericLike;
+  pb: NumericLike;
+  roe: NumericLike;
+  asset_liability_ratio: NumericLike;
+  revenue_yoy: NumericLike;
+  net_profit_yoy: NumericLike;
+  valuation_as_of: string | null;
+  fundamental_report_date: string | null;
 }
 
 export interface TradingRangeMaxMatchRead {
@@ -270,7 +330,7 @@ export interface TradingJointAnomalyRowRead {
   severity: string;
 }
 
-export interface TradingJointAnomalyRankingRead {
+export interface TradingJointAnomalyRankingRead extends TradingDataContractRead {
   import_run_id: number;
   lookback_window: number;
   rows: TradingJointAnomalyRowRead[];
@@ -297,6 +357,18 @@ export interface TradingRiskRadarEventRead {
   return_z20: NumericLike;
   volume_ratio20: NumericLike;
   amplitude_ratio20: NumericLike;
+  return_shock: NumericLike;
+  vol_regime: NumericLike;
+  range_shock: NumericLike;
+  rvol20: NumericLike;
+  liquidity_shock: NumericLike;
+  drawdown_pressure: NumericLike;
+  score_return_shock: NumericLike;
+  score_vol_regime: NumericLike;
+  score_range_shock: NumericLike;
+  score_rvol20: NumericLike;
+  score_liquidity_shock: NumericLike;
+  score_drawdown_pressure: NumericLike;
   historical_dominated_count: number;
   historical_sample_count: number;
   joint_percentile: NumericLike;
@@ -328,7 +400,7 @@ export interface TradingRiskRadarCalendarDayRead {
   max_joint_percentile: NumericLike;
 }
 
-export interface TradingRiskRadarOverviewRead {
+export interface TradingRiskRadarOverviewRead extends TradingDataContractRead {
   import_run_id: number;
   lookback_window: number;
   generated_at: string | null;
@@ -341,17 +413,17 @@ export interface TradingRiskRadarOverviewRead {
   busiest_dates: TradingRiskRadarCalendarDayRead[];
 }
 
-export interface TradingRiskRadarEventListRead {
+export interface TradingRiskRadarEventListRead extends TradingDataContractRead {
   import_run_id: number;
   rows: TradingRiskRadarEventRead[];
 }
 
-export interface TradingRiskRadarStockListRead {
+export interface TradingRiskRadarStockListRead extends TradingDataContractRead {
   import_run_id: number;
   rows: TradingStockRiskProfileRead[];
 }
 
-export interface TradingRiskRadarCalendarRead {
+export interface TradingRiskRadarCalendarRead extends TradingDataContractRead {
   import_run_id: number;
   rows: TradingRiskRadarCalendarDayRead[];
 }
@@ -365,6 +437,12 @@ export interface TradingRiskRadarWindowRead {
   p95: NumericLike;
   top_1: NumericLike;
   top_3: NumericLike;
+}
+
+export interface TradingRiskRadarWindowGroupRead {
+  metric: string;
+  label: string;
+  windows: TradingRiskRadarWindowRead[];
 }
 
 export interface TradingRiskRadarDistributionChangeRead {
@@ -385,16 +463,15 @@ export interface TradingRiskRadarAmountPeakRead {
   peak_dates: TradingRangeMaxMatchRead[];
 }
 
-export interface TradingRiskRadarEventContextRead {
+export interface TradingRiskRadarEventContextRead extends TradingDataContractRead {
   import_run_id: number;
   event: TradingRiskRadarEventRead;
-  volume_windows: TradingRiskRadarWindowRead[];
-  amplitude_windows: TradingRiskRadarWindowRead[];
+  window_groups: TradingRiskRadarWindowGroupRead[];
   distribution_changes: TradingRiskRadarDistributionChangeRead[];
   local_amount_peak: TradingRiskRadarAmountPeakRead | null;
 }
 
-export interface TradingSummaryRead {
+export interface TradingSummaryRead extends TradingDataContractRead {
   import_run_id: number;
   stock_code: string | null;
   stock_name: string | null;
@@ -412,7 +489,7 @@ export interface TradingSummaryRead {
   average_amplitude: NumericLike;
 }
 
-export interface TradingQualityReportRead {
+export interface TradingQualityReportRead extends TradingDataContractRead {
   import_run_id: number;
   stock_code: string | null;
   stock_name: string | null;
@@ -435,33 +512,46 @@ export interface TradingIndicatorPointRead {
   close: NumericLike;
   volume: NumericLike;
   amount: NumericLike;
+  turnover: NumericLike;
   daily_return: NumericLike;
+  log_return: NumericLike;
   cumulative_return: NumericLike;
   ma5: NumericLike;
   ma10: NumericLike;
   ma20: NumericLike;
+  ma60: NumericLike;
   ema12: NumericLike;
   ema26: NumericLike;
   macd: NumericLike;
   macd_signal: NumericLike;
   macd_histogram: NumericLike;
+  bias20: NumericLike;
   rsi14: NumericLike;
+  roc20: NumericLike;
+  obv: NumericLike;
   bollinger_mid: NumericLike;
   bollinger_upper: NumericLike;
   bollinger_lower: NumericLike;
+  bandwidth: NumericLike;
   atr14: NumericLike;
+  natr14: NumericLike;
+  hv20: NumericLike;
+  rvol20: NumericLike;
+  turnover_z20: NumericLike;
+  illiq20: NumericLike;
 }
 
-export interface TradingIndicatorSeriesRead {
+export interface TradingIndicatorSeriesRead extends TradingDataContractRead {
   import_run_id: number;
   stock_code: string;
   stock_name: string | null;
   start_date: string;
   end_date: string;
   points: TradingIndicatorPointRead[];
+  notices: string[];
 }
 
-export interface TradingRiskMetricsRead {
+export interface TradingRiskMetricsRead extends TradingDataContractRead {
   import_run_id: number;
   stock_code: string;
   stock_name: string | null;
@@ -476,6 +566,13 @@ export interface TradingRiskMetricsRead {
   average_amplitude: NumericLike;
   max_daily_gain: NumericLike;
   max_daily_loss: NumericLike;
+  beta60: NumericLike;
+  downside_volatility: NumericLike;
+  hv20: NumericLike;
+  rvol20: NumericLike;
+  turnover_z20: NumericLike;
+  illiq20: NumericLike;
+  notices: string[];
 }
 
 export interface TradingAnomalyRead {
@@ -488,7 +585,7 @@ export interface TradingAnomalyRead {
   description: string;
 }
 
-export interface TradingAnomalyReportRead {
+export interface TradingAnomalyReportRead extends TradingDataContractRead {
   import_run_id: number;
   stock_code: string;
   stock_name: string | null;
@@ -511,7 +608,7 @@ export interface TradingCrossSectionRowRead {
   latest_close: NumericLike;
 }
 
-export interface TradingCrossSectionRead {
+export interface TradingCrossSectionRead extends TradingDataContractRead {
   import_run_id: number;
   metric: string;
   start_date: string;
@@ -519,7 +616,7 @@ export interface TradingCrossSectionRead {
   rows: TradingCrossSectionRowRead[];
 }
 
-export interface TradingCorrelationMatrixRead {
+export interface TradingCorrelationMatrixRead extends TradingDataContractRead {
   import_run_id: number;
   start_date: string;
   end_date: string;
@@ -582,13 +679,27 @@ export interface TradingMismatchSampleRead {
   target_values: TradingComparisonValueRead;
 }
 
-export interface TradingScopeComparisonRead {
+export interface TradingScopeComparisonRead extends TradingDataContractRead {
   base_scope: TradingComparisonScopeRead;
   target_scope: TradingComparisonScopeRead;
   stock_overlap: TradingStockOverlapRead;
   record_overlap: TradingRecordOverlapRead;
   mismatch_summary: TradingMismatchSummaryRead;
   mismatch_samples: TradingMismatchSampleRead[];
+}
+
+export interface TradingSnapshotRead extends TradingDataContractRead {
+  import_run_id: number;
+  stock_code: string;
+  stock_name: string | null;
+  valuation_as_of: string | null;
+  fundamental_report_date: string | null;
+  pe_ttm: NumericLike;
+  pb: NumericLike;
+  roe: NumericLike;
+  asset_liability_ratio: NumericLike;
+  revenue_yoy: NumericLike;
+  net_profit_yoy: NumericLike;
 }
 
 

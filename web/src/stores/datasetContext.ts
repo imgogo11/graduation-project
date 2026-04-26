@@ -3,6 +3,7 @@
 
 interface DatasetContextState {
   importRunId: number | undefined;
+  importRunDisplayId: number | undefined;
   stockCode: string;
   startDate: string;
   endDate: string;
@@ -10,6 +11,7 @@ interface DatasetContextState {
 
 const state = reactive<DatasetContextState>({
   importRunId: undefined,
+  importRunDisplayId: undefined,
   stockCode: "",
   startDate: "",
   endDate: "",
@@ -19,15 +21,35 @@ export function useDatasetContextStore() {
   const hasSelection = computed(() => Boolean(state.importRunId));
 
   function applyScope(payload: Partial<DatasetContextState>) {
-    state.importRunId = payload.importRunId;
-    state.stockCode = payload.stockCode ?? "";
-    state.startDate = payload.startDate ?? "";
-    state.endDate = payload.endDate ?? "";
+    if ("importRunId" in payload) {
+      state.importRunId = payload.importRunId;
+
+      if (payload.importRunId === undefined && !("importRunDisplayId" in payload)) {
+        state.importRunDisplayId = undefined;
+      }
+    }
+
+    if ("importRunDisplayId" in payload) {
+      state.importRunDisplayId = payload.importRunDisplayId;
+    }
+
+    if ("stockCode" in payload) {
+      state.stockCode = payload.stockCode ?? "";
+    }
+
+    if ("startDate" in payload) {
+      state.startDate = payload.startDate ?? "";
+    }
+
+    if ("endDate" in payload) {
+      state.endDate = payload.endDate ?? "";
+    }
   }
 
   function resetScope() {
     applyScope({
       importRunId: undefined,
+      importRunDisplayId: undefined,
       stockCode: "",
       startDate: "",
       endDate: "",

@@ -1,10 +1,4 @@
-# 作用:
-# - 这是数据库初始迁移文件，用来创建数据库优先阶段所需的导入元数据表和股票、电商业务真值表。
-# 关联文件:
-# - 由 backend/alembic/env.py 在 `upgrade head` 时加载执行。
-# - 依赖 backend/app/models/__init__.py 暴露的完整 ORM 元数据。
-# - 与 deploy/docker-compose.yml 中启动的 PostgreSQL 容器配合完成首轮建库。
-#
+﻿# Migration bootstrap for initial schema.
 from __future__ import annotations
 
 from pathlib import Path

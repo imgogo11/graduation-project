@@ -3,11 +3,14 @@
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 import json
 from pathlib import Path
 import shutil
 import threading
 from typing import Any
+import numpy as np
+import pandas as pd
 from pydantic import ValidationError
 
 from app.core.config import get_settings
@@ -32,7 +35,7 @@ from app.schemas.trading import (
 
 
 ALGO_INDEX_METADATA_KEY = "algo_index"
-RISK_RADAR_SNAPSHOT_VERSION = "stock-v2"
+RISK_RADAR_SNAPSHOT_VERSION = "stock-v3"
 ALGO_INDEX_STATUS_PENDING = "pending"
 ALGO_INDEX_STATUS_BUILDING = "building"
 ALGO_INDEX_STATUS_READY = "ready"
@@ -54,17 +57,21 @@ class StockAlgoIndex:
     trade_dates: list[date]
     close_values: list[float]
     volume_values: list[float]
-    amplitude_values: list[float]
+    rvol20_values: list[float]
+    range_shock_values: list[float]
     amount_values: list[float | None]
     volumes_scaled: list[int]
-    amplitudes_scaled: list[int]
+    rvol20_scaled: list[int]
+    range_shock_scaled: list[int]
     amounts_scaled: list[int]
     date_to_index: dict[date, int]
     amount_tree: Any | None
     volume_tree: Any
-    amplitude_tree: Any
+    rvol20_tree: Any
+    range_shock_tree: Any
     volume_tdigest: RangeKthTDigestBlockIndex
-    amplitude_tdigest: RangeKthTDigestBlockIndex
+    signal_scale_divisor: float = 1_000_000.0
+    volume_scale_divisor: float = 10_000.0
 
 
 @dataclass(slots=True)
@@ -143,6 +150,8 @@ class AlgoIndexManager:
                 return cached
         status = self.get_status(import_run_id)
         if status.status != ALGO_INDEX_STATUS_READY:
+            if status.status == ALGO_INDEX_STATUS_FAILED and status.last_error:
+                raise AlgoIndexNotReadyError(f"算法索引构建失败：{status.last_error}")
             raise AlgoIndexNotReadyError(f"算法索引当前状态为 {status.status}，请稍后再试。")
         snapshot_path = self._snapshot_path(import_run_id)
         if not snapshot_path.exists():
@@ -237,9 +246,9 @@ class AlgoIndexManager:
             raise ValueError(f"数据不足分析：风险雷达至少需要 {RISK_RADAR_LOOKBACK_WINDOW} 日历史窗口和有效样本")
 
         dominance_result = query_historical_dominance_3d(
-            [event.return_z20_scaled for event in events],
-            [event.volume_ratio20_scaled for event in events],
-            [event.amplitude_ratio20_scaled for event in events],
+            [event.return_shock_scaled for event in events],
+            [event.rvol20_scaled for event in events],
+            [event.range_shock_scaled for event in events],
         )
 
         event_rows: list[TradingRiskRadarEventRead] = []
@@ -256,17 +265,33 @@ class AlgoIndexManager:
                     stock_name=event.stock_name,
                     trade_date=event.trade_date,
                     daily_return=round(event.daily_return, 6),
-                    return_z20=round(event.return_z20, 6),
-                    volume_ratio20=round(event.volume_ratio20, 6),
-                    amplitude_ratio20=round(event.amplitude_ratio20, 6),
+                    return_z20=round(event.return_shock, 6),
+                    volume_ratio20=round(event.liquidity_shock, 6),
+                    amplitude_ratio20=round(event.range_shock, 6),
+                    return_shock=round(event.return_shock, 6),
+                    vol_regime=round(event.vol_regime, 6) if event.vol_regime is not None else None,
+                    range_shock=round(event.range_shock, 6),
+                    rvol20=round(event.rvol20, 6),
+                    liquidity_shock=round(event.liquidity_shock, 6),
+                    drawdown_pressure=round(event.drawdown_pressure, 6),
+                    score_return_shock=round(event.score_return_shock, 6) if event.score_return_shock is not None else None,
+                    score_vol_regime=round(event.score_vol_regime, 6) if event.score_vol_regime is not None else None,
+                    score_range_shock=round(event.score_range_shock, 6) if event.score_range_shock is not None else None,
+                    score_rvol20=round(event.score_rvol20, 6) if event.score_rvol20 is not None else None,
+                    score_liquidity_shock=round(event.score_liquidity_shock, 6)
+                    if event.score_liquidity_shock is not None
+                    else None,
+                    score_drawdown_pressure=round(event.score_drawdown_pressure, 6)
+                    if event.score_drawdown_pressure is not None
+                    else None,
                     historical_dominated_count=int(dominated_count),
                     historical_sample_count=historical_sample_count,
                     joint_percentile=round(joint_percentile, 6),
                     severity=severity,
                     cause_label=self._cause_label(
-                        return_z20=event.return_z20,
-                        volume_ratio20=event.volume_ratio20,
-                        amplitude_ratio20=event.amplitude_ratio20,
+                        return_shock=event.return_shock,
+                        liquidity_shock=event.rvol20,
+                        range_shock=event.range_shock,
                     ),
                 )
             )
@@ -274,9 +299,9 @@ class AlgoIndexManager:
             key=lambda item: (
                 item.joint_percentile,
                 item.historical_dominated_count,
-                item.return_z20,
-                item.volume_ratio20,
-                item.amplitude_ratio20,
+                item.return_shock,
+                item.rvol20,
+                item.range_shock,
                 item.trade_date.toordinal(),
             ),
             reverse=True,
@@ -311,9 +336,12 @@ class AlgoIndexManager:
             stocks=stocks,
         )
 
-    def _build_stock_indexes(self, rows: list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]) -> dict[str, StockAlgoIndex]:
+    def _build_stock_indexes(
+        self,
+        rows: list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any, Any]],
+    ) -> dict[str, StockAlgoIndex]:
         module = load_algo_module()
-        grouped: dict[str, list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any]]] = {}
+        grouped: dict[str, list[tuple[str, str | None, date, Any, Any, Any, Any, Any, Any, Any]]] = {}
         for row in rows:
             grouped.setdefault(row[0], []).append(row)
 
@@ -322,35 +350,72 @@ class AlgoIndexManager:
             trade_dates: list[date] = []
             close_values: list[float] = []
             volume_values: list[float] = []
-            amplitude_values: list[float] = []
+            rvol20_values: list[float] = []
+            range_shock_values: list[float] = []
             amount_values: list[float | None] = []
             volumes_scaled: list[int] = []
-            amplitudes_scaled: list[int] = []
+            rvol20_scaled: list[int] = []
+            range_shock_scaled: list[int] = []
             amounts_scaled: list[int] = []
             has_amount_data = False
             stock_name = stock_rows[0][1]
+            stock_frame = pd.DataFrame(
+                [
+                    {
+                        "trade_date": trade_date,
+                        "open": float(open_value),
+                        "high": float(high_value),
+                        "low": float(low_value),
+                        "close": float(close_value),
+                        "volume": float(volume_value),
+                        "amount": float(amount_value) if amount_value is not None else math.nan,
+                    }
+                    for (
+                        _,
+                        _,
+                        trade_date,
+                        open_value,
+                        high_value,
+                        low_value,
+                        close_value,
+                        volume_value,
+                        amount_value,
+                        _turnover_value,
+                    ) in stock_rows
+                ]
+            ).sort_values("trade_date").reset_index(drop=True)
+            previous_close = stock_frame["close"].shift(1)
+            true_range = pd.concat(
+                [
+                    stock_frame["high"] - stock_frame["low"],
+                    (stock_frame["high"] - previous_close).abs(),
+                    (stock_frame["low"] - previous_close).abs(),
+                ],
+                axis=1,
+            ).max(axis=1)
+            atr20 = true_range.rolling(window=20, min_periods=20).mean()
+            volume_ma20 = stock_frame["volume"].rolling(window=20, min_periods=20).mean()
+            stock_frame["rvol20"] = stock_frame["volume"] / volume_ma20.replace(0.0, np.nan)
+            stock_frame["range_shock"] = true_range / atr20.replace(0.0, np.nan)
 
-            for _, _, trade_date, open_value, high_value, low_value, close_value, volume_value, amount_value in stock_rows:
-                open_number = float(open_value)
-                high_number = float(high_value)
-                low_number = float(low_value)
-                close_number = float(close_value)
-                volume_number = float(volume_value)
-                amplitude_number = max((high_number - low_number) / open_number, 0.0) if open_number > 0 else 0.0
-
-                trade_dates.append(trade_date)
-                close_values.append(close_number)
-                volume_values.append(volume_number)
-                amplitude_values.append(amplitude_number)
-                volumes_scaled.append(scale_volume(volume_value))
-                amplitudes_scaled.append(scale_signal_metric(amplitude_number))
-                if amount_value is None:
+            for row in stock_frame.itertuples(index=False):
+                trade_dates.append(row.trade_date)
+                close_values.append(float(row.close))
+                volume_values.append(float(row.volume))
+                rvol_value = float(row.rvol20) if pd.notna(row.rvol20) else 0.0
+                range_shock_value = float(row.range_shock) if pd.notna(row.range_shock) else 0.0
+                rvol20_values.append(rvol_value)
+                range_shock_values.append(range_shock_value)
+                volumes_scaled.append(scale_volume(Decimal(str(row.volume))))
+                rvol20_scaled.append(scale_signal_metric(rvol_value))
+                range_shock_scaled.append(scale_signal_metric(range_shock_value))
+                if pd.isna(row.amount):
                     amount_values.append(None)
                     amounts_scaled.append(0)
                 else:
                     has_amount_data = True
-                    amount_values.append(float(amount_value))
-                    amounts_scaled.append(scale_amount(amount_value))
+                    amount_values.append(float(row.amount))
+                    amounts_scaled.append(scale_amount(Decimal(str(row.amount))))
 
             indexes[stock_code] = StockAlgoIndex(
                 stock_code=stock_code,
@@ -358,17 +423,19 @@ class AlgoIndexManager:
                 trade_dates=trade_dates,
                 close_values=close_values,
                 volume_values=volume_values,
-                amplitude_values=amplitude_values,
+                rvol20_values=rvol20_values,
+                range_shock_values=range_shock_values,
                 amount_values=amount_values,
                 volumes_scaled=volumes_scaled,
-                amplitudes_scaled=amplitudes_scaled,
+                rvol20_scaled=rvol20_scaled,
+                range_shock_scaled=range_shock_scaled,
                 amounts_scaled=amounts_scaled,
                 date_to_index={trade_day: index for index, trade_day in enumerate(trade_dates)},
                 amount_tree=module.RangeMaxSegmentTree(amounts_scaled) if has_amount_data else None,
                 volume_tree=module.RangeKthPersistentSegmentTree(volumes_scaled),
-                amplitude_tree=module.RangeKthPersistentSegmentTree(amplitudes_scaled),
+                rvol20_tree=module.RangeKthPersistentSegmentTree(rvol20_scaled),
+                range_shock_tree=module.RangeKthPersistentSegmentTree(range_shock_scaled),
                 volume_tdigest=RangeKthTDigestBlockIndex(volumes_scaled),
-                amplitude_tdigest=RangeKthTDigestBlockIndex(amplitudes_scaled),
             )
         return indexes
 
@@ -498,14 +565,14 @@ class AlgoIndexManager:
             return "medium"
         return None
 
-    def _cause_label(self, *, return_z20: float, volume_ratio20: float, amplitude_ratio20: float) -> str:
-        if return_z20 >= 3.0 and volume_ratio20 >= 2.0 and amplitude_ratio20 >= 2.0:
+    def _cause_label(self, *, return_shock: float, liquidity_shock: float, range_shock: float) -> str:
+        if return_shock >= 3.0 and liquidity_shock >= 2.0 and range_shock >= 1.5:
             return "three-factor resonance"
-        if return_z20 >= volume_ratio20 and return_z20 >= amplitude_ratio20:
+        if return_shock >= liquidity_shock and return_shock >= range_shock:
             return "price-led"
-        if volume_ratio20 >= amplitude_ratio20:
-            return "volume-led"
-        return "amplitude-led"
+        if liquidity_shock >= range_shock:
+            return "liquidity-led"
+        return "range-led"
 
     def _parse_datetime(self, value: Any) -> datetime | None:
         if value is None or value == "":

@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 import math
 
+import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
@@ -24,6 +25,7 @@ from app.schemas.trading import (
     TradingQualityReportRead,
     TradingRiskMetricsRead,
     TradingRecordOverlapRead,
+    TradingSnapshotRead,
     TradingScopeComparisonRead,
     TradingSummaryRead,
 )
@@ -37,6 +39,26 @@ VALID_CROSS_SECTION_METRICS = {
     "average_amplitude",
 }
 DATA_INSUFFICIENT_PREFIX = "数据不足分析"
+UNADJUSTED_PRICE_NOTICE = "当前指标基于导入价格序列计算，未校验复权状态。"
+DATASET_BENCHMARK_SOURCE = "dataset-column"
+
+STANDARD_SCORE_REF = "https://en.wikipedia.org/wiki/Standard_score"
+MOVING_AVERAGE_REF = "https://en.wikipedia.org/wiki/Moving_average"
+MACD_REF = "https://en.wikipedia.org/wiki/MACD"
+RSI_REF = "https://en.wikipedia.org/wiki/Relative_strength_index"
+ATR_REF = "https://en.wikipedia.org/wiki/Average_true_range"
+BOLLINGER_REF = "https://en.wikipedia.org/wiki/Bollinger_Bands"
+OBV_REF = "https://en.wikipedia.org/wiki/On-balance_volume"
+VOLATILITY_REF = "https://en.wikipedia.org/wiki/Volatility_%28finance%29"
+DRAWDOWN_REF = "https://en.wikipedia.org/wiki/Drawdown_%28economics%29"
+BETA_REF = "https://en.wikipedia.org/wiki/Beta_%28finance%29"
+RVOL_REF = "https://chartschool.stockcharts.com/table-of-contents/technical-indicators-and-overlays/technical-indicators/relative-volume-rvol"
+ILLIQ_REF = "https://www.cis.upenn.edu/~mkearns/finread/amihud.pdf"
+MOMENTUM_REF = "https://moneytothemasses.com/wp-content/uploads/2014/08/Jegadeesh_Titman_1993.pdf"
+SNAPSHOT_REFS = [
+    "https://akshare-hh.readthedocs.io/en/latest/data/stock/stock.html",
+    "https://pypi.org/project/baostock/",
+]
 
 
 class TradingAnalysisValidationError(ValueError):
@@ -90,6 +112,12 @@ class TradingAnalysisService:
             total_amount=self._series_sum_or_none(enriched["amount"]),
             average_volume=self._float(enriched["volume"].mean()),
             average_amplitude=self._float(enriched["amplitude"].mean()),
+            **self._build_contract(
+                frame=enriched,
+                required_fields=["open", "high", "low", "close", "volume", "amount"],
+                data_frequency="daily",
+                evidence_refs=[MOVING_AVERAGE_REF, VOLATILITY_REF],
+            ),
         )
 
     def build_quality_report(
@@ -159,6 +187,12 @@ class TradingAnalysisService:
             non_positive_amount_count=int(non_positive_amount_mask.sum()) if has_amount_data else None,
             flat_days_count=int(flat_days_mask.sum()),
             coverage_ratio=self._float(coverage_ratio),
+            **self._build_contract(
+                frame=scope_frame,
+                required_fields=["open", "high", "low", "close", "volume", "amount"],
+                data_frequency="daily",
+                evidence_refs=[VOLATILITY_REF],
+            ),
         )
 
     def build_indicator_series(
@@ -185,21 +219,33 @@ class TradingAnalysisService:
                 close=self._float(row.close),
                 volume=self._float(row.volume),
                 amount=self._optional_float(row.amount),
+                turnover=self._optional_float(row.turnover),
                 daily_return=self._optional_float(row.daily_return),
+                log_return=self._optional_float(row.log_return),
                 cumulative_return=self._optional_float(row.cumulative_return),
                 ma5=self._optional_float(row.ma5),
                 ma10=self._optional_float(row.ma10),
                 ma20=self._optional_float(row.ma20),
+                ma60=self._optional_float(row.ma60),
                 ema12=self._optional_float(row.ema12),
                 ema26=self._optional_float(row.ema26),
                 macd=self._optional_float(row.macd),
                 macd_signal=self._optional_float(row.macd_signal),
                 macd_histogram=self._optional_float(row.macd_histogram),
+                bias20=self._optional_float(row.bias20),
                 rsi14=self._optional_float(row.rsi14),
+                roc20=self._optional_float(row.roc20),
+                obv=self._optional_float(row.obv),
                 bollinger_mid=self._optional_float(row.bollinger_mid),
                 bollinger_upper=self._optional_float(row.bollinger_upper),
                 bollinger_lower=self._optional_float(row.bollinger_lower),
+                bandwidth=self._optional_float(row.bandwidth),
                 atr14=self._optional_float(row.atr14),
+                natr14=self._optional_float(row.natr14),
+                hv20=self._optional_float(row.hv20),
+                rvol20=self._optional_float(row.rvol20),
+                turnover_z20=self._optional_float(row.turnover_z20),
+                illiq20=self._optional_float(row.illiq20),
             )
             for row in enriched.itertuples(index=False)
         ]
@@ -211,6 +257,24 @@ class TradingAnalysisService:
             start_date=self._first_trade_date(enriched),
             end_date=self._last_trade_date(enriched),
             points=points,
+            notices=self._optional_metric_notices(enriched),
+            **self._build_contract(
+                frame=enriched,
+                required_fields=["close", "high", "low", "volume", "amount", "turnover"],
+                data_frequency="daily",
+                evidence_refs=[
+                    MOVING_AVERAGE_REF,
+                    MACD_REF,
+                    RSI_REF,
+                    ATR_REF,
+                    BOLLINGER_REF,
+                    OBV_REF,
+                    VOLATILITY_REF,
+                    RVOL_REF,
+                    ILLIQ_REF,
+                    MOMENTUM_REF,
+                ],
+            ),
         )
 
     def build_risk_metrics(
@@ -231,8 +295,12 @@ class TradingAnalysisService:
         )
         enriched = self._enrich_frame(frame)
         daily_returns = enriched["daily_return"].dropna()
+        log_returns = enriched["log_return"].dropna()
         drawdown = enriched["drawdown"].dropna()
         max_drawdown = 0.0 if drawdown.empty else float(-drawdown.min())
+        latest_row = enriched.iloc[-1]
+        beta60 = self._compute_beta60(enriched)
+        downside_volatility = self._downside_volatility(log_returns)
 
         return TradingRiskMetricsRead(
             import_run_id=import_run_id,
@@ -242,13 +310,27 @@ class TradingAnalysisService:
             end_date=self._last_trade_date(enriched),
             record_count=int(len(enriched)),
             interval_return=self._optional_float(enriched["cumulative_return"].iloc[-1]),
-            volatility=self._float(daily_returns.std(ddof=0) if not daily_returns.empty else 0.0),
+            volatility=self._float(log_returns.std(ddof=0) * math.sqrt(252.0) if not log_returns.empty else 0.0),
             max_drawdown=self._float(max_drawdown),
             max_drawdown_duration=self._drawdown_duration(enriched["drawdown"]),
             up_day_ratio=self._float((daily_returns > 0).mean() if not daily_returns.empty else 0.0),
             average_amplitude=self._float(enriched["amplitude"].mean()),
             max_daily_gain=self._optional_float(daily_returns.max() if not daily_returns.empty else None),
             max_daily_loss=self._optional_float(daily_returns.min() if not daily_returns.empty else None),
+            beta60=self._optional_float(beta60),
+            downside_volatility=self._optional_float(downside_volatility),
+            hv20=self._optional_float(latest_row.hv20),
+            rvol20=self._optional_float(latest_row.rvol20),
+            turnover_z20=self._optional_float(latest_row.turnover_z20),
+            illiq20=self._optional_float(latest_row.illiq20),
+            notices=self._optional_metric_notices(enriched),
+            **self._build_contract(
+                frame=enriched,
+                required_fields=["close", "high", "low", "amount", "turnover", "benchmark_close"],
+                data_frequency="daily",
+                evidence_refs=[VOLATILITY_REF, DRAWDOWN_REF, BETA_REF, RVOL_REF, ILLIQ_REF, ATR_REF],
+                benchmark_source=DATASET_BENCHMARK_SOURCE,
+            ),
         )
 
     def list_anomalies(
@@ -349,6 +431,12 @@ class TradingAnalysisService:
             start_date=self._first_trade_date(enriched),
             end_date=self._last_trade_date(enriched),
             anomalies=anomalies,
+            **self._build_contract(
+                frame=enriched,
+                required_fields=["open", "high", "low", "close", "volume"],
+                data_frequency="daily",
+                evidence_refs=[STANDARD_SCORE_REF, ATR_REF],
+            ),
         )
 
     def build_cross_section(
@@ -407,6 +495,12 @@ class TradingAnalysisService:
             start_date=min(item.start_date for item in rows) if rows else self._first_trade_date(frame),
             end_date=max(item.end_date for item in rows) if rows else self._last_trade_date(frame),
             rows=rows,
+            **self._build_contract(
+                frame=frame,
+                required_fields=["open", "high", "low", "close", "volume", "amount"],
+                data_frequency="daily",
+                evidence_refs=[VOLATILITY_REF, MOMENTUM_REF],
+            ),
         )
 
     def build_correlation_matrix(
@@ -465,6 +559,12 @@ class TradingAnalysisService:
             end_date=frame["trade_date"].max().date(),
             stock_codes=codes,
             matrix=matrix,
+            **self._build_contract(
+                frame=frame,
+                required_fields=["close"],
+                data_frequency="daily",
+                evidence_refs=[VOLATILITY_REF],
+            ),
         )
 
     def compare_scopes(
@@ -579,6 +679,58 @@ class TradingAnalysisService:
                 amount_mismatch_count=mismatch_field_counts["amount"],
             ),
             mismatch_samples=mismatch_samples,
+            **self._build_contract(
+                frame=pd.concat([base_frame, target_frame], ignore_index=True),
+                required_fields=["open", "high", "low", "close", "volume", "amount"],
+                data_frequency="daily",
+                evidence_refs=[VOLATILITY_REF],
+            ),
+        )
+
+    def build_snapshot(
+        self,
+        session: Session,
+        *,
+        import_run_id: int,
+        stock_code: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> TradingSnapshotRead:
+        frame = self._load_frame(
+            session,
+            import_run_id=import_run_id,
+            stock_code=stock_code,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        return TradingSnapshotRead(
+            import_run_id=import_run_id,
+            stock_code=stock_code,
+            stock_name=self._stock_name(frame),
+            valuation_as_of=self._optional_datetime(self._latest_value(frame, "valuation_as_of")),
+            fundamental_report_date=self._optional_date(self._latest_value(frame, "fundamental_report_date")),
+            pe_ttm=self._optional_float(self._latest_value(frame, "pe_ttm")),
+            pb=self._optional_float(self._latest_value(frame, "pb")),
+            roe=self._optional_float(self._latest_value(frame, "roe")),
+            asset_liability_ratio=self._optional_float(self._latest_value(frame, "asset_liability_ratio")),
+            revenue_yoy=self._optional_float(self._latest_value(frame, "revenue_yoy")),
+            net_profit_yoy=self._optional_float(self._latest_value(frame, "net_profit_yoy")),
+            **self._build_contract(
+                frame=frame,
+                required_fields=[
+                    "pe_ttm",
+                    "pb",
+                    "roe",
+                    "asset_liability_ratio",
+                    "revenue_yoy",
+                    "net_profit_yoy",
+                    "valuation_as_of",
+                    "fundamental_report_date",
+                ],
+                data_frequency="snapshot/report",
+                evidence_refs=SNAPSHOT_REFS,
+            ),
         )
 
     def _load_frame(
@@ -642,6 +794,20 @@ class TradingAnalysisService:
                     "close": float(item.close),
                     "volume": float(item.volume),
                     "amount": float(item.amount) if item.amount is not None else None,
+                    "turnover": float(item.turnover) if item.turnover is not None else None,
+                    "benchmark_close": self._optional_to_float(getattr(item, "benchmark_close", None)),
+                    "pe_ttm": self._optional_to_float(getattr(item, "pe_ttm", None)),
+                    "pb": self._optional_to_float(getattr(item, "pb", None)),
+                    "roe": self._optional_to_float(getattr(item, "roe", None)),
+                    "asset_liability_ratio": self._optional_to_float(getattr(item, "asset_liability_ratio", None)),
+                    "revenue_yoy": self._optional_to_float(getattr(item, "revenue_yoy", None)),
+                    "net_profit_yoy": self._optional_to_float(getattr(item, "net_profit_yoy", None)),
+                    "valuation_as_of": pd.Timestamp(getattr(item, "valuation_as_of", None))
+                    if getattr(item, "valuation_as_of", None) is not None
+                    else pd.NaT,
+                    "fundamental_report_date": pd.Timestamp(getattr(item, "fundamental_report_date", None))
+                    if getattr(item, "fundamental_report_date", None) is not None
+                    else pd.NaT,
                 }
                 for item in rows
             ]
@@ -685,35 +851,52 @@ class TradingAnalysisService:
         if frame.empty:
             raise TradingAnalysisDataUnavailableError(build_data_unavailable_message("缺少可分析的交易记录"))
 
-        enriched = frame.sort_values("trade_date").reset_index(drop=True).copy()
-        enriched["amplitude"] = (enriched["high"] - enriched["low"]) / enriched["open"].replace(0, pd.NA)
-        enriched["daily_return"] = enriched["close"].pct_change(fill_method=None)
-        first_close = enriched["close"].iloc[0]
-        enriched["cumulative_return"] = enriched["close"] / first_close - 1.0
-        enriched["ma5"] = enriched["close"].rolling(window=5, min_periods=1).mean()
-        enriched["ma10"] = enriched["close"].rolling(window=10, min_periods=1).mean()
-        enriched["ma20"] = enriched["close"].rolling(window=20, min_periods=1).mean()
-        enriched["ema12"] = enriched["close"].ewm(span=12, adjust=False).mean()
-        enriched["ema26"] = enriched["close"].ewm(span=26, adjust=False).mean()
-        enriched["macd"] = enriched["ema12"] - enriched["ema26"]
-        enriched["macd_signal"] = enriched["macd"].ewm(span=9, adjust=False).mean()
-        enriched["macd_histogram"] = (enriched["macd"] - enriched["macd_signal"]) * 2.0
+        enriched = frame.sort_values(["stock_code", "trade_date"]).reset_index(drop=True).copy()
+        grouped = enriched.groupby("stock_code", sort=False)
 
-        close_delta = enriched["close"].diff()
+        enriched["amplitude"] = (enriched["high"] - enriched["low"]) / enriched["open"].replace(0, pd.NA)
+        enriched["daily_return"] = grouped["close"].pct_change(fill_method=None)
+        enriched["log_return"] = np.log(enriched["close"] / grouped["close"].shift(1))
+        first_close = grouped["close"].transform("first")
+        enriched["cumulative_return"] = enriched["close"] / first_close - 1.0
+
+        enriched["ma5"] = grouped["close"].transform(lambda series: series.rolling(window=5, min_periods=1).mean())
+        enriched["ma10"] = grouped["close"].transform(lambda series: series.rolling(window=10, min_periods=1).mean())
+        enriched["ma20"] = grouped["close"].transform(lambda series: series.rolling(window=20, min_periods=1).mean())
+        enriched["ma60"] = grouped["close"].transform(lambda series: series.rolling(window=60, min_periods=1).mean())
+        enriched["ema12"] = grouped["close"].transform(lambda series: series.ewm(span=12, adjust=False).mean())
+        enriched["ema26"] = grouped["close"].transform(lambda series: series.ewm(span=26, adjust=False).mean())
+        enriched["macd"] = enriched["ema12"] - enriched["ema26"]
+        enriched["macd_signal"] = grouped["macd"].transform(lambda series: series.ewm(span=9, adjust=False).mean())
+        enriched["macd_histogram"] = (enriched["macd"] - enriched["macd_signal"]) * 2.0
+        enriched["bias20"] = enriched["close"] / enriched["ma20"].replace(0.0, pd.NA) - 1.0
+
+        close_delta = grouped["close"].diff()
         gains = close_delta.clip(lower=0)
         losses = -close_delta.clip(upper=0)
-        avg_gain = gains.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
-        avg_loss = losses.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+        avg_gain = gains.groupby(enriched["stock_code"]).transform(
+            lambda series: series.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+        )
+        avg_loss = losses.groupby(enriched["stock_code"]).transform(
+            lambda series: series.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
+        )
         rs = avg_gain / avg_loss.replace(0, pd.NA)
         enriched["rsi14"] = 100 - (100 / (1 + rs))
         enriched.loc[avg_loss == 0, "rsi14"] = 100.0
+        enriched["roc20"] = enriched["close"] / grouped["close"].shift(20) - 1.0
 
-        enriched["bollinger_mid"] = enriched["close"].rolling(window=20, min_periods=1).mean()
-        bollinger_std = enriched["close"].rolling(window=20, min_periods=1).std(ddof=0)
+        direction = np.sign(close_delta).fillna(0.0)
+        enriched["obv"] = (direction * enriched["volume"]).groupby(enriched["stock_code"]).cumsum()
+
+        enriched["bollinger_mid"] = grouped["close"].transform(lambda series: series.rolling(window=20, min_periods=1).mean())
+        bollinger_std = grouped["close"].transform(lambda series: series.rolling(window=20, min_periods=1).std(ddof=0))
         enriched["bollinger_upper"] = enriched["bollinger_mid"] + bollinger_std * 2.0
         enriched["bollinger_lower"] = enriched["bollinger_mid"] - bollinger_std * 2.0
+        enriched["bandwidth"] = (
+            (enriched["bollinger_upper"] - enriched["bollinger_lower"]) / enriched["bollinger_mid"].replace(0.0, pd.NA)
+        )
 
-        previous_close = enriched["close"].shift(1)
+        previous_close = grouped["close"].shift(1)
         true_range = pd.concat(
             [
                 enriched["high"] - enriched["low"],
@@ -722,26 +905,140 @@ class TradingAnalysisService:
             ],
             axis=1,
         ).max(axis=1)
-        enriched["atr14"] = true_range.rolling(window=14, min_periods=1).mean()
+        enriched["atr14"] = true_range.groupby(enriched["stock_code"]).transform(
+            lambda series: series.rolling(window=14, min_periods=1).mean()
+        )
+        enriched["natr14"] = enriched["atr14"] / enriched["close"].replace(0.0, pd.NA)
+        enriched["hv20"] = grouped["log_return"].transform(
+            lambda series: series.rolling(window=20, min_periods=20).std(ddof=0) * math.sqrt(252.0)
+        )
 
-        running_peak = enriched["close"].cummax()
+        running_peak = grouped["close"].cummax()
         enriched["drawdown"] = enriched["close"] / running_peak - 1.0
 
-        enriched["volume_baseline"] = enriched["volume"].rolling(window=20, min_periods=5).mean().shift(1)
-        enriched["return_volatility"] = (
-            enriched["daily_return"].abs().rolling(window=20, min_periods=5).std(ddof=0).shift(1)
+        volume_ma20 = grouped["volume"].transform(lambda series: series.rolling(window=20, min_periods=20).mean())
+        enriched["rvol20"] = enriched["volume"] / volume_ma20.replace(0.0, pd.NA)
+
+        if "turnover" in enriched.columns:
+            turnover_mean20 = grouped["turnover"].transform(lambda series: series.rolling(window=20, min_periods=20).mean())
+            turnover_std20 = grouped["turnover"].transform(lambda series: series.rolling(window=20, min_periods=20).std(ddof=0))
+            enriched["turnover_z20"] = (enriched["turnover"] - turnover_mean20) / turnover_std20.replace(0.0, pd.NA)
+        else:
+            enriched["turnover_z20"] = math.nan
+
+        amount_for_impact = enriched["amount"].where(enriched["amount"] > 0)
+        illiq_component = enriched["log_return"].abs() / amount_for_impact
+        enriched["illiq20"] = illiq_component.groupby(enriched["stock_code"]).transform(
+            lambda series: series.rolling(window=20, min_periods=20).mean()
+        )
+
+        enriched["volume_baseline"] = grouped["volume"].transform(
+            lambda series: series.rolling(window=20, min_periods=5).mean().shift(1)
+        )
+        enriched["return_volatility"] = grouped["daily_return"].transform(
+            lambda series: series.abs().rolling(window=20, min_periods=5).std(ddof=0).shift(1)
         )
         enriched["return_threshold"] = enriched["return_volatility"].apply(
             lambda value: max(float(value) * 3.0, 0.05) if self._valid_number(value) else math.nan
         )
-        enriched["amplitude_baseline"] = enriched["amplitude"].rolling(window=20, min_periods=5).mean().shift(1)
+        enriched["amplitude_baseline"] = grouped["amplitude"].transform(
+            lambda series: series.rolling(window=20, min_periods=5).mean().shift(1)
+        )
         enriched["amplitude_threshold"] = enriched["amplitude_baseline"].apply(
             lambda value: max(float(value) * 2.0, 0.04) if self._valid_number(value) else math.nan
         )
-        enriched["previous_rolling_high"] = enriched["close"].rolling(window=20, min_periods=5).max().shift(1)
-        enriched["previous_rolling_low"] = enriched["close"].rolling(window=20, min_periods=5).min().shift(1)
+        enriched["previous_rolling_high"] = grouped["close"].transform(
+            lambda series: series.rolling(window=20, min_periods=5).max().shift(1)
+        )
+        enriched["previous_rolling_low"] = grouped["close"].transform(
+            lambda series: series.rolling(window=20, min_periods=5).min().shift(1)
+        )
 
         return enriched
+
+    def _compute_beta60(self, stock_frame: pd.DataFrame) -> float | None:
+        if "benchmark_close" not in stock_frame.columns:
+            return None
+
+        benchmark_close = stock_frame.sort_values("trade_date").set_index("trade_date")["benchmark_close"]
+        if benchmark_close.dropna().empty:
+            return None
+
+        market_log_return = np.log(benchmark_close / benchmark_close.shift(1))
+
+        stock_series = (
+            stock_frame.sort_values("trade_date")
+            .set_index("trade_date")["log_return"]
+            .rename("stock_log_return")
+        )
+        market_series = market_log_return.rename("market_log_return")
+        merged = pd.concat([stock_series, market_series], axis=1).dropna()
+        if len(merged) < 60:
+            return None
+
+        window = merged.tail(60)
+        market_variance = float(window["market_log_return"].var(ddof=0))
+        if market_variance <= 0:
+            return None
+
+        covariance = float(
+            (
+                (window["stock_log_return"] - window["stock_log_return"].mean())
+                * (window["market_log_return"] - window["market_log_return"].mean())
+            ).mean()
+        )
+        return covariance / market_variance
+
+    def _downside_volatility(self, log_returns: pd.Series) -> float | None:
+        if log_returns.empty:
+            return None
+        downside = np.minimum(log_returns.to_numpy(dtype=float), 0.0)
+        return float(np.sqrt(np.mean(np.square(downside))) * math.sqrt(252.0))
+
+    def _optional_metric_notices(self, frame: pd.DataFrame) -> list[str]:
+        notices: list[str] = []
+        has_turnover = "turnover" in frame.columns and frame["turnover"].notna().any()
+        has_amount = "amount" in frame.columns and frame["amount"].notna().any()
+        has_benchmark_close = "benchmark_close" in frame.columns and frame["benchmark_close"].notna().any()
+        notices.append(UNADJUSTED_PRICE_NOTICE)
+        if not has_turnover:
+            notices.append("缺少可选列 turnover（换手率），相关增强指标（换手率 Z20）已置空。")
+        if not has_amount:
+            notices.append("缺少可选列 amount（成交额），相关增强指标（ILLIQ20）已置空。")
+        if not has_benchmark_close:
+            notices.append("缺少 benchmark_close（基准收盘价），Beta60 已置空。")
+        return notices
+
+    def _build_contract(
+        self,
+        *,
+        frame: pd.DataFrame,
+        required_fields: list[str],
+        data_frequency: str,
+        evidence_refs: list[str],
+        benchmark_code: str | None = None,
+        benchmark_source: str | None = None,
+    ) -> dict[str, object]:
+        missing_fields = [field_name for field_name in required_fields if not self._has_field_data(frame, field_name)]
+        return {
+            "required_fields": required_fields,
+            "missing_fields": missing_fields,
+            "data_frequency": data_frequency,
+            "evidence_refs": evidence_refs,
+            "benchmark_code": benchmark_code,
+            "benchmark_source": benchmark_source,
+        }
+
+    def _has_field_data(self, frame: pd.DataFrame, field_name: str) -> bool:
+        return field_name in frame.columns and frame[field_name].notna().any()
+
+    def _latest_value(self, frame: pd.DataFrame, field_name: str) -> object:
+        if field_name not in frame.columns:
+            return None
+        series = frame[field_name].dropna()
+        if series.empty:
+            return None
+        return series.iloc[-1]
 
     def _first_trade_date(self, frame: pd.DataFrame) -> date:
         return frame["trade_date"].min().date()
@@ -791,6 +1088,35 @@ class TradingAnalysisService:
         if value is None:
             return None
         return round(float(value), 6)
+
+    def _optional_to_float(self, value: object) -> float | None:
+        if not self._valid_number(value):
+            return None
+        return float(value)
+
+    def _optional_datetime(self, value: object) -> pd.Timestamp | None:
+        if value is None:
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.to_pydatetime()
+        if isinstance(value, date):
+            return pd.Timestamp(value).to_pydatetime()
+        try:
+            return pd.Timestamp(value).to_pydatetime()
+        except (TypeError, ValueError):
+            return None
+
+    def _optional_date(self, value: object) -> date | None:
+        if value is None:
+            return None
+        if isinstance(value, pd.Timestamp):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        try:
+            return pd.Timestamp(value).date()
+        except (TypeError, ValueError):
+            return None
 
     def _valid_number(self, value: object) -> bool:
         if value is None:

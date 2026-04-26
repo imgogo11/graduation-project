@@ -93,6 +93,7 @@ Copy-Item .env.template .env
 当前最关键的变量包括：
 
 - `DATABASE_URL`
+- `TEST_DATABASE_URL`
 - `POSTGRES_HOST`
 - `POSTGRES_PORT`
 - `POSTGRES_DB`

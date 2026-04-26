@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 import sys
-import time
 import unittest
 
 from fastapi.testclient import TestClient
 import pandas as pd
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = BACKEND_DIR.parent
-ARTIFACT_ROOT = REPO_ROOT / "data" / "processed" / "test_artifacts" / "admin_users"
-ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+TESTS_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
 
-from app.core.database import create_all_tables, reset_database_state
+from app.core.database import get_session_factory
 from app.services.auth import AuthService
+from postgres_integration import PostgresIntegrationTestCase
 
 
 def build_trading_frame() -> pd.DataFrame:
@@ -49,27 +48,11 @@ def build_trading_frame() -> pd.DataFrame:
     )
 
 
-class AdminUsersTests(unittest.TestCase):
+class AdminUsersTests(PostgresIntegrationTestCase):
+    jwt_secret = "admin-users-secret"
+
     def setUp(self) -> None:
-        self.temp_path = ARTIFACT_ROOT / f"case_{time.time_ns()}"
-        self.temp_path.mkdir(parents=True, exist_ok=True)
-        self.db_path = self.temp_path / "admin-users.sqlite3"
-        self.previous_env = {
-            "DATABASE_URL": os.environ.get("DATABASE_URL"),
-            "APP_ENV": os.environ.get("APP_ENV"),
-            "JWT_SECRET": os.environ.get("JWT_SECRET"),
-            "ADMIN_USERNAME": os.environ.get("ADMIN_USERNAME"),
-            "ADMIN_PASSWORD": os.environ.get("ADMIN_PASSWORD"),
-            "UPLOAD_ROOT": os.environ.get("UPLOAD_ROOT"),
-        }
-        os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{self.db_path.resolve().as_posix()}"
-        os.environ["APP_ENV"] = "test"
-        os.environ["JWT_SECRET"] = "admin-users-secret"
-        os.environ["ADMIN_USERNAME"] = "admin"
-        os.environ["ADMIN_PASSWORD"] = "admin123456"
-        os.environ["UPLOAD_ROOT"] = str((self.temp_path / "uploads").resolve())
-        reset_database_state()
-        create_all_tables()
+        super().setUp()
         session = get_session_factory()()
         try:
             AuthService().ensure_admin_user(session, username="admin", password="admin123456")
@@ -86,12 +69,7 @@ class AdminUsersTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client.close()
-        reset_database_state()
-        for key, value in self.previous_env.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        super().tearDown()
 
     def test_admin_can_manage_regular_users(self) -> None:
         list_response = self.client.get("/api/admin/users", headers=self._auth_headers(self.admin_token))
@@ -153,6 +131,18 @@ class AdminUsersTests(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 200, delete_response.text)
         self.assertEqual(delete_response.json()["status"], "deleted")
 
+    def test_admin_can_filter_users_by_partial_username_keyword(self) -> None:
+        self._register_and_login("gogo11", "password123")
+        filtered_response = self.client.get(
+            "/api/admin/users",
+            params={"query": "11"},
+            headers=self._auth_headers(self.admin_token),
+        )
+        self.assertEqual(filtered_response.status_code, 200, filtered_response.text)
+        body = filtered_response.json()
+        self.assertEqual(len(body), 1)
+        self.assertEqual(body[0]["username"], "gogo11")
+
     def test_non_admin_cannot_access_admin_user_routes(self) -> None:
         response = self.client.get("/api/admin/users", headers=self._auth_headers(self.user_token))
         self.assertEqual(response.status_code, 403, response.text)
@@ -177,10 +167,6 @@ class AdminUsersTests(unittest.TestCase):
 
     def _auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
-
-
-from app.core.database import get_session_factory  # noqa: E402
-
 
 if __name__ == "__main__":
     unittest.main()
