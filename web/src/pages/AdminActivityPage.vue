@@ -1,7 +1,7 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 
-import { NButton, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag } from "naive-ui";
+import { NButton, NDatePicker, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag, useMessage } from "naive-ui";
 
 import { fetchAdminAuditLogStats, fetchAdminAuditLogs } from "@/api/admin";
 import type { AuditLogListRead, AuditLogStatsRead } from "@/api/types";
@@ -16,6 +16,7 @@ import { usePageErrorNotification } from "@/composables/usePageErrorNotification
 type SuccessFilter = "all" | "success" | "failed";
 
 const runtime = useRuntimeStore();
+const message = useMessage();
 const loading = ref(false);
 const error = ref("");
 usePageErrorNotification(error, "调用记录加载失败");
@@ -31,7 +32,7 @@ const startAt = ref("");
 const endAt = ref("");
 
 const successOptions = [
-  { label: "全部结果", value: "all" },
+  { label: "全部", value: "all" },
   { label: "仅成功", value: "success" },
   { label: "仅失败", value: "failed" },
 ];
@@ -73,8 +74,20 @@ const statPills = computed(() => [
     value: String(stats.value?.today_events ?? 0),
   },
 ]);
+const startAtPickerValue = computed({
+  get: () => startAt.value || undefined,
+  set: (value: string | null | undefined) => {
+    startAt.value = value ?? "";
+  },
+});
+const endAtPickerValue = computed({
+  get: () => endAt.value || undefined,
+  set: (value: string | null | undefined) => {
+    endAt.value = value ?? "";
+  },
+});
 
-function toIso(value: string) {
+function toIso(value: string | null | undefined) {
   if (!value) {
     return undefined;
   }
@@ -104,14 +117,20 @@ async function loadLogs() {
   });
 }
 
-async function refreshPage() {
+async function refreshPage(options: { notify?: boolean } = {}) {
   loading.value = true;
   error.value = "";
   try {
     await Promise.all([loadStats(), loadLogs()]);
     runtime.markSynced();
+    if (options.notify) {
+      message.success("筛选已应用");
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
+    if (options.notify) {
+      message.error(error.value);
+    }
   } finally {
     loading.value = false;
   }
@@ -119,7 +138,7 @@ async function refreshPage() {
 
 function applyFilter() {
   page.value = 1;
-  void refreshPage();
+  void refreshPage({ notify: true });
 }
 
 function updatePage(next: number) {
@@ -151,7 +170,7 @@ onMounted(() => {
           </span>
         </span>
       </template>
-      <n-form class="filter-form filter-form--audit" style="margin-bottom: 16px;">
+      <n-form class="admin-filter-grid admin-filter-grid--activity" label-placement="top">
         <n-form-item label="执行人">
           <n-input v-model:value="actorUsernameInput" clearable placeholder="输入执行人用户名" />
         </n-form-item>
@@ -162,25 +181,23 @@ onMounted(() => {
             filterable
             :options="categoryOptions"
             placeholder="选择分类"
-            style="min-width: 180px;"
           />
         </n-form-item>
         <n-form-item label="结果">
           <n-select
             v-model:value="successFilter"
             :options="successOptions"
-            style="min-width: 140px;"
           />
         </n-form-item>
         <n-form-item label="开始时间">
-          <input v-model="startAt" type="datetime-local" />
+          <n-date-picker v-model:formatted-value="startAtPickerValue" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" clearable />
         </n-form-item>
         <n-form-item label="结束时间">
-          <input v-model="endAt" type="datetime-local" />
+          <n-date-picker v-model:formatted-value="endAtPickerValue" type="datetime" value-format="yyyy-MM-dd HH:mm:ss" clearable />
         </n-form-item>
-        <n-form-item label="&nbsp;" class="filter-form__action-item">
+        <n-form-item label=" ">
           <n-button
-            class="filter-form__action-btn filter-form__action-btn--highlight"
+            class="admin-filter-grid__button"
             type="warning"
             :loading="loading"
             @click="applyFilter"
@@ -255,6 +272,36 @@ onMounted(() => {
   padding: 5px 10px;
   font-size: 12px;
 }
+
+.admin-filter-grid {
+  --admin-filter-control-width: 180px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--admin-filter-control-width);
+  gap: 0 20px;
+  align-items: end;
+  justify-content: start;
+  margin-bottom: 16px;
+}
+
+.admin-filter-grid--activity {
+  grid-template-columns: repeat(6, var(--admin-filter-control-width));
+}
+
+.admin-filter-grid__button {
+  width: 100%;
+}
+
+@media (max-width: 1520px) {
+  .admin-filter-grid--activity {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(3, var(--admin-filter-control-width));
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-filter-grid--activity {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 </style>
-
-

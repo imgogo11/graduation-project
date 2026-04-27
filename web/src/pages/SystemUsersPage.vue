@@ -1,10 +1,14 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { CreateOutline, TrashOutline } from "@vicons/ionicons5";
 
 import {
   NButton,
   NForm,
   NFormItem,
+  NFormItemGi,
+  NGrid,
+  NIcon,
   NInput,
   NModal,
   NPagination,
@@ -68,7 +72,7 @@ function closeDialog() {
   form.is_active = true;
 }
 
-async function loadUsers() {
+async function loadUsers(options: { notify?: boolean } = {}) {
   loading.value = true;
   error.value = "";
 
@@ -76,8 +80,14 @@ async function loadUsers() {
     users.value = await fetchAdminUsers({
       query: search.value.trim() || undefined,
     });
+    if (options.notify) {
+      message.success("搜索已完成");
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
+    if (options.notify) {
+      message.error(error.value);
+    }
   } finally {
     loading.value = false;
   }
@@ -102,6 +112,7 @@ async function saveUser() {
     await loadUsers();
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     saving.value = false;
   }
@@ -121,6 +132,7 @@ async function toggleUserActive(user: AdminManagedUserRead) {
     await loadUsers();
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   }
 }
 
@@ -137,6 +149,7 @@ async function removeUser(user: AdminManagedUserRead) {
     await loadUsers();
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   }
 }
 
@@ -147,25 +160,32 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <div class="page__actions">
-      <span class="pill">总用户 {{ users.length }}</span>
-      <span class="pill">启用数 {{ activeCount }}</span>
-    </div>
     <PanelCard title="用户列表">
-      <n-form class="filter-form filter-form--compact" style="margin-bottom: 16px;">
-        <n-form-item label="用户">
-          <n-input v-model:value="search" clearable placeholder="输入用户名关键字" @keyup.enter="loadUsers" />
-        </n-form-item>
-        <n-form-item label="&nbsp;" class="filter-form__action-item">
-          <n-button
-            class="filter-form__action-btn filter-form__action-btn--highlight"
-            type="warning"
-            :loading="loading"
-            @click="loadUsers"
-          >
-            搜索
-          </n-button>
-        </n-form-item>
+      <template #title>
+        <span class="users-card__title">
+          <span>用户列表</span>
+          <span class="users-card__stats">
+            <span class="pill users-card__pill">总用户 {{ users.length }}</span>
+            <span class="pill users-card__pill">启用数 {{ activeCount }}</span>
+          </span>
+        </span>
+      </template>
+      <n-form label-placement="top" style="margin-bottom: 16px;">
+        <n-grid :x-gap="16" :y-gap="0" cols="1 s:2 m:3 l:4 xl:5 2xl:6" responsive="screen">
+          <n-form-item-gi label="用户">
+            <n-input v-model:value="search" clearable placeholder="输入用户名关键字" @keyup.enter="loadUsers({ notify: true })" />
+          </n-form-item-gi>
+          <n-form-item-gi label=" ">
+            <n-button
+              type="warning"
+              :loading="loading"
+              @click="loadUsers({ notify: true })"
+              style="width: 100%;"
+            >
+              搜索
+            </n-button>
+          </n-form-item-gi>
+        </n-grid>
       </n-form>
 
       <div v-if="usersPager.total.value" class="data-table-wrap">
@@ -197,11 +217,19 @@ onMounted(() => {
               <td>{{ formatDateTime(user.last_login_at) }}</td>
               <td>
                 <div class="toolbar-row">
-                  <n-button text type="primary" @click="openDialog(user)">编辑</n-button>
-                  <n-button text :type="user.is_active ? 'warning' : 'success'" @click="toggleUserActive(user)">
+                  <n-button text type="primary" style="margin-right: 12px;" @click="openDialog(user)">
+                    <template #icon>
+                      <n-icon><CreateOutline /></n-icon>
+                    </template>
+                    编辑
+                  </n-button>
+                  <n-button text :type="user.is_active ? 'warning' : 'success'" style="margin-right: 12px;" @click="toggleUserActive(user)">
                     {{ user.is_active ? "禁用" : "启用" }}
                   </n-button>
                   <n-button text type="error" :disabled="user.has_business_data" @click="removeUser(user)">
+                    <template #icon>
+                      <n-icon><TrashOutline /></n-icon>
+                    </template>
                     删除
                   </n-button>
                 </div>
@@ -234,23 +262,25 @@ onMounted(() => {
           <h3 class="modal-card__title">编辑普通用户</h3>
         </div>
         <div class="modal-card__body">
-          <n-form class="form-grid" label-placement="top">
-            <n-form-item label="用户名" class="form-grid--wide">
-              <n-input v-model:value="form.username" placeholder="输入新的用户名" />
-            </n-form-item>
-            <n-form-item label="重置密码" class="form-grid--wide">
-              <n-input
-                v-model:value="form.password"
-                type="password"
-                show-password-on="click"
-                placeholder="留空表示不重置密码" />
-            </n-form-item>
-            <n-form-item label="账号状态" class="form-grid--wide">
-              <n-switch v-model:value="form.is_active">
-                <template #checked>启用</template>
-                <template #unchecked>禁用</template>
-              </n-switch>
-            </n-form-item>
+          <n-form label-placement="top">
+            <n-grid :x-gap="16" :y-gap="0" cols="1">
+              <n-form-item-gi label="用户名">
+                <n-input v-model:value="form.username" placeholder="输入新的用户名" />
+              </n-form-item-gi>
+              <n-form-item-gi label="重置密码">
+                <n-input
+                  v-model:value="form.password"
+                  type="password"
+                  show-password-on="click"
+                  placeholder="留空表示不重置密码" />
+              </n-form-item-gi>
+              <n-form-item-gi label="账号状态">
+                <n-switch v-model:value="form.is_active">
+                  <template #checked>启用</template>
+                  <template #unchecked>禁用</template>
+                </n-switch>
+              </n-form-item-gi>
+            </n-grid>
           </n-form>
         </div>
         <div class="modal-card__footer">
@@ -262,4 +292,23 @@ onMounted(() => {
   </div>
 </template>
 
+<style scoped>
+.users-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 
+.users-card__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.users-card__pill {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+</style>

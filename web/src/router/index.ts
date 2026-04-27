@@ -73,7 +73,7 @@ const router = createRouter({
       meta: {
         requiresAuth: true,
         audience: "user",
-        title: "\u5206\u6790\u4e2d\u5fc3 / \u6570\u636e\u6cbb\u7406\u4e0e\u5feb\u7167",
+        title: "\u5206\u6790\u4e2d\u5fc3 / \u5feb\u7167\u4e0e\u76f8\u5173\u6027",
         sectionTitle: "\u5206\u6790\u4e2d\u5fc3",
       },
     },

@@ -1,10 +1,14 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { CreateOutline, TrashOutline } from "@vicons/ionicons5";
 
 import {
   NButton,
   NForm,
   NFormItem,
+  NFormItemGi,
+  NGrid,
+  NIcon,
   NInput,
   NModal,
   NPagination,
@@ -70,7 +74,7 @@ const usersPager = useTablePager(filteredUsers, {
 });
 
 const activeFilterOptions = [
-  { label: "全部状态", value: "all" },
+  { label: "全部", value: "all" },
   { label: "仅启用", value: "active" },
   { label: "仅禁用", value: "inactive" },
 ];
@@ -99,7 +103,7 @@ function closeDialog() {
   form.is_active = true;
 }
 
-async function loadUsers() {
+async function loadUsers(options: { notify?: boolean } = {}) {
   loading.value = true;
   error.value = "";
 
@@ -107,8 +111,14 @@ async function loadUsers() {
     users.value = await fetchAdminUsers({
       query: userIdInput.value.trim() || undefined,
     });
+    if (options.notify) {
+      message.success("搜索已完成");
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
+    if (options.notify) {
+      message.error(error.value);
+    }
   } finally {
     loading.value = false;
   }
@@ -141,6 +151,7 @@ async function saveUser() {
     closeDialog();
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     saving.value = false;
   }
@@ -166,6 +177,7 @@ async function toggleUserActive(user: AdminManagedUserRead, nextValue: boolean) 
     message.success(nextValue ? `已启用用户 ${updated.username}` : `已禁用用户 ${updated.username}`);
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     rowLoading[user.id] = false;
   }
@@ -188,6 +200,7 @@ async function removeUser(user: AdminManagedUserRead) {
     message.success(`已删除用户 ${user.username}`);
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     rowLoading[user.id] = false;
   }
@@ -211,19 +224,19 @@ onMounted(() => {
           </span>
         </span>
       </template>
-      <n-form class="filter-form filter-form--users" style="margin-bottom: 16px;">
+      <n-form class="admin-filter-grid admin-filter-grid--users" label-placement="top">
         <n-form-item label="用户">
-          <n-input v-model:value="userIdInput" clearable placeholder="输入用户名" @keyup.enter="loadUsers" />
+          <n-input v-model:value="userIdInput" clearable placeholder="输入用户名" @keyup.enter="loadUsers({ notify: true })" />
         </n-form-item>
         <n-form-item label="状态">
-          <n-select v-model:value="activeFilter" :options="activeFilterOptions" style="min-width: 150px;" />
+          <n-select v-model:value="activeFilter" :options="activeFilterOptions" />
         </n-form-item>
-        <n-form-item label="&nbsp;" class="filter-form__action-item">
+        <n-form-item label=" ">
           <n-button
-            class="filter-form__action-btn filter-form__action-btn--highlight"
+            class="admin-filter-grid__button"
             type="warning"
             :loading="loading"
-            @click="loadUsers"
+            @click="loadUsers({ notify: true })"
           >
             搜索
           </n-button>
@@ -271,7 +284,12 @@ onMounted(() => {
               <td>{{ formatDateTime(user.last_login_at) }}</td>
               <td>
                 <div class="toolbar-row">
-                  <n-button text type="primary" :disabled="isReadonlyUser(user)" @click="openDialog(user)">编辑</n-button>
+                  <n-button text type="primary" style="margin-right: 12px;" :disabled="isReadonlyUser(user)" @click="openDialog(user)">
+                    <template #icon>
+                      <n-icon><CreateOutline /></n-icon>
+                    </template>
+                    编辑
+                  </n-button>
                   <n-button
                     text
                     type="error"
@@ -279,6 +297,9 @@ onMounted(() => {
                     :loading="Boolean(rowLoading[user.id])"
                     @click="removeUser(user)"
                   >
+                    <template #icon>
+                      <n-icon><TrashOutline /></n-icon>
+                    </template>
                     删除
                   </n-button>
                 </div>
@@ -310,23 +331,25 @@ onMounted(() => {
           <h3 class="modal-card__title">编辑用户</h3>
         </div>
         <div class="modal-card__body">
-          <n-form class="form-grid" label-placement="top">
-            <n-form-item label="用户" class="form-grid--wide">
-              <n-input v-model:value="form.username" placeholder="输入新的用户名" />
-            </n-form-item>
-            <n-form-item label="重置密码" class="form-grid--wide">
-              <n-input
-                v-model:value="form.password"
-                type="password"
-                show-password-on="click"
-                placeholder="留空表示不重置密码" />
-            </n-form-item>
-            <n-form-item label="账号状态" class="form-grid--wide">
-              <n-switch v-model:value="form.is_active">
-                <template #checked>启用</template>
-                <template #unchecked>禁用</template>
-              </n-switch>
-            </n-form-item>
+          <n-form label-placement="top">
+            <n-grid :x-gap="16" :y-gap="0" cols="1">
+              <n-form-item-gi label="用户">
+                <n-input v-model:value="form.username" placeholder="输入新的用户名" />
+              </n-form-item-gi>
+              <n-form-item-gi label="重置密码">
+                <n-input
+                  v-model:value="form.password"
+                  type="password"
+                  show-password-on="click"
+                  placeholder="留空表示不重置密码" />
+              </n-form-item-gi>
+              <n-form-item-gi label="账号状态">
+                <n-switch v-model:value="form.is_active">
+                  <template #checked>启用</template>
+                  <template #unchecked>禁用</template>
+                </n-switch>
+              </n-form-item-gi>
+            </n-grid>
           </n-form>
         </div>
         <div class="modal-card__footer">
@@ -357,5 +380,30 @@ onMounted(() => {
   padding: 5px 10px;
   font-size: 12px;
 }
-</style>
 
+.admin-filter-grid {
+  --admin-filter-control-width: 180px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: var(--admin-filter-control-width);
+  gap: 0 20px;
+  align-items: end;
+  justify-content: start;
+  margin-bottom: 16px;
+}
+
+.admin-filter-grid--users {
+  grid-template-columns: repeat(3, var(--admin-filter-control-width));
+}
+
+.admin-filter-grid__button {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .admin-filter-grid--users {
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

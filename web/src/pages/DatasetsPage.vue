@@ -1,11 +1,14 @@
-﻿<script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { SwapHorizontalOutline, TrashOutline } from "@vicons/ionicons5";
 
 import type { EChartsOption } from "echarts";
 import {
   NButton,
   NForm,
-  NFormItem,
+  NFormItemGi,
+  NGrid,
+  NIcon,
   NInput,
   NModal,
   NPagination,
@@ -27,12 +30,10 @@ import type {
   TradingRecordRead,
   TradingStockRead,
 } from "@/api/types";
-import DateInputField from "@/components/DateInputField.vue";
 import EChartPanel from "@/components/EChartPanel.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
 import { useTablePager } from "@/composables/useTablePager";
-import { useAuthStore } from "@/stores/auth";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
 import {
@@ -50,7 +51,6 @@ import { formatStatusText } from "@/utils/displayText";
 
 const message = useMessage();
 const runtime = useRuntimeStore();
-const auth = useAuthStore();
 const datasetContext = useDatasetContextStore();
 const stats = ref<ImportStatsRead | null>(null);
 const importRuns = ref<ImportRunRead[]>([]);
@@ -64,7 +64,6 @@ const deletingRunId = ref<number | null>(null);
 const error = ref("");
 usePageErrorNotification(error, "数据集页面加载失败");
 const selectedFile = ref<File | null>(null);
-const ownerFilterInput = ref("");
 const importPreview = ref<ImportPreviewRead | null>(null);
 const mappingSelections = reactive<Record<string, string | null>>({});
 const requiredColumnEnabled = reactive<Record<string, boolean>>({});
@@ -118,15 +117,6 @@ const workspaceForm = reactive({
 
 const uploadForm = reactive({
   datasetName: "",
-});
-
-const appliedOwnerUserId = computed(() => {
-  if (!auth.isAdmin.value) {
-    return undefined;
-  }
-
-  const parsed = Number(ownerFilterInput.value.trim());
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 });
 
 const currentDataset = computed(
@@ -209,7 +199,6 @@ const canCommitImport = computed(
 const importRunsPager = useTablePager(importRuns, {
   initialPageSize: 20,
   pageSizes: [10, 20, 50, 100],
-  resetTriggers: [appliedOwnerUserId],
 });
 const recordsScopeKey = computed(
   () =>
@@ -220,6 +209,26 @@ const recordsPager = useTablePager(records, {
   pageSizes: [10, 20, 50, 100],
   resetTriggers: [recordsScopeKey],
 });
+const startDatePickerValue = computed({
+  get: () => workspaceForm.startDate || undefined,
+  set: (value: string | null | undefined) => {
+    workspaceForm.startDate = value ?? "";
+  },
+});
+const endDatePickerValue = computed({
+  get: () => workspaceForm.endDate || undefined,
+  set: (value: string | null | undefined) => {
+    workspaceForm.endDate = value ?? "";
+  },
+});
+
+type FeedbackOptions = {
+  notify?: boolean;
+};
+
+type DatasetLoadFeedbackOptions = FeedbackOptions & {
+  action?: "switch";
+};
 
 const historyTitlePills = computed(() => [
   {
@@ -335,6 +344,7 @@ function syncWorkspaceFromStore() {
   workspaceForm.stockCode = datasetContext.state.stockCode;
   workspaceForm.startDate = datasetContext.state.startDate;
   workspaceForm.endDate = datasetContext.state.endDate;
+  workspaceForm.limitInput = datasetContext.state.sampleLimitInput;
 }
 
 function applySharedScope() {
@@ -344,6 +354,7 @@ function applySharedScope() {
     stockCode: workspaceForm.stockCode,
     startDate: workspaceForm.startDate,
     endDate: workspaceForm.endDate,
+    sampleLimitInput: workspaceForm.limitInput,
   });
 }
 
@@ -364,9 +375,12 @@ function onFileSelected(event: Event) {
   }
 }
 
-async function loadPreview() {
+async function loadPreview(options: FeedbackOptions = {}) {
   if (!workspaceForm.importRunId) {
     records.value = [];
+    if (options.notify) {
+      message.warning("请先选择导入批次");
+    }
     return;
   }
 
@@ -384,9 +398,15 @@ async function loadPreview() {
     records.value = rows;
     applySharedScope();
     runtime.markSynced();
+    if (options.notify) {
+      message.success("范围已应用");
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
     records.value = [];
+    if (options.notify) {
+      message.error(error.value);
+    }
   } finally {
     loadingPreview.value = false;
   }
@@ -418,15 +438,14 @@ async function loadStocks(loadPreviewAfterSync = true) {
   }
 }
 
-async function loadDatasets(preferredRunId?: number) {
+async function loadDatasets(preferredRunId?: number, options: DatasetLoadFeedbackOptions = {}) {
   loading.value = true;
   error.value = "";
 
   try {
-    const statsResponse = await fetchImportStats({ owner_user_id: appliedOwnerUserId.value });
+    const statsResponse = await fetchImportStats();
     const runRows = await fetchImportRuns({
       limit: Math.max(statsResponse.total_runs, 1),
-      owner_user_id: appliedOwnerUserId.value,
     });
 
     stats.value = statsResponse;
@@ -442,13 +461,28 @@ async function loadDatasets(preferredRunId?: number) {
       workspaceForm.stockCode = "";
       records.value = [];
       stocks.value = [];
+      if (options.notify) {
+        message.warning("当前没有可用数据集");
+      }
       return;
     }
 
     await loadStocks(true);
     runtime.markSynced();
+    if (options.notify && !error.value) {
+      if (options.action === "switch") {
+        message.success(`已切换到批次 #${currentDataset.value?.display_id ?? preferredRunId}`);
+      } else {
+        message.success("数据集已刷新");
+      }
+    } else if (options.notify && error.value) {
+      message.error(error.value);
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
+    if (options.notify) {
+      message.error(error.value);
+    }
   } finally {
     loading.value = false;
   }
@@ -499,6 +533,7 @@ function resolveCanonicalLabel(canonical: string) {
 function openMappingModal(mode: "auto" | "manual") {
   if (!importPreview.value) {
     error.value = "请先执行列头解析";
+    message.warning(error.value);
     return;
   }
   if (mode === "auto") {
@@ -534,11 +569,13 @@ function onRequiredMappingChange(canonical: string, value: string | null) {
 async function submitPreview() {
   if (!selectedFile.value) {
     error.value = "请先选择要上传的 CSV / XLSX 文件";
+    message.warning(error.value);
     return;
   }
 
   if (!uploadForm.datasetName.trim()) {
     error.value = "请先填写数据集名称";
+    message.warning(error.value);
     return;
   }
 
@@ -562,6 +599,7 @@ async function submitPreview() {
     }
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     previewingImport.value = false;
   }
@@ -570,6 +608,7 @@ async function submitPreview() {
 async function submitCommit() {
   if (!importPreview.value) {
     error.value = "请先执行列头解析";
+    message.warning(error.value);
     return;
   }
   if (!canCommitImport.value) {
@@ -580,6 +619,7 @@ async function submitCommit() {
     } else {
       error.value = `请先补齐已开启的可选列映射：${unresolvedEnabledOptionalColumns.value.join("、")}`;
     }
+    message.warning(error.value);
     return;
   }
 
@@ -618,6 +658,7 @@ async function submitCommit() {
     await loadDatasets(createdRun.id);
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     committingImport.value = false;
   }
@@ -643,6 +684,7 @@ async function removeRun(run: ImportRunRead) {
     await loadDatasets();
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     deletingRunId.value = null;
   }
@@ -656,67 +698,34 @@ onMounted(() => {
   syncWorkspaceFromStore();
   void loadDatasets(datasetContext.state.importRunId);
 });
+
+watch(
+  () => datasetContext.state.appliedRevision,
+  () => {
+    syncWorkspaceFromStore();
+    void loadDatasets(workspaceForm.importRunId);
+  }
+);
 </script>
 
 <template>
   <div class="page">
-    <section class="page__grid page__grid--double">
-      <PanelCard title="共享范围设置">
-        <n-form class="form-grid" label-placement="top">
-          <n-form-item label="导入批次">
-            <n-select
-              v-model:value="workspaceForm.importRunId"
-              :options="importRunOptions"
-              placeholder="选择导入批次"
-              @update:value="handleDatasetChange"
-            />
-          </n-form-item>
-          <n-form-item v-if="auth.isAdmin.value" label="所属用户ID">
-            <n-input v-model:value="ownerFilterInput" placeholder="留空表示全部用户，仅管理员可用" />
-          </n-form-item>
-          <n-form-item label="股票">
-            <n-select
-              v-model:value="workspaceForm.stockCode"
-              :options="stockOptions"
-              placeholder="留空表示全部股票"
-              clearable
-              @update:value="loadPreview"
-            />
-          </n-form-item>
-          <n-form-item label="样本上限">
-            <n-input v-model:value="workspaceForm.limitInput" placeholder="默认 200" />
-          </n-form-item>
-          <n-form-item label="开始日期">
-            <DateInputField v-model="workspaceForm.startDate" clearable />
-          </n-form-item>
-          <n-form-item label="结束日期">
-            <DateInputField v-model="workspaceForm.endDate" clearable />
-          </n-form-item>
-        </n-form>
-
-        <div class="toolbar-row" style="margin-top: 8px;">
-          <span class="pill">{{ currentDatasetLabel }}</span>
-          <span class="pill">范围：{{ workspaceForm.startDate || "起始不限" }} ~ {{ workspaceForm.endDate || "结束不限" }}</span>
-          <n-button type="primary" :loading="loadingPreview" @click="loadPreview">应用范围</n-button>
-          <n-button v-if="auth.isAdmin.value" secondary @click="loadDatasets(workspaceForm.importRunId)">
-            应用所属用户过滤
-          </n-button>
-        </div>
-      </PanelCard>
-
-      <PanelCard title="上传新数据集">
-        <n-form class="form-grid" label-placement="top">
-          <n-form-item label="数据集名" class="form-grid--wide">
-            <n-input v-model:value="uploadForm.datasetName" placeholder="例如 2024 全市场日线数据" />
-          </n-form-item>
-          <n-form-item label="交易文件" class="form-grid--wide">
-            <input type="file" accept=".csv,.xlsx,.xls" @change="onFileSelected" />
-          </n-form-item>
+    <section class="page__grid dataset-layout-section">
+      <PanelCard class="dataset-card dataset-card--upload" title="上传新数据集">
+        <n-form label-placement="top">
+          <n-grid :x-gap="16" :y-gap="0" cols="1" responsive="screen">
+            <n-form-item-gi label="数据集名">
+              <n-input v-model:value="uploadForm.datasetName" placeholder="例如 2024 全市场日线数据" />
+            </n-form-item-gi>
+            <n-form-item-gi label="交易文件">
+              <input type="file" accept=".csv,.xlsx,.xls" @change="onFileSelected" />
+            </n-form-item-gi>
+          </n-grid>
         </n-form>
 
         <div class="inline-hint">请先解析列头，再确认映射并提交导入。系统会自动给出建议映射，必要时可手动调整。</div>
 
-        <div class="toolbar-row" style="margin-top: 16px;">
+        <div class="toolbar-row upload-actions" style="margin-top: 16px;">
           <n-button type="primary" :loading="previewingImport" @click="submitPreview">解析列头</n-button>
           <n-button secondary :disabled="!hasImportPreview" @click="openMappingModal('manual')">列头映射</n-button>
           <n-button
@@ -838,11 +847,22 @@ onMounted(() => {
             </div>
           </n-tab-pane>
         </n-tabs>
+        <div class="mapping-modal-actions">
+          <n-button @click="mappingModalVisible = false">取消</n-button>
+          <n-button
+            type="primary"
+            :loading="committingImport"
+            :disabled="!canCommitImport"
+            @click="submitCommit"
+          >
+            确认导入
+          </n-button>
+        </div>
       </template>
     </n-modal>
 
-    <section class="page__grid page__grid--double">
-      <PanelCard title="当前数据集摘要">
+    <section class="page__grid dataset-layout-section">
+      <PanelCard class="dataset-card dataset-card--summary" title="当前数据集摘要">
         <template #title>
           <span class="page-card__title">
             <span>当前数据集摘要</span>
@@ -859,24 +879,12 @@ onMounted(() => {
             <div class="detail-grid__value">#{{ currentDataset.display_id }}</div>
           </div>
           <div class="detail-grid__item">
-            <span class="detail-grid__label">状态</span>
-            <div class="detail-grid__value">
-              <n-tag :type="toStatusTagType(currentDataset.status)" round>
-                {{ formatStatusText(currentDataset.status) }}
-              </n-tag>
-            </div>
-          </div>
-          <div class="detail-grid__item">
             <span class="detail-grid__label">文件来源</span>
             <div class="detail-grid__value">{{ currentDataset.original_file_name || currentDataset.source_name }}</div>
           </div>
           <div class="detail-grid__item">
             <span class="detail-grid__label">记录规模</span>
             <div class="detail-grid__value">{{ formatCompact(currentDataset.record_count ?? null, 2) }}</div>
-          </div>
-          <div class="detail-grid__item">
-            <span class="detail-grid__label">所属用户</span>
-            <div class="detail-grid__value">{{ currentDataset.owner_username || "--" }}</div>
           </div>
           <div class="detail-grid__item">
             <span class="detail-grid__label">完成时间</span>
@@ -890,7 +898,7 @@ onMounted(() => {
         />
       </PanelCard>
 
-      <PanelCard title="样本预览">
+      <PanelCard class="dataset-card dataset-card--sample" title="样本预览">
         <EChartPanel v-if="previewChartOption" :option="previewChartOption" :loading="loadingPreview" height="320px" />
         <EmptyState
           v-else
@@ -942,13 +950,21 @@ onMounted(() => {
               <td>{{ formatDateTime(item.started_at) }}</td>
               <td>
                 <div class="toolbar-row">
-                  <n-button text type="primary" @click="loadDatasets(item.id)">切换</n-button>
+                  <n-button text type="primary" style="margin-right: 12px;" @click="loadDatasets(item.id, { notify: true, action: 'switch' })">
+                    <template #icon>
+                      <n-icon><SwapHorizontalOutline /></n-icon>
+                    </template>
+                    切换
+                  </n-button>
                   <n-button
                     text
                     type="error"
                     :loading="deletingRunId === item.id"
                     @click="removeRun(item)"
                   >
+                    <template #icon>
+                      <n-icon><TrashOutline /></n-icon>
+                    </template>
                     删除
                   </n-button>
                 </div>
@@ -1035,6 +1051,34 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.page {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.dataset-layout-section {
+  display: contents;
+}
+
+.dataset-card--summary {
+  order: 1;
+}
+
+.dataset-card--upload {
+  order: 2;
+}
+
+.dataset-card--sample {
+  order: 3;
+  grid-column: 1 / -1;
+}
+
+.page > :deep(.panel-card:not(.dataset-card)) {
+  order: 4;
+  grid-column: 1 / -1;
+}
+
 .page-card__title {
   display: inline-flex;
   align-items: center;
@@ -1054,10 +1098,28 @@ onMounted(() => {
   font-size: 12px;
 }
 
+.upload-actions {
+  gap: 16px;
+  row-gap: 10px;
+}
+
 .mapping-table-scroll {
   max-height: min(45vh, 440px);
   overflow-y: auto;
 }
+
+.mapping-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+@media (max-width: 760px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
-
-

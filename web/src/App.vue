@@ -23,7 +23,7 @@ const route = useRoute();
     <n-loading-bar-provider>
       <n-dialog-provider>
         <n-notification-provider>
-          <n-message-provider>
+          <n-message-provider :container-style="{ top: '18vh' }">
             <RouterView v-if="route.meta.layout === 'auth'" />
             <AppShell v-else />
           </n-message-provider>

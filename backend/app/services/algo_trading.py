@@ -274,6 +274,8 @@ class TradingAlgoService:
         return TradingJointAnomalyRankingRead(
             import_run_id=import_run_id,
             lookback_window=JOINT_ANOMALY_LOOKBACK_WINDOW,
+            required_fields=["close", "volume"],
+            data_frequency="daily",
             rows=ranked_rows[:top_n],
         )
 

@@ -1,8 +1,8 @@
-﻿<script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref, watch } from "vue";
 
 import type { EChartsOption } from "echarts";
-import { NAlert, NButton, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag } from "naive-ui";
+import { NAlert, NButton, NDatePicker, NForm, NFormItemGi, NGrid, NInput, NPagination, NSelect, NTable, NTag, useMessage } from "naive-ui";
 import { useRoute } from "vue-router";
 
 import { fetchTradingJointAnomalyRanking, fetchTradingSummary } from "@/api/analysis";
@@ -14,7 +14,6 @@ import {
   fetchRiskRadarEvents,
   fetchRiskRadarStocks,
   fetchRiskRadarOverview,
-  rebuildAlgoIndex,
 } from "@/api/riskRadar";
 import { fetchTradingRangeKthVolume, fetchTradingRangeMaxAmount, fetchTradingStocks } from "@/api/trading";
 import type {
@@ -32,21 +31,17 @@ import type {
   TradingStockRiskProfileRead,
   TradingSummaryRead,
 } from "@/api/types";
-import DateInputField from "@/components/DateInputField.vue";
 import EChartPanel from "@/components/EChartPanel.vue";
 import EmptyState from "@/components/EmptyState.vue";
 import PanelCard from "@/components/PanelCard.vue";
-import StatCard from "@/components/StatCard.vue";
 import { useTablePager } from "@/composables/useTablePager";
-import { useAuthStore } from "@/stores/auth";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
-import { formatCompact, formatDate, formatDateTime, formatNumberish, getErrorMessage, toNumber, toStatusTagType } from "@/utils/format";
+import { formatCompact, formatDate, formatNumberish, getErrorMessage, toNumber, toStatusTagType } from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
 import {
-  formatAlgoMethodText,
+  formatRiskCauseText,
   formatSeverityText,
-  formatStatusText,
   TECHNICAL_TEXT,
 } from "@/utils/displayText";
 
@@ -63,13 +58,12 @@ const ALGO_SECTION_TABS = [
 ] as const;
 
 const runtime = useRuntimeStore();
-const auth = useAuthStore();
 const datasetContext = useDatasetContextStore();
 const route = useRoute();
+const message = useMessage();
 const loadingRuns = ref(false);
 const loadingAlgo = ref(false);
 const loadingRadar = ref(false);
-const rebuilding = ref(false);
 const error = ref("");
 usePageErrorNotification(error, "算法雷达加载失败");
 
@@ -111,7 +105,7 @@ const kthMethodOptions = [
   { label: "近似结果", value: "t_digest" as const },
 ];
 const severityOptions = [
-  { label: "全部严重", value: "" },
+  { label: "全部", value: "" },
   { label: "中", value: "medium" },
   { label: "高", value: "high" },
   { label: "严重", value: "critical" },
@@ -124,38 +118,22 @@ const currentImportRun = computed(() => importRuns.value.find((item) => item.id 
 const stockOptions = computed(() =>
   stocks.value.map((item) => ({ label: `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`, value: item.stock_code }))
 );
+const startDatePickerValue = computed({
+  get: () => filters.startDate || undefined,
+  set: (value: string | null | undefined) => {
+    filters.startDate = value ?? "";
+  },
+});
+const endDatePickerValue = computed({
+  get: () => filters.endDate || undefined,
+  set: (value: string | null | undefined) => {
+    filters.endDate = value ?? "";
+  },
+});
 const currentSection = computed<(typeof ALGO_SECTION_TABS)[number]["key"]>(() =>
   route.path.startsWith("/algo-radar/algorithms") ? "algorithms" : "risk"
 );
 const isRiskSection = computed(() => currentSection.value === "risk");
-const algoCards = computed(() => [
-  {
-    label: "当前范围记录",
-    value: String(algoSummary.value?.record_count ?? 0),
-    hint: algoSummary.value ? `${algoSummary.value.start_date} ~ ${algoSummary.value.end_date}` : "等待算法结果",
-    tone: "teal" as const,
-  },
-  {
-    label: "区间最大成交额",
-    value: algoResult.value ? formatCompact(algoResult.value.max_amount, 2) : "--",
-    hint: panelNotices.maxAmount || (algoResult.value ? `命中 ${algoResult.value.matches.length} 个交易日` : "等待区间最大结果"),
-    tone: "orange" as const,
-  },
-  {
-    label: "区间第 K 大成交量",
-    value: algoKthResult.value ? formatCompact(algoKthResult.value.value, 2) : "--",
-    hint:
-      panelNotices.kthVolume ||
-      (algoKthResult.value ? `${formatAlgoMethodText(algoKthResult.value.method)} / K=${algoKthResult.value.k}` : "等待第 K 大查询结果"),
-    tone: "berry" as const,
-  },
-  {
-    label: "联合异常条数",
-    value: String(jointAnomalies.value?.rows.length ?? 0),
-    hint: panelNotices.joint || (jointAnomalies.value ? "按联合百分位排序" : "等待联合异常结果"),
-    tone: "neutral" as const,
-  },
-]);
 const activeRadarEvent = computed(() => {
   if (eventContext.value?.event) {
     return eventContext.value.event;
@@ -165,35 +143,8 @@ const activeRadarEvent = computed(() => {
   }
   return events.value.find((item) => `${item.stock_code}:${item.trade_date}` === selectedEventKey.value) ?? events.value[0] ?? null;
 });
-const radarCards = computed(() => [
-  {
-    label: "索引状态",
-    value: indexStatus.value?.status ? formatStatusText(indexStatus.value.status) : "--",
-    hint: indexStatus.value?.build_completed_at ? `完成于 ${formatDateTime(indexStatus.value.build_completed_at)}` : "等待索引状态",
-    tone: "teal" as const,
-  },
-  {
-    label: "异常事件",
-    value: String(overview.value?.total_events ?? 0),
-    hint: `事件窗口 ${overview.value?.lookback_window ?? 20} 日`,
-    tone: "orange" as const,
-  },
-  {
-    label: "受影响股票数",
-    value: String(overview.value?.impacted_stock_count ?? 0),
-    hint: indexStatus.value?.stock_count ? `${indexStatus.value.stock_count} 个已建索引股票` : "等待索引完成",
-    tone: "berry" as const,
-  },
-  {
-    label: "中心联合分位",
-    value: activeRadarEvent.value ? formatNumberish(activeRadarEvent.value.joint_percentile, 4) : "--",
-    hint:
-      activeRadarEvent.value
-        ? `${activeRadarEvent.value.stock_code} · ${formatDate(activeRadarEvent.value.trade_date)}`
-        : "等待事件数据",
-    tone: "neutral" as const,
-  },
-]);
+const radarCenterJointText = computed(() => (activeRadarEvent.value ? formatNumberish(activeRadarEvent.value.joint_percentile, 4) : "--"));
+const radarEventCountText = computed(() => String(eventPager.total.value));
 const jointRows = computed(() => jointAnomalies.value?.rows ?? []);
 const algoScopeKey = computed(
   () =>
@@ -234,14 +185,27 @@ const radarIndicators = [
   { key: "score_drawdown_pressure", label: "回撤压力", max: 100 },
 ] as const;
 
+function isUsableRadarValue(value: unknown) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+}
+
 const radarMissingAxes = computed(() => {
   const event = activeRadarEvent.value;
   if (!event) {
     return [];
   }
   return radarIndicators
-    .filter((item) => event[item.key] === null || event[item.key] === undefined)
+    .filter((item) => !isUsableRadarValue(event[item.key]))
     .map((item) => item.label);
+});
+const radarEmptyDescription = computed(() => {
+  if (indexStatus.value?.is_ready === false) {
+    return "请先完成算法索引构建后再查看风险雷达。";
+  }
+  if (overview.value && !activeRadarEvent.value) {
+    return "当前筛选范围内没有可展示的风险事件，请调整日期范围、严重程度或事件数量。";
+  }
+  return "执行算法后，这里会展示 5 轴雷达图。";
 });
 
 const radarOption = computed<EChartsOption | null>(() => {
@@ -252,11 +216,16 @@ const radarOption = computed<EChartsOption | null>(() => {
 
   return {
     backgroundColor: "transparent",
-    tooltip: { trigger: "item" },
+    tooltip: { trigger: "item", appendToBody: true, confine: false },
     radar: {
       indicator: radarIndicators.map((item) => ({ name: `${item.label}(0-100)`, max: item.max })),
-      radius: "70%",
+      center: ["50%", "54%"],
+      radius: "58%",
       splitNumber: 5,
+      axisName: {
+        overflow: "break",
+        width: 92,
+      },
     },
     series: [
       {
@@ -341,7 +310,24 @@ function syncContext() {
     stockCode: filters.stockCode,
     startDate: filters.startDate,
     endDate: filters.endDate,
+    kInput: filters.kInput,
+    kthMethod: filters.kthMethod,
+    jointTopNInput: filters.jointTopNInput,
+    severity: filters.severity,
+    eventTopNInput: filters.topNInput,
   });
+}
+
+function syncFiltersFromContext() {
+  filters.importRunId = datasetContext.state.importRunId;
+  filters.stockCode = datasetContext.state.stockCode;
+  filters.startDate = datasetContext.state.startDate;
+  filters.endDate = datasetContext.state.endDate;
+  filters.kInput = datasetContext.state.kInput;
+  filters.kthMethod = datasetContext.state.kthMethod;
+  filters.jointTopNInput = datasetContext.state.jointTopNInput;
+  filters.severity = datasetContext.state.severity;
+  filters.topNInput = datasetContext.state.eventTopNInput;
 }
 
 function formatModuleSummary(contract: TradingDataContractRead | null | undefined) {
@@ -542,14 +528,22 @@ async function loadRuns(preferredRunId?: number) {
   }
 }
 
-async function applyScope() {
+async function applyScope(options: { notify?: boolean } = {}) {
   error.value = "";
   try {
     syncContext();
     await Promise.all([loadAlgoPanels(), loadRadar()]);
     runtime.markSynced();
+    if (options.notify && !error.value) {
+      message.success("范围已应用");
+    } else if (options.notify && error.value) {
+      message.warning("范围已应用，部分结果加载失败");
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
+    if (options.notify) {
+      message.error(error.value);
+    }
   }
 }
 
@@ -558,77 +552,23 @@ async function handleRunChange() {
   await applyScope();
 }
 
-async function handleRebuild() {
-  if (!filters.importRunId) {
-    return;
-  }
-
-  rebuilding.value = true;
-  error.value = "";
-  try {
-    indexStatus.value = await rebuildAlgoIndex(filters.importRunId);
-    await loadRadar();
-  } catch (err) {
-    error.value = getErrorMessage(err);
-  } finally {
-    rebuilding.value = false;
-  }
-}
-
 onMounted(() => {
-  filters.importRunId = datasetContext.state.importRunId;
-  filters.stockCode = datasetContext.state.stockCode;
-  filters.startDate = datasetContext.state.startDate;
-  filters.endDate = datasetContext.state.endDate;
+  syncFiltersFromContext();
   void loadRuns(filters.importRunId);
 });
+
+watch(
+  () => datasetContext.state.appliedRevision,
+  () => {
+    syncFiltersFromContext();
+    void loadRuns(filters.importRunId);
+  }
+);
 </script>
 
 <template>
   <div class="page">
-    <PanelCard title="算法筛选器">
-      <template #actions>
-        <div class="toolbar-row">
-          <n-button type="primary" :loading="loadingAlgo || loadingRadar" @click="applyScope">应用范围</n-button>
-          <n-button v-if="auth.isAdmin.value" secondary :loading="rebuilding" @click="handleRebuild">重建索引</n-button>
-        </div>
-      </template>
-      <n-form class="form-grid" label-placement="top">
-        <n-form-item label="批次">
-          <n-select v-model:value="filters.importRunId" :options="importRunOptions" @update:value="handleRunChange" />
-        </n-form-item>
-        <n-form-item label="股票">
-          <n-select v-model:value="filters.stockCode" :options="stockOptions" @update:value="applyScope" />
-        </n-form-item>
-        <n-form-item label="开始日期">
-          <DateInputField v-model="filters.startDate" clearable />
-        </n-form-item>
-        <n-form-item label="结束日期">
-          <DateInputField v-model="filters.endDate" clearable />
-        </n-form-item>
-        <n-form-item label="K 值">
-          <n-input v-model:value="filters.kInput" placeholder="区间第 K 大成交量" />
-        </n-form-item>
-        <n-form-item label="K 算法">
-          <n-select v-model:value="filters.kthMethod" :options="kthMethodOptions" />
-        </n-form-item>
-        <n-form-item label="联合异常前N(Top N)">
-          <n-input v-model:value="filters.jointTopNInput" placeholder="默认 20" />
-        </n-form-item>
-        <n-form-item label="事件严重">
-          <n-select v-model:value="filters.severity" :options="severityOptions" />
-        </n-form-item>
-        <n-form-item label="事件前N(Top N)">
-          <n-input v-model:value="filters.topNInput" placeholder="默认 50" />
-        </n-form-item>
-      </n-form>
-    </PanelCard>
-
-    <section v-if="!isRiskSection" class="page__grid page__grid--stats">
-      <StatCard v-for="item in algoCards" :key="item.label" :label="item.label" :value="item.value" :hint="item.hint" :tone="item.tone" />
-    </section>
-
-    <section v-if="!isRiskSection" class="page__grid page__grid--double">
+    <section v-if="!isRiskSection">
       <PanelCard title="区间算法结果">
         <div v-if="algoSummary" class="detail-grid">
           <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ algoSummary.stock_code }}{{ algoSummary.stock_name ? ` · ${algoSummary.stock_name}` : "" }}</div></div>
@@ -642,7 +582,9 @@ onMounted(() => {
         <div v-if="algoKthResult?.matches.length" class="inline-hint" style="margin-top: 8px;">第 K 大成交量命中日期：{{ algoKthResult.matches.map((item) => item.trade_date).join("、") }}</div>
         <EmptyState v-else-if="!algoSummary" title="暂无区间算法结果" description="选择批次和股票后，这里会展示区间算法查询结果" />
       </PanelCard>
+    </section>
 
+    <section v-if="!isRiskSection">
       <PanelCard title="联合异常排名">
         <n-alert v-if="panelNotices.joint" type="warning" :show-icon="true">{{ panelNotices.joint }}</n-alert>
       <div v-else-if="jointPager.total.value" class="data-table-wrap">
@@ -677,22 +619,24 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <section v-if="isRiskSection" class="page__grid page__grid--stats">
-      <StatCard v-for="item in radarCards" :key="item.label" :label="item.label" :value="item.value" :hint="item.hint" :tone="item.tone" />
-    </section>
-
     <section v-if="isRiskSection" class="page__grid page__grid--double">
       <PanelCard title="风险雷达（5轴分位）">
+        <template #title>
+          <span class="panel-title-inline">
+            <span>风险雷达（5轴分位）</span>
+            <n-tag size="small" round type="info">中心联合分位 {{ radarCenterJointText }}</n-tag>
+          </span>
+        </template>
         <n-alert v-if="radarMissingAxes.length" type="warning" :show-icon="true" style="margin-bottom: 12px;">
           当前事件样本不足，缺失轴：{{ radarMissingAxes.join("、") }}。请扩大日期范围或使用更长历史数据。
         </n-alert>
-        <EChartPanel v-if="radarOption" :option="radarOption" :loading="loadingRadar" />
-        <div v-if="overview" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(overview) }}</div>
+        <EChartPanel v-if="radarOption" :option="radarOption" :loading="loadingRadar" height="420px" />
         <EmptyState
-          v-else
+          v-if="!radarOption && !radarMissingAxes.length"
           :title="indexStatus?.is_ready === false ? '索引尚未就绪' : '暂无风险雷达数据'"
-          :description="indexStatus?.is_ready === false ? '请先完成算法索引构建后再查看风险雷达。' : '执行算法后，这里会展示 5 轴雷达图。'"
+          :description="radarEmptyDescription"
         />
+        <div v-if="overview" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(overview) }}</div>
       </PanelCard>
 
       <PanelCard title="风险日历">
@@ -701,8 +645,14 @@ onMounted(() => {
       </PanelCard>
     </section>
 
-    <section v-if="isRiskSection" class="page__grid page__grid--double">
+    <section v-if="isRiskSection">
       <PanelCard title="风险事件列表">
+        <template #title>
+          <span class="panel-title-inline">
+            <span>风险事件列表</span>
+            <n-tag size="small" round type="warning">当前事件 {{ radarEventCountText }}</n-tag>
+          </span>
+        </template>
       <div v-if="eventPager.total.value" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">
             <thead><tr><th>股票</th><th>日期</th><th>严重</th><th>原因</th><th>收益冲击</th><th>波动体制</th><th>波幅冲击</th><th>RVOL20</th><th>回撤压力</th><th>联合分位</th></tr></thead>
@@ -716,7 +666,7 @@ onMounted(() => {
                 <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
                 <td>{{ formatDate(item.trade_date) }}</td>
                 <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ formatSeverityText(item.severity) }}</n-tag></td>
-                <td>{{ item.cause_label }}</td>
+                <td>{{ formatRiskCauseText(item.cause_label) }}</td>
                 <td>{{ formatNumberish(item.return_shock, 4) }}</td>
                 <td>{{ formatNumberish(item.vol_regime, 4) }}</td>
                 <td>{{ formatNumberish(item.range_shock, 4) }}</td>
@@ -740,7 +690,9 @@ onMounted(() => {
         </div>
         <EmptyState v-else title="暂无风险事件" description="索引准备好后，这里会返回当前范围内的异常事件" />
       </PanelCard>
+    </section>
 
+    <section v-if="isRiskSection">
       <PanelCard title="高风险股票画像">
       <div v-if="stockProfilePager.total.value" class="data-table-wrap">
           <n-table class="data-table" striped size="small" :single-line="false">
@@ -780,7 +732,7 @@ onMounted(() => {
           <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ eventContext.event.stock_code }}{{ eventContext.event.stock_name ? ` · ${eventContext.event.stock_name}` : "" }}</div></div>
           <div class="detail-grid__item"><span class="detail-grid__label">事件日期</span><div class="detail-grid__value">{{ formatDate(eventContext.event.trade_date) }}</div></div>
           <div class="detail-grid__item"><span class="detail-grid__label">严重</span><div class="detail-grid__value">{{ formatSeverityText(eventContext.event.severity) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">原因</span><div class="detail-grid__value">{{ eventContext.event.cause_label }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">原因</span><div class="detail-grid__value">{{ formatRiskCauseText(eventContext.event.cause_label) }}</div></div>
         </div>
 
         <div class="detail-grid">
@@ -826,4 +778,11 @@ onMounted(() => {
   </div>
 </template>
 
-
+<style scoped>
+.panel-title-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+</style>

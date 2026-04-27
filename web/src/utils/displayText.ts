@@ -30,6 +30,29 @@ const ALGO_METHOD_TEXT_MAP: Record<string, string> = {
   t_digest: "近似算法",
 };
 
+const RISK_CAUSE_TEXT_MAP: Record<string, string> = {
+  "three-factor resonance": "三因子共振",
+  "price-led": "价格主导",
+  "liquidity-led": "成交活跃",
+  "range-led": "波幅放大",
+};
+
+const ANOMALY_TYPE_TEXT_MAP: Record<string, string> = {
+  volume_spike: "成交量放大",
+  return_spike: "收益率异常",
+  amplitude_spike: "振幅异常",
+  breakout_new_high: "突破新高",
+  breakout_new_low: "跌破新低",
+};
+
+const ANOMALY_DESCRIPTION_TEXT_MAP: Record<string, string> = {
+  "Volume exceeds 2x the rolling baseline.": "成交量超过滚动基线的 2 倍。",
+  "Absolute daily return exceeds the explainable threshold.": "日收益率绝对值超过可解释阈值。",
+  "Daily amplitude is unusually wide versus the rolling baseline.": "日内振幅相对滚动基线异常放大。",
+  "Close breaks above the previous 20-period rolling high.": "收盘价突破前 20 期滚动高点。",
+  "Close breaks below the previous 20-period rolling low.": "收盘价跌破前 20 期滚动低点。",
+};
+
 export const TECHNICAL_TEXT = {
   returnZ20: "收益Z分数(Return Z20)",
   volumeRatio20: "量比(Volume Ratio20)",
@@ -76,4 +99,16 @@ export function formatSeverityText(severity: unknown) {
 
 export function formatAlgoMethodText(method: unknown) {
   return mapByNormalized(method, ALGO_METHOD_TEXT_MAP);
+}
+
+export function formatRiskCauseText(cause: unknown) {
+  return mapByNormalized(cause, RISK_CAUSE_TEXT_MAP);
+}
+
+export function formatAnomalyTypeText(type: unknown) {
+  return mapByNormalized(type, ANOMALY_TYPE_TEXT_MAP);
+}
+
+export function formatAnomalyDescriptionText(description: unknown) {
+  return mapByNormalized(description, ANOMALY_DESCRIPTION_TEXT_MAP);
 }

@@ -6,6 +6,7 @@ import {
   DocumentTextOutline,
   ExpandOutline,
   FolderOpenOutline,
+  FunnelOutline,
   GridOutline,
   ListOutline,
   MenuOutline,
@@ -35,12 +36,15 @@ import {
 import { RouterView, useRoute, useRouter } from "vue-router";
 
 import logo from "@/assets/branding/logo.png";
+import { fetchAlgoIndexStatus } from "@/api/riskRadar";
+import UnifiedFilterDrawer from "@/components/UnifiedFilterDrawer.vue";
 import { APP_BRAND_NAME, APP_BRAND_SUBTITLE } from "@/constants/branding";
 import { useAuthStore } from "@/stores/auth";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useLayoutStore } from "@/stores/layout";
 import { useRuntimeStore } from "@/stores/runtime";
-import { formatRoleText } from "@/utils/displayText";
+import { formatRoleText, formatStatusText } from "@/utils/displayText";
+import { formatDateTime } from "@/utils/format";
 
 
 interface NavItem {
@@ -79,6 +83,8 @@ const searchKeyword = ref("");
 const searchInputRef = ref<InputInst | null>(null);
 const activeSearchIndex = ref(0);
 const isFullscreen = ref(false);
+const filterDrawerVisible = ref(false);
+let algoIndexStatusRequestId = 0;
 
 const tabs = layout.tabs;
 const isAdmin = auth.isAdmin;
@@ -109,7 +115,7 @@ const userItems: NavItem[] = [
         path: "/analysis/market",
       },
       {
-        title: "\u6cbb\u7406/\u5feb\u7167",
+        title: "\u5feb\u7167\u4e0e\u76f8\u5173\u6027",
         key: "/analysis/governance",
         path: "/analysis/governance",
       },
@@ -193,7 +199,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => {
 const showDatasetContextInTopbar = computed(
   () =>
     !isAdmin.value &&
-    ["/workbench", "/analysis", "/algo-radar"].some((prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`))
+    ["/workbench", "/datasets", "/analysis", "/algo-radar"].some((prefix) => route.path === prefix || route.path.startsWith(`${prefix}/`))
 );
 
 const currentContextBatch = computed(() => {
@@ -229,6 +235,8 @@ const topbarContextItems = computed(() => {
     },
   ];
 });
+
+const showUnifiedFilterButton = computed(() => showDatasetContextInTopbar.value);
 
 const dropdownOptions = computed(() => [
   {
@@ -389,6 +397,7 @@ const activeSearchEntry = computed(() => visibleSearchEntries.value[activeSearch
 const hasSearchKeyword = computed(() => Boolean(searchKeyword.value.trim()));
 
 const statusHasAttention = computed(() => runtime.syncStatusText.value !== "\u5df2\u540c\u6b65" || Boolean(routeRenderError.value));
+const algoIndexStatusTagType = computed(() => (runtime.state.algoIndexStatus?.statusText === "\u5c31\u7eea" ? "success" : "warning"));
 
 function syncViewport() {
   if (typeof window === "undefined") {
@@ -426,6 +435,11 @@ function openSearchModal() {
   void nextTick(() => {
     searchInputRef.value?.focus();
   });
+}
+
+function openFilterDrawer(event?: MouseEvent) {
+  (event?.currentTarget as HTMLElement | null)?.blur();
+  filterDrawerVisible.value = true;
 }
 
 function closeSearchModal() {
@@ -506,7 +520,32 @@ function handleDropdownSelect(key: string) {
     auth.clearSession();
     datasetContext.resetScope();
     layout.resetLayout();
+    runtime.setAlgoIndexStatus(null);
     void router.replace("/login");
+  }
+}
+
+async function refreshAlgoIndexStatus(importRunId: number | undefined) {
+  const requestId = ++algoIndexStatusRequestId;
+  if (!importRunId || !auth.state.accessToken) {
+    runtime.setAlgoIndexStatus(null);
+    return;
+  }
+
+  try {
+    const status = await fetchAlgoIndexStatus({ import_run_id: importRunId });
+    if (requestId !== algoIndexStatusRequestId) {
+      return;
+    }
+    runtime.setAlgoIndexStatus({
+      statusText: formatStatusText(status.status),
+      completedAtText: status.build_completed_at ? formatDateTime(status.build_completed_at) : "",
+      stockCount: status.stock_count ?? null,
+    });
+  } catch {
+    if (requestId === algoIndexStatusRequestId) {
+      runtime.setAlgoIndexStatus(null);
+    }
   }
 }
 
@@ -578,6 +617,14 @@ watch(
   allowedTabPaths,
   (paths) => {
     layout.pruneTabs(paths);
+  },
+  { immediate: true }
+);
+
+watch(
+  [() => datasetContext.state.importRunId, () => auth.state.accessToken],
+  ([importRunId]) => {
+    void refreshAlgoIndexStatus(importRunId);
   },
   { immediate: true }
 );
@@ -702,6 +749,13 @@ onBeforeUnmount(() => {
 
         <div class="shell__topbar-right">
           <div class="shell__tool-row">
+            <div v-if="showUnifiedFilterButton" class="shell__tool-item">
+              <button type="button" class="shell__tool-btn" @click="openFilterDrawer">
+                <n-icon size="18"><FunnelOutline /></n-icon>
+              </button>
+              <span class="shell__tool-tip">筛选器</span>
+            </div>
+
             <div class="shell__tool-item">
               <button type="button" class="shell__tool-btn" @click="openSearchModal">
                 <n-icon size="18"><SearchOutline /></n-icon>
@@ -741,6 +795,20 @@ onBeforeUnmount(() => {
                   <div class="shell__status-row">
                     <span class="shell__status-label">&#x6700;&#x8FD1;&#x540C;&#x6B65;</span>
                     <span>{{ runtime.lastSyncText }}</span>
+                  </div>
+                  <div v-if="runtime.state.algoIndexStatus" class="shell__status-row">
+                    <span class="shell__status-label">算法索引</span>
+                    <n-tag size="small" :type="algoIndexStatusTagType">
+                      {{ runtime.state.algoIndexStatus.statusText }}
+                    </n-tag>
+                  </div>
+                  <div v-if="runtime.state.algoIndexStatus?.completedAtText" class="shell__status-row">
+                    <span class="shell__status-label">索引完成</span>
+                    <span>{{ runtime.state.algoIndexStatus.completedAtText }}</span>
+                  </div>
+                  <div v-if="runtime.state.algoIndexStatus?.stockCount !== null && runtime.state.algoIndexStatus?.stockCount !== undefined" class="shell__status-row">
+                    <span class="shell__status-label">索引股票</span>
+                    <span>{{ runtime.state.algoIndexStatus.stockCount }}</span>
                   </div>
                   <div class="shell__status-row">
                     <span class="shell__status-label">&#x6253;&#x5F00;&#x9875;&#x7B7E;</span>
@@ -872,6 +940,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <UnifiedFilterDrawer v-if="showUnifiedFilterButton" v-model:show="filterDrawerVisible" />
   </div>
 </template>
 

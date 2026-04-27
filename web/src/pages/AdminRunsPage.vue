@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { SyncOutline } from "@vicons/ionicons5";
 
-import { NButton, NPagination, NTable, NTag, useMessage } from "naive-ui";
+import { NButton, NIcon, NPagination, NTable, NTag, useMessage } from "naive-ui";
 
 import { fetchAdminRunsMonitor } from "@/api/admin";
 import { fetchImportStats } from "@/api/imports";
@@ -104,6 +105,7 @@ async function rebuildIndex(row: AdminRunMonitorRowRead) {
     await loadPage();
   } catch (err) {
     error.value = getErrorMessage(err);
+    message.error(error.value);
   } finally {
     rowLoading[row.import_run_id] = false;
   }
@@ -174,12 +176,15 @@ onMounted(() => {
               <td>{{ row.algo_last_error || "--" }}</td>
               <td>
                 <n-button
-                  size="small"
+                  text
                   type="warning"
                   :disabled="!canRebuild(row)"
                   :loading="Boolean(rowLoading[row.import_run_id])"
                   @click="rebuildIndex(row)"
                 >
+                  <template #icon>
+                    <n-icon><SyncOutline /></n-icon>
+                  </template>
                   重建索引
                 </n-button>
               </td>

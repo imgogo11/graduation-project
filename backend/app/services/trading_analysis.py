@@ -366,7 +366,7 @@ class TradingAnalysisService:
                             metric_value=self._float(row.volume),
                             baseline_value=self._float(row.volume_baseline),
                             threshold_value=self._float(threshold),
-                            description="Volume exceeds 2x the rolling baseline.",
+                            description="成交量超过滚动基线的 2 倍。",
                         )
                     )
 
@@ -380,7 +380,7 @@ class TradingAnalysisService:
                             metric_value=self._float(row.daily_return),
                             baseline_value=self._float(row.return_volatility),
                             threshold_value=self._float(row.return_threshold),
-                            description="Absolute daily return exceeds the explainable threshold.",
+                            description="日收益率绝对值超过可解释阈值。",
                         )
                     )
 
@@ -394,7 +394,7 @@ class TradingAnalysisService:
                             metric_value=self._float(row.amplitude),
                             baseline_value=self._float(row.amplitude_baseline),
                             threshold_value=self._float(row.amplitude_threshold),
-                            description="Daily amplitude is unusually wide versus the rolling baseline.",
+                            description="日内振幅相对滚动基线异常放大。",
                         )
                     )
 
@@ -407,7 +407,7 @@ class TradingAnalysisService:
                         metric_value=self._float(row.close),
                         baseline_value=self._float(row.previous_rolling_high),
                         threshold_value=self._float(row.previous_rolling_high),
-                        description="Close breaks above the previous 20-period rolling high.",
+                        description="收盘价突破前 20 期滚动高点。",
                     )
                 )
 
@@ -420,7 +420,7 @@ class TradingAnalysisService:
                         metric_value=self._float(row.close),
                         baseline_value=self._float(row.previous_rolling_low),
                         threshold_value=self._float(row.previous_rolling_low),
-                        description="Close breaks below the previous 20-period rolling low.",
+                        description="收盘价跌破前 20 期滚动低点。",
                     )
                 )
 

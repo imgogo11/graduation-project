@@ -567,12 +567,12 @@ class AlgoIndexManager:
 
     def _cause_label(self, *, return_shock: float, liquidity_shock: float, range_shock: float) -> str:
         if return_shock >= 3.0 and liquidity_shock >= 2.0 and range_shock >= 1.5:
-            return "three-factor resonance"
+            return "三因子共振"
         if return_shock >= liquidity_shock and return_shock >= range_shock:
-            return "price-led"
+            return "价格主导"
         if liquidity_shock >= range_shock:
-            return "liquidity-led"
-        return "range-led"
+            return "成交活跃"
+        return "波幅放大"
 
     def _parse_datetime(self, value: Any) -> datetime | None:
         if value is None or value == "":

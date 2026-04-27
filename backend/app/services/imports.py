@@ -711,9 +711,10 @@ class ImportService:
         if missing_columns:
             raise ImportValidationError(build_import_format_error(f"缺少必要列：{', '.join(missing_columns)}"))
 
-        rename_map = {original: canonical for canonical, original in canonical_to_original.items()}
         selected_columns = [column for column in head_dictionary.canonical_columns if column in canonical_to_original]
-        normalized = frame.rename(columns=rename_map)[selected_columns].copy()
+        normalized = pd.DataFrame(index=frame.index)
+        for canonical in selected_columns:
+            normalized[canonical] = frame[canonical_to_original[canonical]]
 
         normalized["stock_code"] = normalized["stock_code"].map(normalize_stock_code_value)
         if normalized["stock_code"].isna().any():
@@ -772,7 +773,12 @@ class ImportService:
             }
             for row in normalized.to_dict(orient="records")
         ]
-        column_mapping = {original: canonical for canonical, original in canonical_to_original.items()}
+        column_mapping: dict[str, str] = {}
+        for canonical, original in canonical_to_original.items():
+            if original in column_mapping:
+                column_mapping[original] = f"{column_mapping[original]},{canonical}"
+            else:
+                column_mapping[original] = canonical
         ignored_columns = [str(column) for column in frame.columns if str(column) not in column_mapping]
         matched_columns = [column for column in head_dictionary.canonical_columns if column in canonical_to_original]
         return NormalizedTradingDataset(
@@ -808,7 +814,11 @@ class ImportService:
                 raise ImportValidationError(f"映射源列不存在：{original}")
             resolved[canonical] = original
 
-        duplicates = [value for value, count in self._count_values(list(resolved.values())).items() if count > 1]
+        duplicates = [
+            value
+            for value, count in self._count_values(list(resolved.values())).items()
+            if count > 1 and not self._is_allowed_reused_source(value, resolved)
+        ]
         if duplicates:
             raise ImportValidationError(build_import_format_error(f"映射冲突：同一源列被重复使用（{', '.join(duplicates)}）"))
         missing_required = [item for item in head_dictionary.required_columns if item not in resolved]
@@ -821,6 +831,12 @@ class ImportService:
         for value in values:
             counts[value] = counts.get(value, 0) + 1
         return counts
+
+    def _is_allowed_reused_source(self, source_column: str, resolved_mapping: dict[str, str]) -> bool:
+        return (
+            source_column == resolved_mapping.get("trade_date")
+            and source_column == resolved_mapping.get("valuation_as_of")
+        )
 
     def _assert_required_issue_columns_confirmed(
         self,

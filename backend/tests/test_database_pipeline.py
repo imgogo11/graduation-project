@@ -349,6 +349,31 @@ class DatabasePipelineTests(PostgresIntegrationTestCase):
         self.assertEqual(len(body_with_optional), 2)
         self.assertIsNotNone(body_with_optional[0]["amount"])
 
+    def test_valuation_as_of_can_reuse_trade_date_mapping(self) -> None:
+        token = self._register_and_login("valuation_date_user", "password123")
+        preview = self._preview_csv(
+            token=token,
+            dataset_name="valuation_date_from_trade_date",
+            frame=build_trading_frame(),
+        )
+
+        run = self._commit_preview(
+            token=token,
+            preview_id=str(preview["preview_id"]),
+            mapping_overrides={"valuation_as_of": "trade_date"},
+        )
+
+        records = self.client.get(
+            "/api/trading/records",
+            params={"import_run_id": run["id"], "stock_code": "600519.SH"},
+            headers=self._auth_headers(token),
+        )
+        self.assertEqual(records.status_code, 200, records.text)
+        rows = records.json()
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(str(rows[0]["valuation_as_of"]).startswith("2026-01-02"))
+        self.assertTrue(str(rows[1]["valuation_as_of"]).startswith("2026-01-03"))
+
     def test_dataset_name_conflicts_are_user_scoped_and_deleted_names_can_be_reused(self) -> None:
         alice_token = self._register_and_login("alice_name_user", "password123")
         bob_token = self._register_and_login("bob_name_user", "password123")
