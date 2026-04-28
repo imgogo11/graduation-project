@@ -51,10 +51,6 @@ const LEGACY_ANALYSIS_EVENT_MAP: Record<string, string> = {
   "api.algo.trading.joint-anomaly-ranking.access": "algo.trading.joint_anomaly_ranking.query",
 };
 
-function formatZhEn(zh: string, en: string): string {
-  return `${zh}(${en})`;
-}
-
 export function normalizeAuditEventCode(eventType: string): string {
   const normalized = (eventType || "").trim();
   if (!normalized) {
@@ -66,21 +62,19 @@ export function normalizeAuditEventCode(eventType: string): string {
 export function formatAuditCategory(category: string): string {
   const normalized = (category || "").trim();
   if (!normalized) {
-    return formatZhEn("未知分类", "unknown");
+    return "未知分类";
   }
-  const zh = CATEGORY_LABELS[normalized] ?? "其他分类";
-  return formatZhEn(zh, normalized);
+  return CATEGORY_LABELS[normalized] ?? "其他分类";
 }
 
 export function formatAuditEvent(eventType: string): string {
   const normalized = normalizeAuditEventCode(eventType);
   const zh = EVENT_LABELS[normalized];
   if (zh) {
-    return formatZhEn(zh, normalized);
+    return zh;
   }
   if (normalized === "unknown") {
-    return formatZhEn("未知事件", normalized);
+    return "未知事件";
   }
-  return formatZhEn("其他事件", normalized);
+  return "其他事件";
 }
-

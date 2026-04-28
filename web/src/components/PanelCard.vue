@@ -31,6 +31,7 @@ defineProps<{
   background: var(--panel-bg);
   box-shadow: var(--shadow-card);
   overflow: hidden;
+  min-width: 0;
 }
 
 .panel-card__header {
@@ -62,5 +63,6 @@ defineProps<{
 
 .panel-card__body {
   padding: 22px;
+  min-width: 0;
 }
 </style>

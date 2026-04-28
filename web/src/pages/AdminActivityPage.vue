@@ -1,7 +1,18 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 
-import { NButton, NDatePicker, NForm, NFormItem, NInput, NPagination, NSelect, NTable, NTag, useMessage } from "naive-ui";
+import {
+  NButton,
+  NDataTable,
+  NDatePicker,
+  NForm,
+  NFormItem,
+  NInput,
+  NSelect,
+  NTag,
+  useMessage,
+  type DataTableColumns,
+} from "naive-ui";
 
 import { fetchAdminAuditLogStats, fetchAdminAuditLogs } from "@/api/admin";
 import type { AuditLogListRead, AuditLogStatsRead } from "@/api/types";
@@ -36,6 +47,10 @@ const successOptions = [
   { label: "仅成功", value: "success" },
   { label: "仅失败", value: "failed" },
 ];
+
+const activityTableScrollX = 1280;
+const activityTableMaxHeight = "min(48vh, 420px)";
+const activityPageSizes = [10, 20, 50, 100];
 
 const categoryOptions = computed(() =>
   (stats.value?.category_breakdown || []).map((item) => ({
@@ -86,6 +101,94 @@ const endAtPickerValue = computed({
     endAt.value = value ?? "";
   },
 });
+
+const activityTableColumns: DataTableColumns<AuditLogListRead["rows"][number]> = [
+  {
+    title: "时间",
+    key: "occurred_at",
+    width: 220,
+    className: "admin-table-time-column",
+    render(row) {
+      return h("span", { class: "admin-table-time" }, formatDateTime(row.occurred_at));
+    },
+  },
+  {
+    title: "分类",
+    key: "category",
+    width: 150,
+    render(row) {
+      return formatAuditCategory(row.category);
+    },
+  },
+  {
+    title: "事件",
+    key: "event_type",
+    width: 170,
+    render(row) {
+      return formatAuditEvent(row.event_type);
+    },
+  },
+  {
+    title: "执行人",
+    key: "actor_username_snapshot",
+    width: 150,
+    render(row) {
+      return row.actor_username_snapshot || "--";
+    },
+  },
+  {
+    title: "目标",
+    key: "target_label",
+    width: 150,
+    ellipsis: {
+      tooltip: true,
+    },
+    render(row) {
+      return row.target_label || "--";
+    },
+  },
+  {
+    title: "路径",
+    key: "request_path",
+    width: 300,
+    ellipsis: {
+      tooltip: true,
+    },
+    render(row) {
+      return row.request_path || "--";
+    },
+  },
+  {
+    title: "结果",
+    key: "success",
+    width: 140,
+    render(row) {
+      return h(
+        NTag,
+        {
+          type: row.success ? "success" : "error",
+          round: true,
+          size: "small",
+        },
+        { default: () => (row.success ? "成功" : `失败(${row.status_code || "-"})`) }
+      );
+    },
+  },
+];
+
+const activityTablePagination = computed(() => ({
+  page: page.value,
+  pageSize: pageSize.value,
+  itemCount: logs.value?.total || 0,
+  pageSizes: activityPageSizes,
+  showSizePicker: true,
+  onUpdatePage: updatePage,
+  onUpdatePageSize: updatePageSize,
+}));
+
+function getActivityRowKey(row: AuditLogListRead["rows"][number]) {
+  return row.id;
+}
 
 function toIso(value: string | null | undefined) {
   if (!value) {
@@ -207,47 +310,21 @@ onMounted(() => {
         </n-form-item>
       </n-form>
 
-      <div v-if="logs?.rows.length" class="data-table-wrap">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead>
-            <tr>
-              <th>时间</th>
-              <th>分类</th>
-              <th>事件</th>
-              <th>执行人</th>
-              <th>目标</th>
-              <th>路径</th>
-              <th>结果</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in logs?.rows" :key="row.id">
-              <td>{{ formatDateTime(row.occurred_at) }}</td>
-              <td>{{ formatAuditCategory(row.category) }}</td>
-              <td>{{ formatAuditEvent(row.event_type) }}</td>
-              <td>{{ row.actor_username_snapshot || "--" }}</td>
-              <td>{{ row.target_label || "--" }}</td>
-              <td>{{ row.request_path || "--" }}</td>
-              <td>
-                <n-tag :type="row.success ? 'success' : 'error'" round size="small">
-                  {{ row.success ? "成功" : `失败(${row.status_code || "-"})` }}
-                </n-tag>
-              </td>
-            </tr>
-          </tbody>
-        </n-table>
-        <div class="table-pagination">
-          <n-pagination
-            :page="page"
-            :page-size="pageSize"
-            :item-count="logs?.total || 0"
-            :page-sizes="[10, 20, 50, 100]"
-            show-size-picker
-            @update:page="updatePage"
-            @update:page-size="updatePageSize"
-          />
-        </div>
-      </div>
+      <n-data-table
+        v-if="logs?.rows.length"
+        class="admin-activity-table"
+        :columns="activityTableColumns"
+        :data="logs.rows"
+        :pagination="activityTablePagination"
+        :row-key="getActivityRowKey"
+        :max-height="activityTableMaxHeight"
+        :scroll-x="activityTableScrollX"
+        :scrollbar-props="{ trigger: 'none' }"
+        :single-line="false"
+        remote
+        striped
+        size="small"
+      />
       <EmptyState v-else title="暂无调用记录" description="当前筛选条件下没有可展示的审计日志" />
     </PanelCard>
   </div>
@@ -290,6 +367,35 @@ onMounted(() => {
 
 .admin-filter-grid__button {
   width: 100%;
+}
+
+.admin-activity-table {
+  border-radius: 18px;
+  overflow: visible;
+}
+
+:deep(.admin-activity-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:deep(.admin-activity-table .n-data-table-td) {
+  vertical-align: top;
+}
+
+:deep(.admin-activity-table .admin-table-time-column),
+:deep(.admin-activity-table .admin-table-time) {
+  white-space: nowrap;
+}
+
+:deep(.admin-activity-table .n-data-table__pagination) {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: #fff;
 }
 
 @media (max-width: 1520px) {

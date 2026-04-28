@@ -208,6 +208,13 @@ class RiskRadarRouteTests(PostgresIntegrationTestCase):
         self.assertEqual(len(context["window_groups"][0]["windows"]), 3)
         self.assertEqual(len(context["distribution_changes"]), 3)
         self.assertIsNotNone(context["local_amount_peak"])
+        stock_frame = build_risk_radar_frame()
+        stock_rows = stock_frame[stock_frame["stock_code"] == event["stock_code"]].reset_index(drop=True)
+        event_index = int(stock_rows.index[stock_rows["trade_date"] == event["trade_date"]][0])
+        left = max(0, event_index - 20)
+        right = min(len(stock_rows) - 1, event_index + 20)
+        expected_peak_amount = float(stock_rows.iloc[left : right + 1]["amount"].max())
+        self.assertAlmostEqual(context["local_amount_peak"]["peak_amount"], expected_peak_amount, places=4)
 
     def test_legacy_snapshot_is_rebuilt_instead_of_normalized(self) -> None:
         snapshot_path = algo_index_manager._snapshot_path(int(self.run["id"]))

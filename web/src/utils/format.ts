@@ -34,6 +34,30 @@ export function formatCompact(value: NumericLike, digits = 1) {
   }).format(toNumber(value));
 }
 
+function formatChineseUnit(value: NumericLike, units: { base: string; wan: string; yi: string }, digits = 2) {
+  if (value === null || value === "") {
+    return "--";
+  }
+
+  const parsed = toNumber(value);
+  const absValue = Math.abs(parsed);
+  if (absValue >= 100_000_000) {
+    return `${formatNumberish(parsed / 100_000_000, digits)}${units.yi}`;
+  }
+  if (absValue >= 10_000) {
+    return `${formatNumberish(parsed / 10_000, digits)}${units.wan}`;
+  }
+  return `${formatNumberish(parsed, digits)}${units.base}`;
+}
+
+export function formatRmbAmount(value: NumericLike, digits = 2) {
+  return formatChineseUnit(value, { base: "元", wan: "万元", yi: "亿元" }, digits);
+}
+
+export function formatShareVolume(value: NumericLike, digits = 2) {
+  return formatChineseUnit(value, { base: "股", wan: "万股", yi: "亿股" }, digits);
+}
+
 export function formatPercent(value: NumericLike, digits = 2) {
   if (value === null || value === "") {
     return "--";

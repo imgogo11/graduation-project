@@ -1,8 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, h, onMounted, reactive, ref, watch } from "vue";
 
 import type { EChartsOption } from "echarts";
-import { NAlert, NButton, NDatePicker, NForm, NFormItemGi, NGrid, NInput, NPagination, NSelect, NTable, NTag, useMessage } from "naive-ui";
+import {
+  NAlert,
+  NButton,
+  NDataTable,
+  NDatePicker,
+  NForm,
+  NFormItemGi,
+  NGrid,
+  NInput,
+  NSelect,
+  NTag,
+  useMessage,
+  type DataTableColumns,
+  type DataTableCreateRowClassName,
+  type DataTableCreateRowProps,
+} from "naive-ui";
 import { useRoute } from "vue-router";
 
 import { fetchTradingJointAnomalyRanking, fetchTradingSummary } from "@/api/analysis";
@@ -19,6 +34,7 @@ import { fetchTradingRangeKthVolume, fetchTradingRangeMaxAmount, fetchTradingSto
 import type {
   AlgoIndexStatusRead,
   ImportRunRead,
+  NumericLike,
   TradingDataContractRead,
   TradingJointAnomalyRankingRead,
   TradingRangeKthVolumeRead,
@@ -37,7 +53,15 @@ import PanelCard from "@/components/PanelCard.vue";
 import { useTablePager } from "@/composables/useTablePager";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
-import { formatCompact, formatDate, formatNumberish, getErrorMessage, toNumber, toStatusTagType } from "@/utils/format";
+import {
+  formatDate,
+  formatNumberish,
+  formatRmbAmount,
+  formatShareVolume,
+  getErrorMessage,
+  toNumber,
+  toStatusTagType,
+} from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
 import {
   formatRiskCauseText,
@@ -176,6 +200,330 @@ const stockProfilePager = useTablePager(stockProfiles, {
   pageSizes: [10, 20, 50, 100],
   resetTriggers: [algoScopeKey],
 });
+
+type JointAnomalyRow = TradingJointAnomalyRankingRead["rows"][number];
+type DistributionChangeRow = TradingRiskRadarEventContextRead["distribution_changes"][number];
+
+const algoTableMaxHeight = "min(48vh, 420px)";
+const eventTableScrollX = 1320;
+const distributionTableMaxHeight = "min(45vh, 420px)";
+
+const jointTableColumns: DataTableColumns<JointAnomalyRow> = [
+  {
+    title: "股票",
+    key: "stock_code",
+    width: 190,
+    render(item) {
+      return `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`;
+    },
+  },
+  {
+    title: "日期",
+    key: "trade_date",
+    width: 130,
+    render(item) {
+      return formatDate(item.trade_date);
+    },
+  },
+  {
+    title: "严重",
+    key: "severity",
+    width: 110,
+    render(item) {
+      return h(
+        NTag,
+        {
+          type: toStatusTagType(item.severity),
+          round: true,
+          size: "small",
+        },
+        { default: () => formatSeverityText(item.severity) }
+      );
+    },
+  },
+  {
+    title: "日收益",
+    key: "daily_return",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.daily_return, 4);
+    },
+  },
+  {
+    title: TECHNICAL_TEXT.returnZ20,
+    key: "return_z20",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.return_z20, 4);
+    },
+  },
+  {
+    title: TECHNICAL_TEXT.volumeRatio20,
+    key: "volume_ratio20",
+    width: 150,
+    render(item) {
+      return formatNumberish(item.volume_ratio20, 4);
+    },
+  },
+  {
+    title: "联合百分位",
+    key: "joint_percentile",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.joint_percentile, 4);
+    },
+  },
+];
+
+const jointTablePagination = computed(() => ({
+  page: jointPager.page.value,
+  pageSize: jointPager.pageSize.value,
+  itemCount: jointPager.total.value,
+  pageSizes: jointPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: jointPager.setPage,
+  onUpdatePageSize: jointPager.setPageSize,
+}));
+
+const eventTableColumns: DataTableColumns<TradingRiskRadarEventRead> = [
+  {
+    title: "股票",
+    key: "stock_code",
+    width: 190,
+    render(item) {
+      return `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`;
+    },
+  },
+  {
+    title: "日期",
+    key: "trade_date",
+    width: 130,
+    render(item) {
+      return formatDate(item.trade_date);
+    },
+  },
+  {
+    title: "严重",
+    key: "severity",
+    width: 110,
+    render(item) {
+      return h(
+        NTag,
+        {
+          type: toStatusTagType(item.severity),
+          round: true,
+          size: "small",
+        },
+        { default: () => formatSeverityText(item.severity) }
+      );
+    },
+  },
+  {
+    title: "原因",
+    key: "cause_label",
+    width: 150,
+    render(item) {
+      return formatRiskCauseText(item.cause_label);
+    },
+  },
+  {
+    title: "收益冲击",
+    key: "return_shock",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.return_shock, 4);
+    },
+  },
+  {
+    title: "波动体制",
+    key: "vol_regime",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.vol_regime, 4);
+    },
+  },
+  {
+    title: "波幅冲击",
+    key: "range_shock",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.range_shock, 4);
+    },
+  },
+  {
+    title: "RVOL20",
+    key: "rvol20",
+    width: 110,
+    render(item) {
+      return formatNumberish(item.rvol20, 4);
+    },
+  },
+  {
+    title: "回撤压力",
+    key: "drawdown_pressure",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.drawdown_pressure, 4);
+    },
+  },
+  {
+    title: "联合分位",
+    key: "joint_percentile",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.joint_percentile, 4);
+    },
+  },
+];
+
+const eventTablePagination = computed(() => ({
+  page: eventPager.page.value,
+  pageSize: eventPager.pageSize.value,
+  itemCount: eventPager.total.value,
+  pageSizes: eventPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: eventPager.setPage,
+  onUpdatePageSize: eventPager.setPageSize,
+}));
+
+const eventRowClassName: DataTableCreateRowClassName<TradingRiskRadarEventRead> = (item) =>
+  selectedEventKey.value === `${item.stock_code}:${item.trade_date}` ? "data-table__row--active" : "";
+
+const eventRowProps: DataTableCreateRowProps<TradingRiskRadarEventRead> = (item) => ({
+  onClick: () => loadEventContext(item),
+});
+
+const stockProfileTableColumns: DataTableColumns<TradingStockRiskProfileRead> = [
+  {
+    title: "股票",
+    key: "stock_code",
+    width: 190,
+    render(item) {
+      return `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`;
+    },
+  },
+  {
+    title: "事件数",
+    key: "event_count",
+    width: 110,
+  },
+  {
+    title: "严重",
+    key: "critical_count",
+    width: 100,
+  },
+  {
+    title: "高",
+    key: "high_count",
+    width: 90,
+  },
+  {
+    title: "中",
+    key: "medium_count",
+    width: 90,
+  },
+  {
+    title: "最大百分位",
+    key: "max_joint_percentile",
+    width: 150,
+    render(item) {
+      return formatNumberish(item.max_joint_percentile, 4);
+    },
+  },
+  {
+    title: "最近事件",
+    key: "latest_event_date",
+    width: 130,
+    render(item) {
+      return formatDate(item.latest_event_date);
+    },
+  },
+];
+
+const stockProfileTablePagination = computed(() => ({
+  page: stockProfilePager.page.value,
+  pageSize: stockProfilePager.pageSize.value,
+  itemCount: stockProfilePager.total.value,
+  pageSizes: stockProfilePager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: stockProfilePager.setPage,
+  onUpdatePageSize: stockProfilePager.setPageSize,
+}));
+
+const distributionTableColumns: DataTableColumns<DistributionChangeRow> = [
+  {
+    title: "指标",
+    key: "metric",
+    width: 160,
+  },
+  {
+    title: "窗口",
+    key: "window_days",
+    width: 100,
+    render(item) {
+      return String(item.window_days);
+    },
+  },
+  {
+    title: "前中位数",
+    key: "before_median",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.before_median, 4);
+    },
+  },
+  {
+    title: "前 P95",
+    key: "before_p95",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.before_p95, 4);
+    },
+  },
+  {
+    title: "后中位数",
+    key: "after_median",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.after_median, 4);
+    },
+  },
+  {
+    title: "后 P95",
+    key: "after_p95",
+    width: 160,
+    render(item) {
+      return formatNumberish(item.after_p95, 4);
+    },
+  },
+];
+
+function getJointRowKey(item: JointAnomalyRow) {
+  return `${item.stock_code}-${item.trade_date}`;
+}
+
+function getEventRowKey(item: TradingRiskRadarEventRead) {
+  return `${item.stock_code}-${item.trade_date}`;
+}
+
+function getStockProfileRowKey(item: TradingStockRiskProfileRead) {
+  return item.stock_code;
+}
+
+function getDistributionRowKey(item: DistributionChangeRow) {
+  return `${item.metric}-${item.window_days}`;
+}
+
+function formatEventContextValue(metric: string, value: NumericLike) {
+  if (metric === "volume") {
+    return formatShareVolume(value, 2);
+  }
+  return formatNumberish(value, 4);
+}
+
+function severityPillClass(severity: string) {
+  return ["event-context-severity", `event-context-severity--${severity}`];
+}
 
 const radarIndicators = [
   { key: "score_return_shock", label: "收益冲击", max: 100 },
@@ -573,8 +921,8 @@ watch(
         <div v-if="algoSummary" class="detail-grid">
           <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ algoSummary.stock_code }}{{ algoSummary.stock_name ? ` · ${algoSummary.stock_name}` : "" }}</div></div>
           <div class="detail-grid__item"><span class="detail-grid__label">时间范围</span><div class="detail-grid__value">{{ algoSummary.start_date }} ~ {{ algoSummary.end_date }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">区间最大成交额</span><div class="detail-grid__value">{{ algoResult ? formatCompact(algoResult.max_amount, 2) : "--" }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">第 K 大成交量</span><div class="detail-grid__value">{{ algoKthResult ? formatCompact(algoKthResult.value, 2) : "--" }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">区间最大成交额</span><div class="detail-grid__value">{{ algoResult ? formatRmbAmount(algoResult.max_amount, 2) : "--" }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">第 K 大成交量</span><div class="detail-grid__value">{{ algoKthResult ? formatShareVolume(algoKthResult.value, 2) : "--" }}</div></div>
         </div>
         <n-alert v-if="panelNotices.maxAmount" type="warning" :show-icon="true" style="margin-top: 12px;">{{ panelNotices.maxAmount }}</n-alert>
         <n-alert v-if="panelNotices.kthVolume" type="warning" :show-icon="true" style="margin-top: 12px;">{{ panelNotices.kthVolume }}</n-alert>
@@ -587,33 +935,18 @@ watch(
     <section v-if="!isRiskSection">
       <PanelCard title="联合异常排名">
         <n-alert v-if="panelNotices.joint" type="warning" :show-icon="true">{{ panelNotices.joint }}</n-alert>
-      <div v-else-if="jointPager.total.value" class="data-table-wrap">
-          <n-table class="data-table" striped size="small" :single-line="false">
-            <thead><tr><th>股票</th><th>日期</th><th>严重</th><th>日收益</th><th>{{ TECHNICAL_TEXT.returnZ20 }}</th><th>{{ TECHNICAL_TEXT.volumeRatio20 }}</th><th>联合百分位</th></tr></thead>
-            <tbody>
-              <tr v-for="item in jointPager.pagedRows.value" :key="`${item.stock_code}-${item.trade_date}`">
-                <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
-                <td>{{ formatDate(item.trade_date) }}</td>
-                <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ formatSeverityText(item.severity) }}</n-tag></td>
-                <td>{{ formatNumberish(item.daily_return, 4) }}</td>
-                <td>{{ formatNumberish(item.return_z20, 4) }}</td>
-                <td>{{ formatNumberish(item.volume_ratio20, 4) }}</td>
-                <td>{{ formatNumberish(item.joint_percentile, 4) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-          <div class="table-pagination">
-            <n-pagination
-              :page="jointPager.page.value"
-              :page-size="jointPager.pageSize.value"
-              :item-count="jointPager.total.value"
-              :page-sizes="jointPager.pageSizes"
-              show-size-picker
-              @update:page="jointPager.setPage"
-              @update:page-size="jointPager.setPageSize"
-            />
-          </div>
-        </div>
+      <n-data-table
+        v-else-if="jointPager.total.value"
+        class="algo-data-table"
+        :columns="jointTableColumns"
+        :data="jointRows"
+        :pagination="jointTablePagination"
+        :row-key="getJointRowKey"
+        :max-height="algoTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
         <div v-if="jointAnomalies" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(jointAnomalies) }}</div>
         <EmptyState v-else title="暂无联合异常结果" description="执行算法后，这里会展示跨股票的联合异常排名" />
       </PanelCard>
@@ -653,124 +986,117 @@ watch(
             <n-tag size="small" round type="warning">当前事件 {{ radarEventCountText }}</n-tag>
           </span>
         </template>
-      <div v-if="eventPager.total.value" class="data-table-wrap">
-          <n-table class="data-table" striped size="small" :single-line="false">
-            <thead><tr><th>股票</th><th>日期</th><th>严重</th><th>原因</th><th>收益冲击</th><th>波动体制</th><th>波幅冲击</th><th>RVOL20</th><th>回撤压力</th><th>联合分位</th></tr></thead>
-            <tbody>
-              <tr
-                v-for="item in eventPager.pagedRows.value"
-                :key="`${item.stock_code}-${item.trade_date}`"
-                :class="{ 'data-table__row--active': selectedEventKey === `${item.stock_code}:${item.trade_date}` }"
-                @click="loadEventContext(item)"
-              >
-                <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
-                <td>{{ formatDate(item.trade_date) }}</td>
-                <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ formatSeverityText(item.severity) }}</n-tag></td>
-                <td>{{ formatRiskCauseText(item.cause_label) }}</td>
-                <td>{{ formatNumberish(item.return_shock, 4) }}</td>
-                <td>{{ formatNumberish(item.vol_regime, 4) }}</td>
-                <td>{{ formatNumberish(item.range_shock, 4) }}</td>
-                <td>{{ formatNumberish(item.rvol20, 4) }}</td>
-                <td>{{ formatNumberish(item.drawdown_pressure, 4) }}</td>
-                <td>{{ formatNumberish(item.joint_percentile, 4) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-          <div class="table-pagination">
-            <n-pagination
-              :page="eventPager.page.value"
-              :page-size="eventPager.pageSize.value"
-              :item-count="eventPager.total.value"
-              :page-sizes="eventPager.pageSizes"
-              show-size-picker
-              @update:page="eventPager.setPage"
-              @update:page-size="eventPager.setPageSize"
-            />
-          </div>
-        </div>
+      <n-data-table
+        v-if="eventPager.total.value"
+        class="algo-data-table algo-data-table--clickable"
+        :columns="eventTableColumns"
+        :data="events"
+        :pagination="eventTablePagination"
+        :row-class-name="eventRowClassName"
+        :row-key="getEventRowKey"
+        :row-props="eventRowProps"
+        :max-height="algoTableMaxHeight"
+        :scroll-x="eventTableScrollX"
+        :scrollbar-props="{ trigger: 'none' }"
+        :single-line="false"
+        striped
+        size="small"
+      />
         <EmptyState v-else title="暂无风险事件" description="索引准备好后，这里会返回当前范围内的异常事件" />
       </PanelCard>
     </section>
 
     <section v-if="isRiskSection">
       <PanelCard title="高风险股票画像">
-      <div v-if="stockProfilePager.total.value" class="data-table-wrap">
-          <n-table class="data-table" striped size="small" :single-line="false">
-            <thead><tr><th>股票</th><th>事件数</th><th>严重</th><th>高</th><th>中</th><th>最大百分位</th><th>最近事件</th></tr></thead>
-            <tbody>
-              <tr v-for="item in stockProfilePager.pagedRows.value" :key="item.stock_code">
-                <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
-                <td>{{ item.event_count }}</td>
-                <td>{{ item.critical_count }}</td>
-                <td>{{ item.high_count }}</td>
-                <td>{{ item.medium_count }}</td>
-                <td>{{ formatNumberish(item.max_joint_percentile, 4) }}</td>
-                <td>{{ formatDate(item.latest_event_date) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-          <div class="table-pagination">
-            <n-pagination
-              :page="stockProfilePager.page.value"
-              :page-size="stockProfilePager.pageSize.value"
-              :item-count="stockProfilePager.total.value"
-              :page-sizes="stockProfilePager.pageSizes"
-              show-size-picker
-              @update:page="stockProfilePager.setPage"
-              @update:page-size="stockProfilePager.setPageSize"
-            />
-          </div>
-        </div>
+      <n-data-table
+        v-if="stockProfilePager.total.value"
+        class="algo-data-table"
+        :columns="stockProfileTableColumns"
+        :data="stockProfiles"
+        :pagination="stockProfileTablePagination"
+        :row-key="getStockProfileRowKey"
+        :max-height="algoTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
         <EmptyState v-else title="暂无股票画像" description="执行风险雷达查询后，这里会展示受影响股票的聚合画像" />
       </PanelCard>
     </section>
 
     <PanelCard v-if="!isRiskSection" title="事件上下文">
       <n-alert v-if="panelNotices.eventContext" type="warning" :show-icon="true">{{ panelNotices.eventContext }}</n-alert>
-      <div v-else-if="eventContext" class="page__grid page__grid--double">
-        <div class="detail-grid">
-          <div class="detail-grid__item"><span class="detail-grid__label">股票</span><div class="detail-grid__value">{{ eventContext.event.stock_code }}{{ eventContext.event.stock_name ? ` · ${eventContext.event.stock_name}` : "" }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">事件日期</span><div class="detail-grid__value">{{ formatDate(eventContext.event.trade_date) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">严重</span><div class="detail-grid__value">{{ formatSeverityText(eventContext.event.severity) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">原因</span><div class="detail-grid__value">{{ formatRiskCauseText(eventContext.event.cause_label) }}</div></div>
-        </div>
-
-        <div class="detail-grid">
-          <div
-            v-for="group in eventContext.window_groups"
-            :key="group.metric"
-            class="detail-grid__item"
-            style="grid-column: 1 / -1;"
-          >
-            <span class="detail-grid__label">{{ group.label }}</span>
-            <div class="detail-grid__value">
-              {{ group.windows.map((item) => `${item.window_days}日: 当前 ${formatNumberish(item.current_value, 4)} / P95 ${formatNumberish(item.p95, 4)}`).join(" ｜ ") }}
+      <div v-else-if="eventContext" class="event-context">
+        <div class="event-context-summary">
+          <div class="event-context-summary__identity">
+            <span class="event-context-summary__code">{{ eventContext.event.stock_code }}</span>
+            <span v-if="eventContext.event.stock_name" class="event-context-summary__name">{{ eventContext.event.stock_name }}</span>
+          </div>
+          <div class="event-context-summary__meta">
+            <div class="event-context-summary__item">
+              <span class="event-context-summary__label">事件日期</span>
+              <strong>{{ formatDate(eventContext.event.trade_date) }}</strong>
+            </div>
+            <div class="event-context-summary__item">
+              <span class="event-context-summary__label">严重程度</span>
+              <span :class="severityPillClass(eventContext.event.severity)">
+                {{ formatSeverityText(eventContext.event.severity) }}
+              </span>
+            </div>
+            <div class="event-context-summary__item event-context-summary__item--wide">
+              <span class="event-context-summary__label">触发原因</span>
+              <strong>{{ formatRiskCauseText(eventContext.event.cause_label) }}</strong>
             </div>
           </div>
         </div>
+
+        <div class="event-context-metrics">
+          <div
+            v-for="group in eventContext.window_groups"
+            :key="group.metric"
+            class="event-context-metric"
+          >
+            <div class="event-context-metric__head">
+              <span class="event-context-metric__label">{{ group.label }}</span>
+              <span class="event-context-metric__metric">{{ group.metric }}</span>
+            </div>
+            <div class="event-context-window-grid">
+              <div
+                v-for="item in group.windows"
+                :key="`${group.metric}-${item.window_days}`"
+                class="event-context-window"
+              >
+                <div class="event-context-window__period">{{ item.window_days }}日窗口</div>
+                <div class="event-context-window__row">
+                  <span>当前</span>
+                  <strong>{{ formatEventContextValue(group.metric, item.current_value) }}</strong>
+                </div>
+                <div class="event-context-window__row">
+                  <span>P95</span>
+                  <strong>{{ formatEventContextValue(group.metric, item.p95) }}</strong>
+                </div>
+                <div class="event-context-window__row">
+                  <span>精确分位</span>
+                  <strong>{{ formatNumberish(item.exact_percentile, 4) }}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      <div v-if="eventContext?.distribution_changes.length" style="margin-top: 18px;" class="data-table-wrap">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead><tr><th>指标</th><th>窗口</th><th>前中位数</th><th>前 P95</th><th>后中位数</th><th>后 P95</th></tr></thead>
-          <tbody>
-            <tr v-for="item in eventContext.distribution_changes" :key="`${item.metric}-${item.window_days}`">
-              <td>{{ item.metric }}</td>
-              <td>{{ item.window_days }} </td>
-              <td>{{ formatNumberish(item.before_median, 4) }}</td>
-              <td>{{ formatNumberish(item.before_p95, 4) }}</td>
-              <td>{{ formatNumberish(item.after_median, 4) }}</td>
-              <td>{{ formatNumberish(item.after_p95, 4) }}</td>
-            </tr>
-          </tbody>
-        </n-table>
-      </div>
-
-      <div v-if="eventContext?.local_amount_peak" style="margin-top: 16px;" class="inline-hint">
-        局部成交额峰：{{ eventContext.local_amount_peak.start_date }} ~ {{ eventContext.local_amount_peak.end_date }}，
-        峰值 ${{ formatCompact(eventContext.local_amount_peak.peak_amount, 2) }}，
-        日期 {{ eventContext.local_amount_peak.peak_dates.map((item) => item.trade_date).join("、") }}。
-      </div>
+      <n-data-table
+        v-if="eventContext?.distribution_changes.length"
+        class="algo-data-table event-context-table"
+        :columns="distributionTableColumns"
+        :data="eventContext.distribution_changes"
+        :row-key="getDistributionRowKey"
+        :max-height="distributionTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
 
       <EmptyState v-else-if="!eventContext" title="暂无事件上下文" description="点击左侧任一风险事件后，这里会展示对应的窗口统计" />
       <div v-if="eventContext" class="inline-hint" style="margin-top: 12px;">{{ formatModuleSummary(eventContext) }}</div>
@@ -784,5 +1110,222 @@ watch(
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.algo-data-table {
+  border-radius: 18px;
+  overflow: visible;
+}
+
+:deep(.algo-data-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:deep(.algo-data-table .n-data-table-td) {
+  vertical-align: top;
+}
+
+:deep(.algo-data-table .n-data-table__pagination) {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: #fff;
+}
+
+:deep(.algo-data-table--clickable .n-data-table-tr) {
+  cursor: pointer;
+}
+
+.event-context-table {
+  margin-top: 18px;
+}
+
+.event-context {
+  display: grid;
+  gap: 16px;
+}
+
+.event-context-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.6fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.event-context-summary__identity,
+.event-context-summary__meta,
+.event-context-metric {
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: #fbfcfe;
+}
+
+.event-context-summary__identity {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+  padding: 16px 18px;
+}
+
+.event-context-summary__code {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.event-context-summary__name {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.event-context-summary__meta {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(130px, 0.7fr) minmax(180px, 1fr);
+  gap: 10px;
+  padding: 14px;
+}
+
+.event-context-summary__item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.event-context-summary__label,
+.event-context-metric__metric {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.event-context-summary__item strong {
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.event-context-severity {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-width: 0;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.event-context-severity--medium {
+  color: #b86b00;
+  background: #fff7e8;
+  box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.34);
+}
+
+.event-context-severity--high,
+.event-context-severity--critical {
+  color: #b42318;
+  background: #fff1f0;
+  box-shadow: inset 0 0 0 1px rgba(217, 45, 32, 0.28);
+}
+
+.event-context-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.event-context-metric {
+  padding: 16px;
+}
+
+.event-context-metric__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.event-context-metric__label {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.event-context-window-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 10px;
+}
+
+.event-context-window {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px rgba(112, 129, 153, 0.14);
+}
+
+.event-context-window__period {
+  margin-bottom: 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.event-context-window__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.event-context-window__row strong {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+@media (max-width: 980px) {
+  .event-context-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .event-context-summary__meta {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .event-context-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .event-context-window-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

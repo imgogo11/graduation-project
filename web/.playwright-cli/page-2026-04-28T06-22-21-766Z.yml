@@ -1,0 +1,166 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - img "股票交易数据分析平台" [ref=e8]
+        - generic [ref=e9]:
+          - generic [ref=e10]: 股票交易数据分析平台
+          - generic [ref=e11]: 系统运维与后台管理
+      - generic [ref=e13]:
+        - generic [ref=e14]: 管理员后台
+        - menu [ref=e15]:
+          - menuitem "数据资产" [ref=e16]:
+            - img [ref=e17] [cursor=pointer]:
+              - img [ref=e18]
+            - text: 数据资产
+          - menuitem "用户管理" [ref=e23]:
+            - img [ref=e24] [cursor=pointer]:
+              - img [ref=e25]
+            - text: 用户管理
+          - menuitem "调用记录" [ref=e30]:
+            - img [ref=e31] [cursor=pointer]:
+              - img [ref=e32]
+            - text: 调用记录
+          - menuitem "运行监控" [ref=e35]:
+            - img [ref=e36] [cursor=pointer]:
+              - img [ref=e37]
+            - text: 运行监控
+    - generic [ref=e41]:
+      - banner [ref=e42]:
+        - generic [ref=e43]:
+          - button [ref=e44] [cursor=pointer]:
+            - img [ref=e46]:
+              - img [ref=e47]
+          - generic [ref=e48]:
+            - generic [ref=e49]: 管理员后台
+            - generic [ref=e50]: /
+            - button "数据资产" [ref=e51] [cursor=pointer]
+        - generic [ref=e52]:
+          - generic [ref=e53]:
+            - button [ref=e55] [cursor=pointer]:
+              - img [ref=e56]:
+                - img [ref=e57]
+            - button [ref=e61] [cursor=pointer]:
+              - img [ref=e62]:
+                - img [ref=e63]
+            - button [ref=e73] [cursor=pointer]:
+              - img [ref=e75]:
+                - img [ref=e76]
+          - button "A admin 管理员" [active] [ref=e80] [cursor=pointer]:
+            - generic [ref=e82]: A
+            - generic [ref=e83]:
+              - strong [ref=e84]: admin
+              - generic [ref=e85]: 管理员
+      - generic [ref=e86]:
+        - button "数据资产" [ref=e87] [cursor=pointer]:
+          - generic [ref=e88]: 数据资产
+        - button "调用记录 ×" [ref=e89] [cursor=pointer]:
+          - generic [ref=e90]: 调用记录
+          - generic [ref=e91]: ×
+      - main [ref=e92]:
+        - generic [ref=e93]:
+          - generic [ref=e94]:
+            - generic [ref=e95]:
+              - heading "所属用户资产分布" [level=2] [ref=e98]
+              - generic [ref=e151]:
+                - table [ref=e153]:
+                  - rowgroup [ref=e162]:
+                    - row "用户ID 用户 数据集数 记录 记录占比 平均单批规模 最近入库" [ref=e163]:
+                      - columnheader "用户ID" [ref=e164]:
+                        - generic [ref=e166]: 用户ID
+                      - columnheader "用户" [ref=e167]:
+                        - generic [ref=e169]: 用户
+                      - columnheader "数据集数" [ref=e170]:
+                        - generic [ref=e172]: 数据集数
+                      - columnheader "记录" [ref=e173]:
+                        - generic [ref=e175]: 记录
+                      - columnheader "记录占比" [ref=e176]:
+                        - generic [ref=e178]: 记录占比
+                      - columnheader "平均单批规模" [ref=e179]:
+                        - generic [ref=e181]: 平均单批规模
+                      - columnheader "最近入库" [ref=e182]:
+                        - generic [ref=e184]: 最近入库
+                - table [ref=e185]:
+                  - rowgroup [ref=e194]:
+                    - row "2 gogo11 6 105.33万 100.00% 17.55万 2026/4/27" [ref=e195]:
+                      - cell "2" [ref=e196]
+                      - cell "gogo11" [ref=e197]
+                      - cell "6" [ref=e198]
+                      - cell "105.33万" [ref=e199]
+                      - cell "100.00%" [ref=e200]
+                      - cell "17.55万" [ref=e201]
+                      - cell "2026/4/27" [ref=e202]
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - heading "资产累积增长 资产用户数 1 最大单批记录 99.72万 中位单批记录 1.55万" [level=2] [ref=e203]:
+                  - generic [ref=e108]:
+                    - generic [ref=e109]: 资产累积增长
+                    - generic [ref=e110]:
+                      - generic [ref=e111]: 资产用户数 1
+                      - generic [ref=e112]: 最大单批记录 99.72万
+                      - generic [ref=e113]: 中位单批记录 1.55万
+                - generic "资产增长视图切换" [ref=e115]:
+                  - button "日" [ref=e116] [cursor=pointer]
+                  - button "月" [pressed] [ref=e117] [cursor=pointer]
+              - generic [ref=e119]:
+                - generic [ref=e120]:
+                  - generic [ref=e121]: 覆盖时间范围
+                  - generic [ref=e122]: 2016/1/4 ~ 2026/4/23
+                - generic [ref=e123]:
+                  - generic [ref=e124]: 最近入库
+                  - generic [ref=e125]: 2026/4/27 22:05:10
+          - generic [ref=e130]:
+            - generic [ref=e131]:
+              - heading "大数据集 TOP 10" [level=2] [ref=e134]
+              - generic [ref=e211]:
+                - table [ref=e213]:
+                  - rowgroup [ref=e219]:
+                    - row "数据集 所属用户 记录 完成时间" [ref=e220]:
+                      - columnheader "数据集" [ref=e221]:
+                        - generic [ref=e224]: 数据集
+                      - columnheader "所属用户" [ref=e225]:
+                        - generic [ref=e227]: 所属用户
+                      - columnheader "记录" [ref=e228]:
+                        - generic [ref=e230]: 记录
+                      - columnheader "完成时间" [ref=e231]:
+                        - generic [ref=e233]: 完成时间
+                - table [ref=e234]:
+                  - rowgroup [ref=e240]:
+                    - row "#3 · test2 gogo11 99.72万 2026/4/27" [ref=e241]:
+                      - cell "#3 · test2" [ref=e242]:
+                        - generic [ref=e243]: "#3 · test2"
+                      - cell "gogo11" [ref=e244]
+                      - cell "99.72万" [ref=e245]
+                      - cell "2026/4/27" [ref=e246]
+                    - row "#5 · test4 gogo11 2.5万 2026/4/27" [ref=e247]:
+                      - cell "#5 · test4" [ref=e248]:
+                        - generic [ref=e249]: "#5 · test4"
+                      - cell "gogo11" [ref=e250]
+                      - cell "2.5万" [ref=e251]
+                      - cell "2026/4/27" [ref=e252]
+                    - row "#4 · test3 gogo11 2.5万 2026/4/27" [ref=e253]:
+                      - cell "#4 · test3" [ref=e254]:
+                        - generic [ref=e255]: "#4 · test3"
+                      - cell "gogo11" [ref=e256]
+                      - cell "2.5万" [ref=e257]
+                      - cell "2026/4/27" [ref=e258]
+                    - row "#6 · test1 gogo11 6000 2026/4/27" [ref=e259]:
+                      - cell "#6 · test1" [ref=e260]:
+                        - generic [ref=e261]: "#6 · test1"
+                      - cell "gogo11" [ref=e262]
+                      - cell "6000" [ref=e263]
+                      - cell "2026/4/27" [ref=e264]
+                    - row "#2 · sample4 gogo11 22 2026/4/23" [ref=e265]:
+                      - cell "#2 · sample4" [ref=e266]:
+                        - generic [ref=e267]: "#2 · sample4"
+                      - cell "gogo11" [ref=e268]
+                      - cell "22" [ref=e269]
+                      - cell "2026/4/23" [ref=e270]
+                    - row "#1 · sample01 gogo11 22 2026/4/22" [ref=e271]:
+                      - cell "#1 · sample01" [ref=e272]:
+                        - generic [ref=e273]: "#1 · sample01"
+                      - cell "gogo11" [ref=e274]
+                      - cell "22" [ref=e275]
+                      - cell "2026/4/22" [ref=e276]
+            - heading "单批规模分层" [level=2] [ref=e143]
+  - generic [ref=e286] [cursor=pointer]: 退出登录 (admin)

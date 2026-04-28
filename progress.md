@@ -1,31 +1,42 @@
-﻿# 项目进度
+# 项目进度
 
-更新时间：2026-04-13
+更新时间：2026-04-28
 
-## 当前项目定位
+## 1. 当前定位
 
-当前仓库的主线已经收敛为单一股票交易分析系统，并已落地到可联调、可验证状态：
+当前仓库主线已经稳定为：
 
-`股票交易数据管理与分析系统的设计与实现（Design and Implementation of Stock Trading Data Management and Analysis System）`
+**股票交易数据管理与分析系统的设计与实现**
 
-当前真实业务链路为：
+真实业务链路为：
 
-`用户注册/登录 -> 上传 CSV/XLSX 交易文件 -> 生成导入批次 / manifest / artifact / trading_records -> 按权限查询批次与股票 -> 执行摘要 / 质量 / 指标 / 风险 / 异常 / 横截面 / 相关性 / 范围对比分析 -> 调用 C++ / Python 混合算法接口完成区间最大成交额、区间第 K 大成交量与联合异常排序`
+```text
+用户注册/登录
+-> 上传 CSV/XLSX 股票交易文件
+-> 预览列头映射并确认导入
+-> 生成导入批次、manifest、artifact、trading_records
+-> 使用统一筛选器选择批次、股票、日期范围和样本数
+-> 查看金融分析、快照与相关性、风险雷达、算法查询结果
+-> 管理员查看资产、用户、调用记录和运行监控
+```
 
-已经退出主链、只剩历史痕迹或文档痕迹的旧方向包括：
+已经退出主业务主线的方向：
 
-- 股票爬虫导入主链
-- benchmark 业务接口主链（当前仅保留离线 benchmark 脚本痕迹，不属于产品主链）
+- 股票爬虫作为在线导入主链路
+- 电商或 synthetic 演示系统
+- 旧版 `/analysis-center` 单页大杂烩
+- 旧版范围对比模块
+- 旧版“治理/快照”页面命名
 
-## 实时技术框架
+## 2. 当前技术框架
 
 ### 前端
 
 - Vue 3
-- Vite 5
 - TypeScript
+- Vite 5
 - Vue Router 4
-- Element Plus
+- Naive UI
 - ECharts
 
 ### 后端
@@ -39,290 +50,240 @@
 
 ### 数据与运行环境
 
-- PostgreSQL：主数据库
-- PostgreSQL：生产与集成测试统一使用
-- `uv`：Python 依赖与虚拟环境工作流
-- `.venv`：本地 Python 运行环境
-- `npm`：前端依赖与构建
-
-### 鉴权与安全
-
-- 自定义 Bearer Token / JWT 方案
-- `PBKDF2-SHA256` 密码哈希
-- 基于 `user / admin` 的最小权限区分
+- PostgreSQL
+- Python 3.13
+- uv / `.venv`
+- Node.js 20+ / npm
+- Docker Compose
 
 ### 算法模块
 
 - C++23
-- pybind11
 - CMake
 - CTest
-- Python bridge + `t_digest` 近似查询补充链路
+- pybind11
+- Python bridge
+- t-digest 近似查询补充链路
 
-## 当前实时项目骨架
+## 3. 当前项目骨架
 
 ```text
 graduation-project/
-├─ web/                              Vue Web 前端工程，已重构为三页工作流
+├─ web/
 │  ├─ src/
-│  │  ├─ api/                        前端 API 封装（auth / imports / health / trading / analysis）
-│  │  ├─ components/                 AppShell、统计卡片、空状态、图表面板等组件
-│  │  ├─ pages/                      Login / Register / Overview / Analysis Center / Algo Radar 页面
-│  │  ├─ router/                     前端路由与登录守卫
-│  │  ├─ stores/                     auth / runtime / datasetContext 状态管理
-│  │  ├─ utils/                      格式化与错误信息处理
+│  │  ├─ api/                     前端 API 封装
+│  │  ├─ assets/branding/         品牌图片
+│  │  ├─ components/              AppShell、筛选器、图表、卡片、空状态
+│  │  ├─ constants/               品牌常量
+│  │  ├─ pages/                   用户端与管理员端页面
+│  │  ├─ router/                  路由与权限守卫
+│  │  ├─ stores/                  auth / datasetContext / layout / runtime
+│  │  ├─ utils/                   格式化、中文显示、审计映射
 │  │  ├─ App.vue
 │  │  └─ main.ts
-│  ├─ public/
-│  │  └─ trading_import_template.csv 上传模板
 │  ├─ package.json
 │  └─ vite.config.ts
-├─ backend/                          FastAPI 后端主工程
+├─ backend/
 │  ├─ app/
-│  │  ├─ api/
-│  │  │  ├─ deps.py                  当前用户与管理员依赖
-│  │  │  ├─ router.py                总路由注册
-│  │  │  └─ routes/
-│  │  │     ├─ health.py             健康检查
-│  │  │     ├─ auth.py               注册 / 登录 / 当前用户
-│  │  │     ├─ admin_users.py        管理员用户管理（编辑 / 启停 / 删除）
-│  │  │     ├─ imports.py            上传导入、导入历史、统计、软删除
-│  │  │     ├─ trading.py            股票列表与交易记录查询
-│  │  │     ├─ trading_analysis.py   摘要 / 质量 / 指标 / 风险 / 异常 / 横截面 / 相关性 / 范围对比
-│  │  │     └─ algo/trading.py       区间最大成交额 / 第 K 大成交量 / 联合异常排序
-│  │  ├─ core/
-│  │  │  ├─ config.py                环境变量与运行配置
-│  │  │  ├─ database.py              Engine / Session / 建表 / 连接检查
-│  │  │  └─ security.py              密码哈希与 Token 编解码
-│  │  ├─ algo_bridge/
-│  │  │  ├─ adapters/trading.py      Python -> C++ / t-digest 算法调用
-│  │  │  └─ loaders/trading.py       成交额 / 成交量 / 联合异常事件序列构建
-│  │  ├─ models/
-│  │  │  └─ entities.py              users / import_runs / trading_records 等 ORM
-│  │  ├─ repositories/
-│  │  │  ├─ users.py
-│  │  │  ├─ imports.py
-│  │  │  └─ trading.py
-│  │  ├─ schemas/
-│  │  │  ├─ auth.py
-│  │  │  ├─ admin_users.py
-│  │  │  ├─ api.py
-│  │  │  └─ trading.py
-│  │  ├─ services/
-│  │  │  ├─ auth.py
-│  │  │  ├─ admin_users.py
-│  │  │  ├─ imports.py
-│  │  │  ├─ trading_analysis.py
-│  │  │  └─ algo_trading.py
-│  │  ├─ vendor/
-│  │  │  └─ tdigest.py               近似第 K 大查询支持
-│  │  └─ main.py                     FastAPI 入口
+│  │  ├─ api/routes/              health / auth / imports / trading / analysis / admin / algo
+│  │  ├─ algo_bridge/             Python 到 C++ 算法适配
+│  │  ├─ core/                    配置、数据库、安全
+│  │  ├─ models/                  ORM 实体
+│  │  ├─ repositories/            数据访问
+│  │  ├─ schemas/                 Pydantic 契约
+│  │  ├─ services/                导入、分析、索引、风险雷达服务
+│  │  ├─ vendor/                  t-digest 支持
+│  │  └─ main.py
 │  ├─ alembic/
-│  │  └─ versions/
-│  │     ├─ 20260407_01_initial_schema.py
-│  │     ├─ 20260409_01_unified_trading_system.py
-│  │     └─ 20260409_02_cleanup_legacy_trading_sources.py
 │  ├─ scripts/
-│  │  ├─ check_environment.py
-│  │  ├─ init_admin.py
-│  │  ├─ import_data.py
-│  │  ├─ export_requirements.py
-- ?????? `benchmarks/` ???????????????Kth ??????? Locust ?????/??????????? `results/` ? `images/`
 │  └─ tests/
-│     ├─ test_database_pipeline.py
-│     ├─ test_algo_trading.py
-│     ├─ test_trading_analysis.py
-│     └─ test_tdigest_range_kth.py
-├─ algo-module/                      C++ 算法模块与 Python 绑定
+├─ algo-module/
 │  ├─ include/algo_module/
-│  │  ├─ cdq/
-│  │  │  └─ historical_dominance_cdq.hpp
-│  │  └─ segment_tree/
-│  │     ├─ range_kth_persistent_segment_tree.hpp
-│  │     └─ range_max_segment_tree.hpp
 │  ├─ src/
-│  │  ├─ cdq/
-│  │  │  └─ historical_dominance_cdq.cpp
-│  │  └─ segment_tree/
-│  │     ├─ range_kth_persistent_segment_tree.cpp
-│  │     └─ range_max_segment_tree.cpp
 │  ├─ bindings/python/
-│  │  └─ module.cpp
 │  ├─ tests/
-│  │  ├─ unit/test_range_max_segment_tree.cpp
-│  │  ├─ unit/test_historical_dominance_cdq.cpp
-│  │  ├─ unit/test_range_kth_persistent_segment_tree.cpp
-│  │  └─ integration/test_python_binding.py
-│  ├─ CMakeLists.txt
-│  └─ build/                         本地已存在构建产物与 CTest 测试目标
-├─ deploy/
-│  └─ docker-compose.yml             当前仅提供 PostgreSQL 服务
-├─ docs/
-│  ├─ environment-baseline.md
-│  ├─ python-environment.md
-│  └─ data-source-strategy.md
+│  └─ CMakeLists.txt
+├─ benchmarks/
+│  ├─ query_efficiency/
+│  ├─ kth_comparison/
+│  ├─ platform_quality/
+│  └─ run_all.py
 ├─ data/
-│  ├─ uploads/                       用户上传文件落盘目录
-│  └─ uploads/                       上传数据与测试运行时文件（可按需清理）
+│  ├─ processed/auto-generate/    手动测试数据
+│  ├─ processed/fetch/            离线获取的完整需求数据
+│  └─ uploads/                    用户上传与运行期产物
+├─ deploy/
+├─ docs/
+├─ scripts/
 ├─ README.md
-├─ pyproject.toml
+├─ require.md
+├─ tasks.md
 └─ progress.md
 ```
 
-## 已完成内容
+## 4. 已完成内容
 
-### 1. 统一业务主线已经落地
+### 4.1 业务主线
 
-- 项目主线已经统一到“用户上传交易文件”的单一路径
-- 导入源只保留 `upload / user.upload`
-- 系统已收敛为股票单一场景，上传、存储、查询与分析链路不再区分商品类型
-- 迁移脚本已经显式清理旧业务表和旧导入记录
+- 已统一到“用户上传股票交易文件”的产品路径。
+- 已完成用户、导入批次、文件产物、交易记录、审计日志、算法索引等核心对象。
+- 普通用户仅可访问本人数据。
+- 管理员可查看全站数据资产、用户、运行监控和审计日志。
 
-### 2. 后端主链已可用
+### 4.2 前端页面
 
-- 已有可启动的 FastAPI 应用入口
-- 已完成 `/api/health`
-- 已完成 `/api/auth/register`
-- 已完成 `/api/auth/login`
-- 已完成 `/api/auth/me`
-- 已完成 `/api/admin/users`
-- 已完成 `/api/admin/users/{user_id}` 编辑
-- 已完成 `/api/admin/users/{user_id}/disable`
-- 已完成 `/api/admin/users/{user_id}/enable`
-- 已完成 `/api/admin/users/{user_id}` 删除（仅无业务数据用户）
-- 已完成 `/api/imports/runs`
-- 已完成 `/api/imports/stats`
-- 已完成 `/api/imports/trading`
-- 已完成 `/api/imports/runs/{run_id}` 软删除
-- 已完成 `/api/trading/stocks`
-- 已完成 `/api/trading/records`
-- 已完成 `/api/trading/analysis/summary`
-- 已完成 `/api/trading/analysis/quality`
-- 已完成 `/api/trading/analysis/indicators`
-- 已完成 `/api/trading/analysis/risk`
-- 已完成 `/api/trading/analysis/anomalies`
-- 已完成 `/api/trading/analysis/cross-section`
-- 已完成 `/api/trading/analysis/correlation`
-- 已完成 `/api/trading/analysis/compare-scopes`
-- 已完成 `/api/algo/trading/range-max-amount`
-- 已完成 `/api/algo/trading/range-kth-volume`
-- 已完成 `/api/algo/trading/joint-anomaly-ranking`
+用户端：
 
-### 3. 数据模型与导入链路已贯通
+- `/workbench` 工作台
+- `/datasets` 数据集管理
+- `/analysis/market` 金融分析
+- `/analysis/governance` 快照与相关性
+- `/algo-radar/risk` 风险雷达
+- `/algo-radar/algorithms` 算法查询与事件上下文
 
-- 已有 `users`
-- 已有 `import_runs`
-- 已有 `import_manifests`
-- 已有 `import_artifacts`
-- 已有 `trading_records`
-- 上传文件支持 `.csv` 与 `.xlsx`
-- 导入模板已固定为：
+管理员端：
+
+- `/admin/assets` 数据资产总览
+- `/admin/users` 用户管理
+- `/admin/activity` 用户调用记录
+- `/admin/runs` 运行监控
+
+近期前端整理已经完成：
+
+- 统一筛选器标题和字段重构。
+- 移除共享范围设置卡片、范围对比模块和多个重复摘要卡片。
+- “治理/快照”重命名为“快照与相关性”。
+- 金融分析页保留基础摘要、价格走势与技术信号、风险指标、异常检测、横截面对比。
+- 快照与相关性页保留数据质量、估值与基本面快照、相关性矩阵。
+- 风险雷达页和算法查询页的大表格改为单列排放。
+- 风险事件原因、异常类型等英文描述已中文化。
+- 顶部系统状态改为全局同步算法索引信息，不再依赖进入风险雷达页面。
+- 左侧菜单栏宽度已调整，品牌名称可单行显示。
+
+### 4.3 后端接口
+
+已完成：
+
+- `/api/health`
+- `/api/auth/register`
+- `/api/auth/login`
+- `/api/auth/me`
+- `/api/admin/users`
+- `/api/admin/overview`
+- `/api/admin/assets/overview`
+- `/api/admin/audit-logs`
+- `/api/admin/audit-logs/stats`
+- `/api/admin/runs/monitor`
+- `/api/imports/runs`
+- `/api/imports/stats`
+- `/api/imports/trading/preview`
+- `/api/imports/trading/commit`
+- `/api/imports/trading`
+- `/api/imports/runs/{run_id}`
+- `/api/trading/stocks`
+- `/api/trading/records`
+- `/api/trading/analysis/summary`
+- `/api/trading/analysis/quality`
+- `/api/trading/analysis/indicators`
+- `/api/trading/analysis/risk`
+- `/api/trading/analysis/snapshot`
+- `/api/trading/analysis/anomalies`
+- `/api/trading/analysis/cross-section`
+- `/api/trading/analysis/correlation`
+- `/api/algo/trading/range-max-amount`
+- `/api/algo/trading/range-kth-volume`
+- `/api/algo/trading/joint-anomaly-ranking`
+- `/api/algo/indexes/status`
+- `/api/algo/indexes/rebuild`
+- `/api/algo/risk-radar/overview`
+- `/api/algo/risk-radar/events`
+- `/api/algo/risk-radar/stocks`
+- `/api/algo/risk-radar/calendar`
+- `/api/algo/risk-radar/event-context`
+
+### 4.4 数据导入与数据集
+
+- 支持 `.csv` 和 `.xlsx`。
+- 支持列头解析、映射确认和提交导入。
+- 支持重复源列映射检测。
+- 支持导入历史、交易样本和当前数据集摘要。
+- 当前规范字段为：
 
 ```text
-stock_code,stock_name,trade_date,open,high,low,close,volume,amount
+stock_code, stock_name, trade_date, open, high, low, close, volume, amount, turnover
 ```
 
-- 导入后会记录批次、manifest、artifact 和交易明细
-- 普通用户只能看自己的导入批次
-- 管理员可以查看全站可见批次，并按用户过滤
-- 数据已经能够支撑单股票分析、多股票横截面分析、相关性分析与范围对比分析
+- 已生成手动测试文件：
 
-### 4. 前端不是空壳，已经完成基础联调界面
+```text
+data/processed/auto-generate/manual_test_boundary_stocks_10x600_20220103_20240517.csv
+```
 
-- 已完成登录页
-- 已完成注册页
-- 已完成系统总览页
-- 已完成总览页中的上传、批次管理与当前数据集工作台
-- 已完成独立分析中心页
-- 已完成独立算法雷达页
-- 已完成登录守卫
-- 已完成本地 Token 持久化
-- 已完成导入历史、统计、图表、算法结果展示
-- 已完成摘要、质量、指标、风险、异常、横截面、相关性、范围对比展示
-- 已完成区间算法、联合异常榜单与风险雷达结果整合展示
-- 已完成管理员用户管理面板（普通用户不可见）
-- 已接入 Element Plus 与 ECharts
+该文件覆盖多股票、长时间序列、成交额峰值、重复极值、异常成交、边界日期等手动测试场景。
 
-### 5. 算法链路已真实接通
+### 4.5 算法链路
 
-- `algo-module` 不再只是目录骨架
-- 已实现 `RangeMaxSegmentTree`
-- 已实现 `RangeKthPersistentSegmentTree`
-- 已实现 `HistoricalDominanceCDQ`
-- 已通过 pybind11 暴露 `algo_module_py`
-- 后端已能把数据库中的成交额序列送入 C++ 引擎做区间最大值查询
-- 后端已能把数据库中的成交量序列送入精确第 K 大查询，或走 `t_digest` 近似查询链路
-- 后端已能把联合异常事件序列送入 CDQ 历史支配计数算法，并返回排序结果
-- 风险雷达快照已统一到 `stock-v2` 结构，旧版快照会被直接丢弃并触发重建
-- 前端已经可以切换精确 / 近似算法方式，并展示命中日期或近似说明
+已实现：
 
-## 部分完成或仍需补强
+- `RangeMaxSegmentTree`：区间最大成交额
+- `RangeKthPersistentSegmentTree`：精确区间第 K 大成交量
+- `HistoricalDominanceCDQ`：联合异常排序与历史支配计数
+- 3D CDQ 支持风险雷达联合分位
+- Python bridge + pybind11 调用
+- t-digest 近似第 K 大查询
+- 风险雷达索引、事件、日历、股票画像和事件上下文
 
-### 工程与部署
+### 4.6 测试与验证
 
-- `deploy/` 目前只有 PostgreSQL 的 `docker-compose.yml`
-- 还没有完整的前后端一体化部署编排
-- 还没有 Nginx、反向代理、容器化全链路方案
+当前可运行验证项：
 
-### 文档
+- 后端 pytest
+- 前端 `npm run typecheck`
+- 前端 `npm run build`
+- C++ `ctest`
+- benchmark 三套件
 
-- `README.md` 已基本同步到当前系统主线
-- `algo-module/README.md` 仍停留在早期规划描述，尚未同步当前已实现内容
-- `docs/` 目前以环境说明与数据源说明为主
-- ?????? `benchmarks/` ???????????????Kth ??????? Locust ?????/??????????? `results/` ? `images/`
-- 仍缺少更完整的 API 文档、系统设计文档、实验报告/论文材料沉淀
+最近多次前端修改后均已通过：
 
-### 前端构建质量
+```text
+npm run typecheck
+```
 
-- 前端生产构建已成功
-- 当前仍有较大的 bundle 告警，后续可继续做代码分包和体积优化
+## 5. 当前仍需补强
 
-## 当前不应再使用的旧判断
+### 工程部署
 
-以下说法已经不符合仓库现状，不应再出现在进度文档里：
+- 仍缺完整前后端一体化 Docker Compose。
+- 仍缺 Nginx 或等价反向代理。
+- 仍缺生产环境部署文档和脚本固化。
 
-- “frontend 还是空目录”
-- “项目仍以早期多分支实验方案为主线”
-- “系统仍保留 Trading 独立页面”
-- “后端只有基础导入接口，没有分析接口”
+### 文档材料
+
+- `algo-module/README.md` 仍需同步当前真实算法实现。
+- 仍需补全 API 详细文档。
+- 仍需补全算法设计说明、指标口径说明、实验报告和答辩材料。
+
+### 数据能力
+
+- `trading_records` 当前是真实主表。
+- `benchmark_close`、估值字段和基本面字段已经是 `trading_records` 的可选增强列，上传文件提供并完成映射后可以入库。
+- 这些增强列不是最小导入必需字段；普通 OHLCV 文件仍可导入，相关指标按缺字段规则降级。
+- 如后续论文需要，可继续把当前宽表可选列拆分为“行情主表 + 基准序列 + 估值快照 + 财务报告”的多表设计。
+
+## 6. 当前不应再使用的旧判断
+
+以下说法已经过期：
+
+- “前端还是空目录”
+- “前端使用 Element Plus”
+- “系统仍以股票爬虫作为主导入链路”
+- “分析中心是单页大杂烩”
+- “治理/快照是当前页面名”
+- “范围对比仍是主要模块”
 - “算法模块只有占位结构”
-- “系统还没有用户注册登录”
-- “后端还没有交易上传模型”
-- “系统只有区间最大成交额，没有第 K 大和联合异常能力”
+- “只有区间最大成交额，没有第 K 大和联合异常”
+- “风险雷达为空是因为算法索引未构建”
 
-## 本轮实际核验结果
+## 7. 一句话结论
 
-本轮在当前仓库中重新核对并验证了以下内容：
-
-- `backend/tests/test_database_pipeline.py` 通过，共 6 个测试
-- `backend/tests/test_admin_users.py` 通过，共 2 个测试
-- `backend/tests/test_algo_trading.py` 通过，共 17 个测试
-- `backend/tests/test_trading_analysis.py` 通过，共 9 个测试
-- `backend/tests/test_risk_radar.py` 通过，共 3 个测试
-- `backend/tests/test_tdigest_range_kth.py` 通过，共 2 个测试
-- `benchmarks/tests/test_common.py` 通过，共 5 个测试
-- `benchmarks/tests/test_platform_quality.py` 通过，共 2 个测试
-- `ctest --test-dir algo-module/build --output-on-failure` 通过，共 5 个测试
-- `web` 执行 `npm run build` 成功
-- `benchmarks/run_all.py --suite query_efficiency --sample all` 已完成并刷新 `benchmarks/query_efficiency/results/summary.json`
-- `benchmarks/run_all.py --suite kth_comparison --sample all` 已完成并刷新 `benchmarks/kth_comparison/results/summary.json`
-- `benchmarks/run_all.py --suite platform_quality --profile thesis` 已完成并刷新 `benchmarks/platform_quality/results/summary.json`
-
-本轮额外观察到：
-
-- 前端构建存在 chunk 体积告警，但不影响当前构建成功
-- `algo_module_python_smoke` 已通过，说明 pybind11 绑定产物可被 Python 正常加载
-- `algo-module/build/` 已存在可用构建产物，C++ 单元测试与 Python smoke test 均可运行
-- 真实链路已通过公开注册创建 `benchmark_runner`、导入固定数据集并执行 live smoke
-- `platform_quality` 的 `thesis` 档压测已覆盖真实风险雷达请求，`summary.json` 记录请求数 5826、失败数 0
-
-## 一句话结论
-
-当前项目的真实状态已经是：
-
-`一个具备 Web 界面、用户鉴权、交易文件上传、导入历史管理、PostgreSQL 持久化、三页式分析工作流，以及 C++ / Python 混合算法能力（区间最大成交额、区间第 K 大成交量、联合异常排序、风险雷达）的全栈 MVP。`
-
-它不再是旧版多分支实验骨架，而是已经收敛到“股票交易数据管理与分析系统”主线、并完成多项分析能力落地的实时工程。
-
-
-
+当前项目已经是一个具备 Web 页面、用户鉴权、交易文件导入、PostgreSQL 持久化、金融分析、快照与相关性、异常检测、风险雷达、C++/Python 混合算法和管理员后台的全栈 MVP。

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, h, onMounted, reactive, ref } from "vue";
 import { CreateOutline, TrashOutline } from "@vicons/ionicons5";
 
 import {
   NButton,
+  NDataTable,
   NForm,
   NFormItem,
   NFormItemGi,
@@ -11,11 +12,10 @@ import {
   NIcon,
   NInput,
   NModal,
-  NPagination,
   NSwitch,
-  NTable,
   NTag,
   useMessage,
+  type DataTableColumns,
 } from "naive-ui";
 
 import {
@@ -55,6 +55,122 @@ const usersPager = useTablePager(users, {
   pageSizes: [10, 20, 50],
   resetTriggers: [search],
 });
+
+const usersTableScrollX = 1120;
+const usersTableMaxHeight = "min(48vh, 420px)";
+
+const usersTableColumns: DataTableColumns<AdminManagedUserRead> = [
+  {
+    title: "用户",
+    key: "username",
+    width: 160,
+  },
+  {
+    title: "状态",
+    key: "is_active",
+    width: 140,
+    render(user) {
+      return h(
+        NTag,
+        {
+          type: user.is_active ? "success" : "info",
+          round: true,
+          size: "small",
+        },
+        { default: () => (user.is_active ? "启用" : "禁用") }
+      );
+    },
+  },
+  {
+    title: "业务数据",
+    key: "has_business_data",
+    width: 170,
+    render(user) {
+      return h(
+        NTag,
+        {
+          type: user.has_business_data ? "warning" : "success",
+          round: true,
+          size: "small",
+        },
+        { default: () => (user.has_business_data ? "已有数据" : "无业务数据") }
+      );
+    },
+  },
+  {
+    title: "创建时间",
+    key: "created_at",
+    width: 250,
+    render(user) {
+      return formatDateTime(user.created_at);
+    },
+  },
+  {
+    title: "最近登录",
+    key: "last_login_at",
+    width: 220,
+    render(user) {
+      return formatDateTime(user.last_login_at);
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 180,
+    render(user) {
+      return h("div", { class: "toolbar-row system-users-table__actions" }, [
+        h(
+          NButton,
+          {
+            text: true,
+            type: "primary",
+            onClick: () => openDialog(user),
+          },
+          {
+            icon: () => h(NIcon, null, { default: () => h(CreateOutline) }),
+            default: () => "编辑",
+          }
+        ),
+        h(
+          NButton,
+          {
+            text: true,
+            type: user.is_active ? "warning" : "success",
+            onClick: () => toggleUserActive(user),
+          },
+          { default: () => (user.is_active ? "禁用" : "启用") }
+        ),
+        h(
+          NButton,
+          {
+            text: true,
+            type: "error",
+            disabled: user.has_business_data,
+            onClick: () => removeUser(user),
+          },
+          {
+            icon: () => h(NIcon, null, { default: () => h(TrashOutline) }),
+            default: () => "删除",
+          }
+        ),
+      ]);
+    },
+  },
+];
+
+const usersTablePagination = computed(() => ({
+  page: usersPager.page.value,
+  pageSize: usersPager.pageSize.value,
+  itemCount: usersPager.total.value,
+  pageSizes: usersPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: usersPager.setPage,
+  onUpdatePageSize: usersPager.setPageSize,
+}));
+
+function getUserRowKey(user: AdminManagedUserRead) {
+  return user.id;
+}
 
 function openDialog(user: AdminManagedUserRead) {
   editingUser.value = user;
@@ -188,67 +304,20 @@ onMounted(() => {
         </n-grid>
       </n-form>
 
-      <div v-if="usersPager.total.value" class="data-table-wrap">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead>
-            <tr>
-              <th>用户</th>
-              <th>状态</th>
-              <th>业务数据</th>
-              <th>创建时间</th>
-              <th>最近登录</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in usersPager.pagedRows.value" :key="user.id">
-              <td>{{ user.username }}</td>
-              <td>
-                <n-tag :type="user.is_active ? 'success' : 'info'" round size="small">
-                  {{ user.is_active ? "启用" : "禁用" }}
-                </n-tag>
-              </td>
-              <td>
-                <n-tag :type="user.has_business_data ? 'warning' : 'success'" round size="small">
-                  {{ user.has_business_data ? "已有数据" : "无业务数据" }}
-                </n-tag>
-              </td>
-              <td>{{ formatDateTime(user.created_at) }}</td>
-              <td>{{ formatDateTime(user.last_login_at) }}</td>
-              <td>
-                <div class="toolbar-row">
-                  <n-button text type="primary" style="margin-right: 12px;" @click="openDialog(user)">
-                    <template #icon>
-                      <n-icon><CreateOutline /></n-icon>
-                    </template>
-                    编辑
-                  </n-button>
-                  <n-button text :type="user.is_active ? 'warning' : 'success'" style="margin-right: 12px;" @click="toggleUserActive(user)">
-                    {{ user.is_active ? "禁用" : "启用" }}
-                  </n-button>
-                  <n-button text type="error" :disabled="user.has_business_data" @click="removeUser(user)">
-                    <template #icon>
-                      <n-icon><TrashOutline /></n-icon>
-                    </template>
-                    删除
-                  </n-button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </n-table>
-        <div class="table-pagination">
-          <n-pagination
-            :page="usersPager.page.value"
-            :page-size="usersPager.pageSize.value"
-            :item-count="usersPager.total.value"
-            :page-sizes="usersPager.pageSizes"
-            show-size-picker
-            @update:page="usersPager.setPage"
-            @update:page-size="usersPager.setPageSize"
-          />
-        </div>
-      </div>
+      <n-data-table
+        v-if="usersPager.total.value"
+        class="system-users-table"
+        :columns="usersTableColumns"
+        :data="users"
+        :pagination="usersTablePagination"
+        :row-key="getUserRowKey"
+        :max-height="usersTableMaxHeight"
+        :scroll-x="usersTableScrollX"
+        :scrollbar-props="{ trigger: 'none' }"
+        :single-line="false"
+        striped
+        size="small"
+      />
       <EmptyState
         v-else
         title="当前没有普通用户"
@@ -310,5 +379,33 @@ onMounted(() => {
 .users-card__pill {
   padding: 5px 10px;
   font-size: 12px;
+}
+
+.system-users-table {
+  border-radius: 18px;
+  overflow: visible;
+}
+
+:deep(.system-users-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:deep(.system-users-table .n-data-table-td) {
+  vertical-align: top;
+}
+
+:deep(.system-users-table .n-data-table__pagination) {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: #fff;
+}
+
+.system-users-table__actions {
+  flex-wrap: nowrap;
 }
 </style>

@@ -12,6 +12,7 @@ import {
   MenuOutline,
   NotificationsOutline,
   PeopleOutline,
+  PersonCircleOutline,
   PodiumOutline,
   PulseOutline,
   SearchOutline,
@@ -20,7 +21,6 @@ import {
 } from "@vicons/ionicons5";
 import {
   NAlert,
-  NAvatar,
   NBadge,
   NButton,
   NDropdown,
@@ -821,9 +821,7 @@ onBeforeUnmount(() => {
           </div>
           <n-dropdown trigger="click" :options="dropdownOptions" @select="handleDropdownSelect">
             <button type="button" class="shell__user">
-              <n-avatar round :size="34" color="#f05a28">
-                {{ auth.state.user?.username?.slice(0, 1).toUpperCase() || "U" }}
-              </n-avatar>
+              <n-icon class="shell__user-icon" :component="PersonCircleOutline" />
               <span class="shell__user-copy">
                 <strong>{{ auth.state.user?.username || "\u672a\u767b\u5f55" }}</strong>
                 <span>{{ auth.state.user?.role ? formatRoleText(auth.state.user.role) : "--" }}</span>
@@ -1626,11 +1624,20 @@ onBeforeUnmount(() => {
 .shell__user {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px;
+  gap: 14px;
+  padding: 4px 6px;
   border: 0;
   background: transparent;
+  color: var(--text-primary);
   cursor: pointer;
+}
+
+.shell__user-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  font-size: 40px;
+  color: rgba(15, 23, 42, 0.82);
 }
 
 .shell__user-copy {

@@ -1,9 +1,9 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, h, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import type { EChartsOption } from "echarts";
-import { NButton, NTable, NTag } from "naive-ui";
+import { NButton, NDataTable, NTag, type DataTableColumns, type DataTableCreateRowClassName } from "naive-ui";
 
 import { fetchTradingSummary } from "@/api/analysis";
 import { fetchImportRuns, fetchImportStats } from "@/api/imports";
@@ -19,6 +19,7 @@ import {
   formatDate,
   formatDateTime,
   formatNumberish,
+  formatShareVolume,
   getErrorMessage,
   toStatusTagType,
 } from "@/utils/format";
@@ -74,6 +75,77 @@ const recentImportRuns = computed(() => {
     ...latestRuns.slice(0, 7),
   ];
 });
+
+const recentRunsTableMaxHeight = "min(48vh, 420px)";
+
+const recentRunsTableColumns: DataTableColumns<ImportRunRead> = [
+  {
+    title: "批次",
+    key: "display_id",
+    width: 110,
+    render(item) {
+      return `#${item.display_id}`;
+    },
+  },
+  {
+    title: "数据集",
+    key: "dataset_name",
+    width: 240,
+    ellipsis: {
+      tooltip: true,
+    },
+  },
+  {
+    title: "来源",
+    key: "source_name",
+    width: 240,
+    ellipsis: {
+      tooltip: true,
+    },
+    render(item) {
+      return item.original_file_name || item.source_name;
+    },
+  },
+  {
+    title: "状态",
+    key: "status",
+    width: 130,
+    render(item) {
+      return h(
+        NTag,
+        {
+          type: toStatusTagType(item.status),
+          round: true,
+          size: "small",
+        },
+        { default: () => formatStatusText(item.status) }
+      );
+    },
+  },
+  {
+    title: "记录",
+    key: "record_count",
+    width: 130,
+    render(item) {
+      return formatCompact(item.record_count ?? null, 2);
+    },
+  },
+  {
+    title: "完成时间",
+    key: "completed_at",
+    width: 230,
+    render(item) {
+      return formatDateTime(item.completed_at || item.started_at);
+    },
+  },
+];
+
+const recentRunsRowClassName: DataTableCreateRowClassName<ImportRunRead> = (item) =>
+  item.id === currentRunId.value ? "data-table__row--active" : "";
+
+function getRecentRunRowKey(item: ImportRunRead) {
+  return item.id;
+}
 
 const recentImportTitlePills = computed(() => [
   {
@@ -320,7 +392,7 @@ onMounted(() => {
           </div>
           <div class="detail-grid__item">
             <span class="detail-grid__label">平均成交量</span>
-            <div class="detail-grid__value">{{ formatCompact(currentSummary.average_volume, 2) }}</div>
+            <div class="detail-grid__value">{{ formatShareVolume(currentSummary.average_volume, 2) }}</div>
           </div>
           <div class="detail-grid__item">
             <span class="detail-grid__label">平均振幅</span>
@@ -349,34 +421,18 @@ onMounted(() => {
       <template #actions>
         <n-button quaternary size="small" @click="goToDatasets">查看全部</n-button>
       </template>
-      <div v-if="importRuns.length" class="data-table-wrap workbench-recent-runs-table">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead>
-            <tr>
-              <th>批次</th>
-              <th>数据集</th>
-              <th>来源</th>
-              <th>状态</th>
-              <th>记录</th>
-              <th>完成时间</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in recentImportRuns" :key="item.id" :class="{ 'data-table__row--active': item.id === currentRunId }">
-              <td>#{{ item.display_id }}</td>
-              <td>{{ item.dataset_name }}</td>
-              <td>{{ item.original_file_name || item.source_name }}</td>
-              <td>
-                <n-tag :type="toStatusTagType(item.status)" round size="small">
-                  {{ formatStatusText(item.status) }}
-                </n-tag>
-              </td>
-              <td>{{ formatCompact(item.record_count ?? null, 2) }}</td>
-              <td>{{ formatDateTime(item.completed_at || item.started_at) }}</td>
-            </tr>
-          </tbody>
-        </n-table>
-      </div>
+      <n-data-table
+        v-if="importRuns.length"
+        class="workbench-recent-runs-table"
+        :columns="recentRunsTableColumns"
+        :data="recentImportRuns"
+        :row-class-name="recentRunsRowClassName"
+        :row-key="getRecentRunRowKey"
+        :max-height="recentRunsTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
       <EmptyState
         v-else
         title="暂无导入批次"
@@ -432,10 +488,20 @@ onMounted(() => {
 }
 
 .workbench-recent-runs-table {
-  min-height: 0;
-  max-height: none;
-  overflow-y: visible;
-  overflow-x: auto;
-  resize: none;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+:deep(.workbench-recent-runs-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:deep(.workbench-recent-runs-table .n-data-table-td) {
+  vertical-align: top;
 }
 </style>

@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, h, onMounted, reactive, ref, watch } from "vue";
 
 import type { EChartsOption } from "echarts";
-import { NAlert, NButton, NDatePicker, NForm, NFormItemGi, NGrid, NInput, NPagination, NSelect, NTable, NTag, useMessage } from "naive-ui";
+import {
+  NAlert,
+  NButton,
+  NDataTable,
+  NDatePicker,
+  NForm,
+  NFormItemGi,
+  NGrid,
+  NInput,
+  NSelect,
+  NTag,
+  useMessage,
+  type DataTableColumns,
+} from "naive-ui";
 import { useRoute } from "vue-router";
 
 import {
@@ -36,7 +49,16 @@ import PanelCard from "@/components/PanelCard.vue";
 import { useTablePager } from "@/composables/useTablePager";
 import { useDatasetContextStore } from "@/stores/datasetContext";
 import { useRuntimeStore } from "@/stores/runtime";
-import { formatCompact, formatDate, formatNumberish, formatPercent, getErrorMessage, toNumber, toStatusTagType } from "@/utils/format";
+import {
+  formatDate,
+  formatNumberish,
+  formatPercent,
+  formatRmbAmount,
+  formatShareVolume,
+  getErrorMessage,
+  toNumber,
+  toStatusTagType,
+} from "@/utils/format";
 import { usePageErrorNotification } from "@/composables/usePageErrorNotification";
 import { formatAnomalyDescriptionText, formatAnomalyTypeText, formatSeverityText, TECHNICAL_TEXT } from "@/utils/displayText";
 
@@ -193,6 +215,197 @@ const crossSectionPager = useTablePager(crossSectionRows, {
   pageSizes: [10, 20, 50, 100],
   resetTriggers: [analysisScopeKey],
 });
+
+type AnomalyRow = TradingAnomalyReportRead["anomalies"][number];
+type CrossSectionRow = TradingCrossSectionRead["rows"][number];
+type CorrelationTableRow = {
+  stock_code: string;
+  values: Array<{
+    key: string;
+    value: number | null;
+  }>;
+};
+
+const analysisTableMaxHeight = "min(48vh, 420px)";
+const correlationTableMaxHeight = "min(48vh, 420px)";
+
+const anomalyTableColumns: DataTableColumns<AnomalyRow> = [
+  {
+    title: "日期",
+    key: "trade_date",
+    width: 110,
+    render(item) {
+      return formatDate(item.trade_date);
+    },
+  },
+  {
+    title: "类型",
+    key: "anomaly_type",
+    width: 150,
+    render(item) {
+      return formatAnomalyTypeText(item.anomaly_type);
+    },
+  },
+  {
+    title: "严重",
+    key: "severity",
+    width: 90,
+    render(item) {
+      return h(
+        NTag,
+        {
+          type: toStatusTagType(item.severity),
+          round: true,
+          size: "small",
+        },
+        { default: () => formatSeverityText(item.severity) }
+      );
+    },
+  },
+  {
+    title: "指标",
+    key: "metric_value",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.metric_value, 4);
+    },
+  },
+  {
+    title: "基线",
+    key: "baseline_value",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.baseline_value, 4);
+    },
+  },
+  {
+    title: "阈值",
+    key: "threshold_value",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.threshold_value, 4);
+    },
+  },
+  {
+    title: "说明",
+    key: "description",
+    width: 270,
+    render(item) {
+      return formatAnomalyDescriptionText(item.description);
+    },
+  },
+];
+
+const anomalyTablePagination = computed(() => ({
+  page: anomalyPager.page.value,
+  pageSize: anomalyPager.pageSize.value,
+  itemCount: anomalyPager.total.value,
+  pageSizes: anomalyPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: anomalyPager.setPage,
+  onUpdatePageSize: anomalyPager.setPageSize,
+}));
+
+const crossSectionTableColumns: DataTableColumns<CrossSectionRow> = [
+  {
+    title: "股票",
+    key: "stock_code",
+    width: 190,
+    render(item) {
+      return `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`;
+    },
+  },
+  {
+    title: "收益",
+    key: "total_return",
+    width: 120,
+    render(item) {
+      return formatPercent(item.total_return, 2);
+    },
+  },
+  {
+    title: "波动",
+    key: "volatility",
+    width: 120,
+    render(item) {
+      return formatPercent(item.volatility, 2);
+    },
+  },
+  {
+    title: "成交量",
+    key: "total_volume",
+    width: 140,
+    render(item) {
+      return formatShareVolume(item.total_volume, 2);
+    },
+  },
+  {
+    title: "成交额",
+    key: "total_amount",
+    width: 140,
+    render(item) {
+      return formatRmbAmount(item.total_amount, 2);
+    },
+  },
+  {
+    title: "平均振幅",
+    key: "average_amplitude",
+    width: 140,
+    render(item) {
+      return formatNumberish(item.average_amplitude, 4);
+    },
+  },
+  {
+    title: "最新收盘价",
+    key: "latest_close",
+    width: 150,
+    render(item) {
+      return formatNumberish(item.latest_close, 2);
+    },
+  },
+];
+
+const crossSectionTablePagination = computed(() => ({
+  page: crossSectionPager.page.value,
+  pageSize: crossSectionPager.pageSize.value,
+  itemCount: crossSectionPager.total.value,
+  pageSizes: crossSectionPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: crossSectionPager.setPage,
+  onUpdatePageSize: crossSectionPager.setPageSize,
+}));
+
+const correlationTableColumns = computed<DataTableColumns<CorrelationTableRow>>(() => [
+  {
+    title: "股票",
+    key: "stock_code",
+    width: 120,
+  },
+  ...(correlation.value?.stock_codes ?? []).map((code, index) => ({
+    title: code,
+    key: code,
+    width: 120,
+    render(row: CorrelationTableRow) {
+      const cell = row.values[index];
+      return cell?.value === null || cell?.value === undefined ? "--" : formatNumberish(Number(cell.value), 4);
+    },
+  })),
+]);
+
+const correlationTableScrollX = computed(() => 120 + (correlation.value?.stock_codes.length ?? 0) * 120);
+
+function getAnomalyRowKey(item: AnomalyRow) {
+  return `${item.trade_date}-${item.anomaly_type}`;
+}
+
+function getCrossSectionRowKey(item: CrossSectionRow) {
+  return item.stock_code;
+}
+
+function getCorrelationRowKey(row: CorrelationTableRow) {
+  return row.stock_code;
+}
+
 function formatModuleSummary(contract: TradingDataContractRead | null | undefined) {
   if (!contract) {
     return "";
@@ -419,7 +632,7 @@ watch(
           <div class="detail-grid__item"><span class="detail-grid__label">记录</span><div class="detail-grid__value">{{ summary.record_count }}</div></div>
           <div class="detail-grid__item"><span class="detail-grid__label">最新收盘</span><div class="detail-grid__value">{{ formatNumberish(summary.latest_close, 2) }}</div></div>
           <div class="detail-grid__item"><span class="detail-grid__label">平均收盘</span><div class="detail-grid__value">{{ formatNumberish(summary.average_close, 2) }}</div></div>
-          <div class="detail-grid__item"><span class="detail-grid__label">总成交额</span><div class="detail-grid__value">{{ formatCompact(summary.total_amount, 2) }}</div></div>
+          <div class="detail-grid__item"><span class="detail-grid__label">总成交额</span><div class="detail-grid__value">{{ formatRmbAmount(summary.total_amount, 2) }}</div></div>
         </div>
         <div v-if="summary" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(summary) }}</div>
         <EmptyState v-else title="暂无基础摘要" description="执行分析后，这里会展示当前主范围的基础统计" />
@@ -473,42 +686,18 @@ watch(
     <section v-if="isMarketSection">
       <PanelCard title="异常检测">
         <n-alert v-if="panelNotices.anomalies" type="warning" :show-icon="true">{{ panelNotices.anomalies }}</n-alert>
-      <div v-else-if="anomalyPager.total.value" class="data-table-wrap analysis-pair-table-wrap anomaly-table-wrap">
-          <n-table class="data-table anomaly-table" striped size="small" :single-line="false">
-            <colgroup>
-              <col class="anomaly-table__date" />
-              <col class="anomaly-table__type" />
-              <col class="anomaly-table__severity" />
-              <col class="anomaly-table__number" />
-              <col class="anomaly-table__number" />
-              <col class="anomaly-table__number" />
-              <col class="anomaly-table__description" />
-            </colgroup>
-            <thead><tr><th>日期</th><th>类型</th><th>严重</th><th>指标</th><th>基线</th><th>阈值</th><th>说明</th></tr></thead>
-            <tbody>
-              <tr v-for="item in anomalyPager.pagedRows.value" :key="`${item.trade_date}-${item.anomaly_type}`">
-                <td>{{ formatDate(item.trade_date) }}</td>
-                <td>{{ formatAnomalyTypeText(item.anomaly_type) }}</td>
-                <td><n-tag :type="toStatusTagType(item.severity)" round size="small">{{ formatSeverityText(item.severity) }}</n-tag></td>
-                <td>{{ formatNumberish(item.metric_value, 4) }}</td>
-                <td>{{ formatNumberish(item.baseline_value, 4) }}</td>
-                <td>{{ formatNumberish(item.threshold_value, 4) }}</td>
-                <td class="anomaly-table__description-cell">{{ formatAnomalyDescriptionText(item.description) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-          <div class="table-pagination">
-            <n-pagination
-              :page="anomalyPager.page.value"
-              :page-size="anomalyPager.pageSize.value"
-              :item-count="anomalyPager.total.value"
-              :page-sizes="anomalyPager.pageSizes"
-              show-size-picker
-              @update:page="anomalyPager.setPage"
-              @update:page-size="anomalyPager.setPageSize"
-            />
-          </div>
-        </div>
+      <n-data-table
+        v-else-if="anomalyPager.total.value"
+        class="analysis-data-table"
+        :columns="anomalyTableColumns"
+        :data="anomalyRows"
+        :pagination="anomalyTablePagination"
+        :row-key="getAnomalyRowKey"
+        :max-height="analysisTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
         <div v-if="anomalies" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(anomalies) }}</div>
         <EmptyState v-else title="暂无异常结果" description="执行分析后，这里会展示主股票的异常检测结果" />
       </PanelCard>
@@ -517,33 +706,18 @@ watch(
     <section v-if="isMarketSection">
       <PanelCard title="横截面对比">
         <n-alert v-if="panelNotices.crossSection" type="warning" :show-icon="true">{{ panelNotices.crossSection }}</n-alert>
-      <div v-else-if="crossSectionPager.total.value" class="data-table-wrap analysis-pair-table-wrap">
-          <n-table class="data-table cross-section-table" striped size="small" :single-line="false">
-            <thead><tr><th>股票</th><th>收益</th><th>波动</th><th>成交量</th><th>成交额</th><th>平均振幅</th><th>最新收盘价</th></tr></thead>
-            <tbody>
-              <tr v-for="item in crossSectionPager.pagedRows.value" :key="item.stock_code">
-                <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
-                <td>{{ formatPercent(item.total_return, 2) }}</td>
-                <td>{{ formatPercent(item.volatility, 2) }}</td>
-                <td>{{ formatCompact(item.total_volume, 2) }}</td>
-                <td>{{ formatCompact(item.total_amount, 2) }}</td>
-                <td>{{ formatNumberish(item.average_amplitude, 4) }}</td>
-                <td>{{ formatNumberish(item.latest_close, 2) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-          <div class="table-pagination">
-            <n-pagination
-              :page="crossSectionPager.page.value"
-              :page-size="crossSectionPager.pageSize.value"
-              :item-count="crossSectionPager.total.value"
-              :page-sizes="crossSectionPager.pageSizes"
-              show-size-picker
-              @update:page="crossSectionPager.setPage"
-              @update:page-size="crossSectionPager.setPageSize"
-            />
-          </div>
-        </div>
+      <n-data-table
+        v-else-if="crossSectionPager.total.value"
+        class="analysis-data-table"
+        :columns="crossSectionTableColumns"
+        :data="crossSectionRows"
+        :pagination="crossSectionTablePagination"
+        :row-key="getCrossSectionRowKey"
+        :max-height="analysisTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
         <EmptyState v-else title="暂无横截面对比结果" description="执行分析后，这里会展示当前批次内的横截面排序" />
       </PanelCard>
     </section>
@@ -587,17 +761,19 @@ watch(
     <section v-if="!isMarketSection" class="page__grid page__grid--double">
       <PanelCard title="相关性矩阵">
         <n-alert v-if="panelNotices.correlation" type="warning" :show-icon="true">{{ panelNotices.correlation }}</n-alert>
-        <div v-else-if="correlationRows.length" class="data-table-wrap">
-          <n-table class="data-table" striped size="small" :single-line="false">
-          <thead><tr><th>股票</th><th v-for="code in correlation?.stock_codes" :key="code">{{ code }}</th></tr></thead>
-          <tbody>
-            <tr v-for="row in correlationRows" :key="row.stock_code">
-              <td>{{ row.stock_code }}</td>
-              <td v-for="cell in row.values" :key="cell.key">{{ cell.value === null ? "--" : formatNumberish(Number(cell.value), 4) }}</td>
-            </tr>
-          </tbody>
-        </n-table>
-      </div>
+        <n-data-table
+          v-else-if="correlationRows.length"
+          class="analysis-data-table"
+          :columns="correlationTableColumns"
+          :data="correlationRows"
+          :row-key="getCorrelationRowKey"
+          :max-height="correlationTableMaxHeight"
+          :scroll-x="correlationTableScrollX"
+          :scrollbar-props="{ trigger: 'none' }"
+          :single-line="false"
+          striped
+          size="small"
+        />
         <div v-if="correlation" class="inline-hint" style="margin-top: 8px;">{{ formatModuleSummary(correlation) }}</div>
         <EmptyState v-else title="暂无相关性结果" description="执行分析后，这里会展示当前所选股票的收益率相关性矩阵" />
       </PanelCard>
@@ -607,49 +783,27 @@ watch(
 </template>
 
 <style scoped>
-.analysis-pair-table-wrap {
-  height: min(48vh, 420px);
-  min-height: 360px;
-  max-height: 420px;
+.analysis-data-table {
+  border-radius: 18px;
+  overflow: visible;
 }
 
-.anomaly-table,
-.cross-section-table {
-  min-width: 860px;
-  table-layout: fixed;
+:deep(.analysis-data-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.anomaly-table :deep(th),
-.anomaly-table :deep(td),
-.cross-section-table :deep(th),
-.cross-section-table :deep(td) {
-  padding: 10px 14px;
-  vertical-align: middle;
+:deep(.analysis-data-table .n-data-table-td) {
+  vertical-align: top;
 }
 
-.anomaly-table__date {
-  width: 110px;
-}
-
-.anomaly-table__type {
-  width: 150px;
-}
-
-.anomaly-table__severity {
-  width: 88px;
-}
-
-.anomaly-table__number {
-  width: 118px;
-}
-
-.anomaly-table__description {
-  width: 260px;
-}
-
-.anomaly-table__description-cell {
-  line-height: 1.5;
-  word-break: normal;
-  overflow-wrap: break-word;
+:deep(.analysis-data-table .n-data-table__pagination) {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: #fff;
 }
 </style>

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, h, onMounted, reactive, ref } from "vue";
 import { CreateOutline, TrashOutline } from "@vicons/ionicons5";
 
 import {
+  NDataTable,
   NButton,
   NForm,
   NFormItem,
@@ -11,12 +12,11 @@ import {
   NIcon,
   NInput,
   NModal,
-  NPagination,
   NSelect,
   NSwitch,
-  NTable,
   NTag,
   useMessage,
+  type DataTableColumns,
 } from "naive-ui";
 
 import {
@@ -78,6 +78,141 @@ const activeFilterOptions = [
   { label: "仅启用", value: "active" },
   { label: "仅禁用", value: "inactive" },
 ];
+
+const usersTableScrollX = 1420;
+const usersTableMaxHeight = "min(48vh, 420px)";
+
+const usersTableColumns: DataTableColumns<AdminManagedUserRead> = [
+  {
+    title: "用户",
+    key: "username",
+    width: 160,
+  },
+  {
+    title: "角色",
+    key: "role",
+    width: 170,
+    render(user) {
+      return h(
+        NTag,
+        {
+          type: user.role === "admin" ? "warning" : "info",
+          round: true,
+          size: "small",
+        },
+        { default: () => formatRoleText(user.role) }
+      );
+    },
+  },
+  {
+    title: "是否启用",
+    key: "is_active",
+    width: 176,
+    render(user) {
+      return h(
+        NSwitch,
+        {
+          value: user.is_active,
+          disabled: isReadonlyUser(user),
+          loading: Boolean(rowLoading[user.id]),
+          "onUpdate:value": (value: boolean) => toggleUserActive(user, value),
+        },
+        {
+          checked: () => "启用",
+          unchecked: () => "禁用",
+        }
+      );
+    },
+  },
+  {
+    title: "业务数据",
+    key: "has_business_data",
+    width: 190,
+    render(user) {
+      return h(
+        NTag,
+        {
+          type: user.has_business_data ? "warning" : "success",
+          round: true,
+          size: "small",
+        },
+        { default: () => (user.has_business_data ? "已有数据" : "无业务数据") }
+      );
+    },
+  },
+  {
+    title: "创建时间",
+    key: "created_at",
+    width: 220,
+    className: "admin-table-time-column",
+    render(user) {
+      return h("span", { class: "admin-table-time" }, formatDateTime(user.created_at));
+    },
+  },
+  {
+    title: "最后登录",
+    key: "last_login_at",
+    width: 220,
+    className: "admin-table-time-column",
+    render(user) {
+      return h("span", { class: "admin-table-time" }, formatDateTime(user.last_login_at));
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 180,
+    render(user) {
+      return h(
+        "div",
+        { class: "toolbar-row admin-users-table__actions" },
+        [
+          h(
+            NButton,
+            {
+              text: true,
+              type: "primary",
+              disabled: isReadonlyUser(user),
+              onClick: () => openDialog(user),
+            },
+            {
+              icon: () => h(NIcon, null, { default: () => h(CreateOutline) }),
+              default: () => "编辑",
+            }
+          ),
+          h(
+            NButton,
+            {
+              text: true,
+              type: "error",
+              disabled: user.has_business_data || isReadonlyUser(user),
+              loading: Boolean(rowLoading[user.id]),
+              onClick: () => removeUser(user),
+            },
+            {
+              icon: () => h(NIcon, null, { default: () => h(TrashOutline) }),
+              default: () => "删除",
+            }
+          ),
+        ]
+      );
+    },
+  },
+];
+
+const usersTablePagination = computed(() => ({
+  page: usersPager.page.value,
+  pageSize: usersPager.pageSize.value,
+  itemCount: usersPager.total.value,
+  pageSizes: usersPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: usersPager.setPage,
+  onUpdatePageSize: usersPager.setPageSize,
+}));
+
+function getUserRowKey(user: AdminManagedUserRead) {
+  return user.id;
+}
 
 function isReadonlyUser(user: AdminManagedUserRead) {
   return user.role !== "user";
@@ -243,82 +378,20 @@ onMounted(() => {
         </n-form-item>
       </n-form>
 
-      <div v-if="usersPager.total.value" class="data-table-wrap">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead>
-            <tr>
-              <th>用户</th>
-              <th>角色</th>
-              <th>是否启用</th>
-              <th>业务数据</th>
-              <th>创建时间</th>
-              <th>最后登录</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in usersPager.pagedRows.value" :key="user.id">
-              <td>{{ user.username }}</td>
-              <td>
-                <n-tag :type="user.role === 'admin' ? 'warning' : 'info'" round size="small">
-                  {{ formatRoleText(user.role) }}
-                </n-tag>
-              </td>
-              <td>
-                <n-switch
-                  :value="user.is_active"
-                  :disabled="isReadonlyUser(user)"
-                  :loading="Boolean(rowLoading[user.id])"
-                  @update:value="(value) => toggleUserActive(user, value)"
-                >
-                  <template #checked>启用</template>
-                  <template #unchecked>禁用</template>
-                </n-switch>
-              </td>
-              <td>
-                <n-tag :type="user.has_business_data ? 'warning' : 'success'" round size="small">
-                  {{ user.has_business_data ? "已有数据" : "无业务数据" }}
-                </n-tag>
-              </td>
-              <td>{{ formatDateTime(user.created_at) }}</td>
-              <td>{{ formatDateTime(user.last_login_at) }}</td>
-              <td>
-                <div class="toolbar-row">
-                  <n-button text type="primary" style="margin-right: 12px;" :disabled="isReadonlyUser(user)" @click="openDialog(user)">
-                    <template #icon>
-                      <n-icon><CreateOutline /></n-icon>
-                    </template>
-                    编辑
-                  </n-button>
-                  <n-button
-                    text
-                    type="error"
-                    :disabled="user.has_business_data || isReadonlyUser(user)"
-                    :loading="Boolean(rowLoading[user.id])"
-                    @click="removeUser(user)"
-                  >
-                    <template #icon>
-                      <n-icon><TrashOutline /></n-icon>
-                    </template>
-                    删除
-                  </n-button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </n-table>
-        <div class="table-pagination">
-          <n-pagination
-            :page="usersPager.page.value"
-            :page-size="usersPager.pageSize.value"
-            :item-count="usersPager.total.value"
-            :page-sizes="usersPager.pageSizes"
-            show-size-picker
-            @update:page="usersPager.setPage"
-            @update:page-size="usersPager.setPageSize"
-          />
-        </div>
-      </div>
+      <n-data-table
+        v-if="usersPager.total.value"
+        class="admin-users-table"
+        :columns="usersTableColumns"
+        :data="filteredUsers"
+        :pagination="usersTablePagination"
+        :row-key="getUserRowKey"
+        :max-height="usersTableMaxHeight"
+        :scroll-x="usersTableScrollX"
+        :scrollbar-props="{ trigger: 'none' }"
+        :single-line="false"
+        striped
+        size="small"
+      />
       <EmptyState
         v-else
         title="没有匹配用户"
@@ -398,6 +471,39 @@ onMounted(() => {
 
 .admin-filter-grid__button {
   width: 100%;
+}
+
+.admin-users-table {
+  border-radius: 18px;
+  overflow: visible;
+}
+
+:deep(.admin-users-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:deep(.admin-users-table .n-data-table-td) {
+  vertical-align: top;
+}
+
+:deep(.admin-users-table .admin-table-time-column),
+:deep(.admin-users-table .admin-table-time) {
+  white-space: nowrap;
+}
+
+:deep(.admin-users-table .n-data-table__pagination) {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: #fff;
+}
+
+.admin-users-table__actions {
+  flex-wrap: nowrap;
 }
 
 @media (max-width: 760px) {

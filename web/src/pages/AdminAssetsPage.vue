@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 
 import type { EChartsOption } from "echarts";
-import { NTable } from "naive-ui";
+import { NDataTable, type DataTableColumns } from "naive-ui";
 
 import { fetchAdminAssetOverview } from "@/api/admin";
 import type { AdminAssetOverviewRead, AdminAssetSummaryRead } from "@/api/types";
@@ -77,6 +77,110 @@ const growthRows = computed(() => {
     cumulative_records: item.cumulative_records,
   }));
 });
+
+type OwnerAssetRow = AdminAssetOverviewRead["owner_rows"][number];
+type TopDatasetRow = AdminAssetOverviewRead["top_datasets"][number];
+
+const assetTableMaxHeight = "min(48vh, 420px)";
+
+const ownerAssetsTableColumns: DataTableColumns<OwnerAssetRow> = [
+  {
+    title: "用户ID",
+    key: "owner_user_id",
+    width: 100,
+  },
+  {
+    title: "用户",
+    key: "owner_username",
+    width: 130,
+    render(row) {
+      return row.owner_username || "--";
+    },
+  },
+  {
+    title: "数据集数",
+    key: "dataset_count",
+    width: 120,
+  },
+  {
+    title: "记录",
+    key: "record_count",
+    width: 120,
+    render(row) {
+      return formatCompact(row.record_count, 2);
+    },
+  },
+  {
+    title: "记录占比",
+    key: "record_share_ratio",
+    width: 130,
+    render(row) {
+      return formatPercent(row.record_share_ratio, 2);
+    },
+  },
+  {
+    title: "平均单批规模",
+    key: "avg_records_per_dataset",
+    width: 160,
+    render(row) {
+      return formatCompact(row.avg_records_per_dataset, 2);
+    },
+  },
+  {
+    title: "最近入库",
+    key: "latest_completed_at",
+    width: 160,
+    render(row) {
+      return formatDate(row.latest_completed_at);
+    },
+  },
+];
+
+const topDatasetsTableColumns: DataTableColumns<TopDatasetRow> = [
+  {
+    title: "数据集",
+    key: "dataset_name",
+    width: 320,
+    ellipsis: {
+      tooltip: true,
+    },
+    render(row) {
+      return `#${row.display_id} · ${row.dataset_name}`;
+    },
+  },
+  {
+    title: "所属用户",
+    key: "owner_username",
+    width: 150,
+    render(row) {
+      return row.owner_username || "--";
+    },
+  },
+  {
+    title: "记录",
+    key: "record_count",
+    width: 130,
+    render(row) {
+      return formatCompact(row.record_count, 2);
+    },
+  },
+  {
+    title: "完成时间",
+    key: "completed_at",
+    width: 160,
+    render(row) {
+      return formatDate(row.completed_at);
+    },
+  },
+];
+
+function getOwnerAssetRowKey(row: OwnerAssetRow) {
+  return row.owner_user_id;
+}
+
+function getTopDatasetRowKey(row: TopDatasetRow) {
+  return row.run_id;
+}
 
 const growthChartOption = computed<EChartsOption | null>(() => {
   const rows = growthRows.value;
@@ -246,32 +350,17 @@ onMounted(() => {
   <div class="page">
     <section class="assets-layout-row">
       <PanelCard class="assets-panel assets-panel--table" title="所属用户资产分布">
-        <div v-if="overview?.owner_rows.length" class="data-table-wrap assets-table-wrap">
-          <n-table class="data-table assets-table assets-table--owner" striped size="small" :single-line="false">
-            <thead>
-              <tr>
-                <th>用户ID</th>
-                <th>用户</th>
-                <th>数据集数</th>
-                <th>记录</th>
-                <th>记录占比</th>
-                <th>平均单批规模</th>
-                <th>最近入库</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in overview.owner_rows" :key="row.owner_user_id">
-                <td>{{ row.owner_user_id }}</td>
-                <td>{{ row.owner_username || "--" }}</td>
-                <td>{{ row.dataset_count }}</td>
-                <td>{{ formatCompact(row.record_count, 2) }}</td>
-                <td>{{ formatPercent(row.record_share_ratio, 2) }}</td>
-                <td>{{ formatCompact(row.avg_records_per_dataset, 2) }}</td>
-                <td>{{ formatDate(row.latest_completed_at) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-        </div>
+        <n-data-table
+          v-if="overview?.owner_rows.length"
+          class="assets-data-table"
+          :columns="ownerAssetsTableColumns"
+          :data="overview.owner_rows"
+          :row-key="getOwnerAssetRowKey"
+          :max-height="assetTableMaxHeight"
+          :single-line="false"
+          striped
+          size="small"
+        />
         <EmptyState
           v-else
           title="暂无所属用户资产分布"
@@ -330,26 +419,17 @@ onMounted(() => {
 
     <section class="assets-layout-row">
       <PanelCard class="assets-panel assets-panel--table" title="大数据集 TOP 10">
-        <div v-if="overview?.top_datasets.length" class="data-table-wrap assets-table-wrap">
-          <n-table class="data-table assets-table assets-table--datasets" striped size="small" :single-line="false">
-            <thead>
-              <tr>
-                <th>数据集</th>
-                <th>所属用户</th>
-                <th>记录</th>
-                <th>完成时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in overview.top_datasets" :key="row.run_id">
-                <td>#{{ row.display_id }} · {{ row.dataset_name }}</td>
-                <td>{{ row.owner_username || "--" }}</td>
-                <td>{{ formatCompact(row.record_count, 2) }}</td>
-                <td>{{ formatDate(row.completed_at) }}</td>
-              </tr>
-            </tbody>
-          </n-table>
-        </div>
+        <n-data-table
+          v-if="overview?.top_datasets.length"
+          class="assets-data-table"
+          :columns="topDatasetsTableColumns"
+          :data="overview.top_datasets"
+          :row-key="getTopDatasetRowKey"
+          :max-height="assetTableMaxHeight"
+          :single-line="false"
+          striped
+          size="small"
+        />
         <EmptyState
           v-else
           title="暂无大数据集排行"
@@ -453,82 +533,22 @@ onMounted(() => {
   height: 100% !important;
 }
 
-.assets-table-wrap {
-  flex: 1;
-  max-height: none;
-  min-height: 320px;
-  resize: none;
-  overflow-x: visible;
+.assets-data-table {
+  border-radius: 18px;
+  overflow: hidden;
 }
 
-.assets-table {
-  width: 100%;
-  min-width: 0;
-  table-layout: fixed;
+:deep(.assets-data-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.assets-table :deep(th),
-.assets-table :deep(td) {
-  padding: 12px 10px;
-  font-size: 13px;
-  line-height: 1.5;
-  white-space: normal;
-  word-break: break-word;
-}
-
-.assets-table--owner :deep(th:nth-child(1)),
-.assets-table--owner :deep(td:nth-child(1)) {
-  width: 9%;
-}
-
-.assets-table--owner :deep(th:nth-child(2)),
-.assets-table--owner :deep(td:nth-child(2)) {
-  width: 13%;
-}
-
-.assets-table--owner :deep(th:nth-child(3)),
-.assets-table--owner :deep(td:nth-child(3)) {
-  width: 12%;
-}
-
-.assets-table--owner :deep(th:nth-child(4)),
-.assets-table--owner :deep(td:nth-child(4)) {
-  width: 12%;
-}
-
-.assets-table--owner :deep(th:nth-child(5)),
-.assets-table--owner :deep(td:nth-child(5)) {
-  width: 14%;
-}
-
-.assets-table--owner :deep(th:nth-child(6)),
-.assets-table--owner :deep(td:nth-child(6)) {
-  width: 18%;
-}
-
-.assets-table--owner :deep(th:nth-child(7)),
-.assets-table--owner :deep(td:nth-child(7)) {
-  width: 22%;
-}
-
-.assets-table--datasets :deep(th:nth-child(1)),
-.assets-table--datasets :deep(td:nth-child(1)) {
-  width: 42%;
-}
-
-.assets-table--datasets :deep(th:nth-child(2)),
-.assets-table--datasets :deep(td:nth-child(2)) {
-  width: 18%;
-}
-
-.assets-table--datasets :deep(th:nth-child(3)),
-.assets-table--datasets :deep(td:nth-child(3)) {
-  width: 16%;
-}
-
-.assets-table--datasets :deep(th:nth-child(4)),
-.assets-table--datasets :deep(td:nth-child(4)) {
-  width: 24%;
+:deep(.assets-data-table .n-data-table-td) {
+  vertical-align: top;
 }
 
 @media (max-width: 1280px) {

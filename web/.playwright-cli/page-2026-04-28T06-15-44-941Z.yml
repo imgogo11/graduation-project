@@ -1,0 +1,41 @@
+- generic [ref=e5]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]: 股票交易数据分析平台
+      - heading "股票交易数据分析平台" [level=1] [ref=e9]
+      - paragraph [ref=e10]: 系统覆盖数据导入、统计分析、区间算法与风险雷达，支持完整研究流程。
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]: 统一后台骨架
+        - generic [ref=e14]: 工作台、数据集管理、分析中心与算法雷达提供统一操作入口
+      - generic [ref=e15]:
+        - generic [ref=e16]: 安全登录
+        - generic [ref=e17]: 基于账号登录与会话鉴权保障访问安全
+      - generic [ref=e18]:
+        - generic [ref=e19]: 研究型业务
+        - generic [ref=e20]: 覆盖交易导入、统计分析区间算法与风险雷达
+  - generic [ref=e21]:
+    - generic [ref=e22]:
+      - heading "登录系统" [level=1] [ref=e23]
+      - paragraph [ref=e24]: 登录后可进入工作台，继续处理数据导入、数据集预览与分析任务
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e28]: 用户
+        - generic [ref=e32]:
+          - textbox "请输入用户名" [ref=e33]
+          - generic:
+            - generic: 请输入用户名
+      - generic [ref=e35]:
+        - generic [ref=e37]: 密码
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - textbox "请输入密码" [ref=e42]
+            - generic:
+              - generic: 请输入密码
+          - img [ref=e46] [cursor=pointer]
+      - button "登录" [ref=e53] [cursor=pointer]:
+        - generic [ref=e54]: 登录
+    - paragraph [ref=e55]:
+      - text: 还没有账号？
+      - link "去注册" [ref=e56] [cursor=pointer]:
+        - /url: /register

@@ -12,6 +12,7 @@ from app.services.algo_indexes import (
     RiskRadarIndexCache,
     algo_index_manager,
 )
+from app.algo_bridge.loaders.trading import unscale_amount
 from app.schemas.trading import (
     TradingRangeMaxMatchRead,
     TradingRiskRadarAmountPeakRead,
@@ -309,7 +310,7 @@ class RiskRadarService:
         return TradingRiskRadarAmountPeakRead(
             start_date=stock_index.trade_dates[left],
             end_date=stock_index.trade_dates[right],
-            peak_amount=round(float(result.max_value_scaled) / 10000.0, 4),
+            peak_amount=round(float(unscale_amount(result.max_value_scaled)), 4),
             peak_dates=[
                 TradingRangeMaxMatchRead(trade_date=stock_index.trade_dates[index], series_index=index)
                 for index in list(result.matched_indices)

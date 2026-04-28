@@ -1,0 +1,54 @@
+- generic [ref=e4]:
+  - complementary [ref=e5]:
+    - generic [ref=e6]:
+      - img "股票交易数据分析平台" [ref=e8]
+      - generic [ref=e9]:
+        - generic [ref=e10]: 股票交易数据分析平台
+        - generic [ref=e11]: 系统运维与后台管理
+    - generic [ref=e13]:
+      - generic [ref=e14]: 管理员后台
+      - menu [ref=e15]:
+        - menuitem "数据资产" [ref=e16]:
+          - img [ref=e17] [cursor=pointer]:
+            - img [ref=e18]
+          - text: 数据资产
+        - menuitem "用户管理" [ref=e23]:
+          - img [ref=e24] [cursor=pointer]:
+            - img [ref=e25]
+          - text: 用户管理
+        - menuitem "调用记录" [ref=e30]:
+          - img [ref=e31] [cursor=pointer]:
+            - img [ref=e32]
+          - text: 调用记录
+        - menuitem "运行监控" [ref=e35]:
+          - img [ref=e36] [cursor=pointer]:
+            - img [ref=e37]
+          - text: 运行监控
+  - generic [ref=e41]:
+    - banner [ref=e42]:
+      - generic [ref=e43]:
+        - button [ref=e44] [cursor=pointer]:
+          - img [ref=e46]:
+            - img [ref=e47]
+        - generic [ref=e49]: 管理员后台
+      - generic [ref=e50]:
+        - generic [ref=e51]:
+          - button [ref=e53] [cursor=pointer]:
+            - img [ref=e54]:
+              - img [ref=e55]
+          - button [ref=e59] [cursor=pointer]:
+            - img [ref=e60]:
+              - img [ref=e61]
+          - button [ref=e71] [cursor=pointer]:
+            - generic [ref=e72]:
+              - img [ref=e73]:
+                - img [ref=e74]
+              - superscript [ref=e77]
+        - button "A admin 管理员" [ref=e78] [cursor=pointer]:
+          - generic [ref=e80]: A
+          - generic [ref=e81]:
+            - strong [ref=e82]: admin
+            - generic [ref=e83]: 管理员
+    - button "数据资产" [ref=e85] [cursor=pointer]:
+      - generic [ref=e86]: 数据资产
+    - main [ref=e87]

@@ -1,24 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, h, onMounted, reactive, ref, watch } from "vue";
 import { SwapHorizontalOutline, TrashOutline } from "@vicons/ionicons5";
 
 import type { EChartsOption } from "echarts";
 import {
   NButton,
+  NDataTable,
   NForm,
   NFormItemGi,
   NGrid,
   NIcon,
   NInput,
   NModal,
-  NPagination,
   NSelect,
   NSwitch,
-  NTable,
   NTabPane,
   NTabs,
   NTag,
   useMessage,
+  type DataTableColumns,
+  type DataTableCreateRowClassName,
 } from "naive-ui";
 
 import { commitTradingPreview, deleteImportRun, fetchImportRuns, fetchImportStats, previewTradingFile } from "@/api/imports";
@@ -41,6 +42,8 @@ import {
   formatDate,
   formatDateTime,
   formatNumberish,
+  formatRmbAmount,
+  formatShareVolume,
   getErrorMessage,
   toNumber,
   toStatusTagType,
@@ -221,6 +224,306 @@ const endDatePickerValue = computed({
     workspaceForm.endDate = value ?? "";
   },
 });
+
+type MappingField = ImportPreviewRead["field_suggestions"][number];
+
+const mappingTableScrollX = 820;
+const mappingTableMaxHeight = "min(45vh, 440px)";
+const importRunsTableMaxHeight = "min(48vh, 420px)";
+const recordsTableMaxHeight = "min(48vh, 420px)";
+
+const requiredMappingColumns: DataTableColumns<MappingField> = [
+  {
+    title: "目标列",
+    key: "canonical_column",
+    width: 180,
+    render(field) {
+      return resolveCanonicalLabel(field.canonical_column);
+    },
+  },
+  {
+    title: "建议置信度",
+    key: "selected_confidence",
+    width: 180,
+    render(field) {
+      return `${field.selected_confidence}${field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : ""}`;
+    },
+  },
+  {
+    title: "映射源列",
+    key: "mapping",
+    width: 320,
+    render(field) {
+      return h(NSelect, {
+        value: mappingSelections[field.canonical_column],
+        options: importMappingOptions.value,
+        placeholder: "选择源列",
+        clearable: true,
+        "onUpdate:value": (value: string | null) => {
+          mappingSelections[field.canonical_column] = value;
+          onRequiredMappingChange(field.canonical_column, value);
+        },
+      });
+    },
+  },
+  {
+    title: "确认导入",
+    key: "enabled",
+    width: 140,
+    render(field) {
+      return h(NSwitch, {
+        value: requiredColumnEnabled[field.canonical_column],
+        disabled: !mappingSelections[field.canonical_column],
+        "onUpdate:value": (value: boolean) => {
+          requiredColumnEnabled[field.canonical_column] = value;
+        },
+      });
+    },
+  },
+];
+
+const optionalMappingColumns: DataTableColumns<MappingField> = [
+  {
+    title: "目标列",
+    key: "canonical_column",
+    width: 180,
+    render(field) {
+      return resolveCanonicalLabel(field.canonical_column);
+    },
+  },
+  {
+    title: "建议置信度",
+    key: "selected_confidence",
+    width: 180,
+    render(field) {
+      return `${field.selected_confidence}${field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : ""}`;
+    },
+  },
+  {
+    title: "映射源列",
+    key: "mapping",
+    width: 320,
+    render(field) {
+      return h(NSelect, {
+        value: mappingSelections[field.canonical_column],
+        options: importMappingOptions.value,
+        placeholder: "选择源列",
+        clearable: true,
+        "onUpdate:value": (value: string | null) => {
+          mappingSelections[field.canonical_column] = value;
+        },
+      });
+    },
+  },
+  {
+    title: "确认导入",
+    key: "enabled",
+    width: 140,
+    render(field) {
+      return h(NSwitch, {
+        value: optionalColumnEnabled[field.canonical_column],
+        "onUpdate:value": (value: boolean) => {
+          optionalColumnEnabled[field.canonical_column] = value;
+        },
+      });
+    },
+  },
+];
+
+const importRunsTableColumns: DataTableColumns<ImportRunRead> = [
+  {
+    title: "批次",
+    key: "display_id",
+    width: 110,
+    render(item) {
+      return `#${item.display_id}`;
+    },
+  },
+  {
+    title: "数据",
+    key: "dataset_name",
+    width: 220,
+    ellipsis: {
+      tooltip: true,
+    },
+  },
+  {
+    title: "状态",
+    key: "status",
+    width: 130,
+    render(item) {
+      return h(
+        NTag,
+        {
+          type: toStatusTagType(item.status),
+          round: true,
+          size: "small",
+        },
+        { default: () => formatStatusText(item.status) }
+      );
+    },
+  },
+  {
+    title: "所属用户",
+    key: "owner_username",
+    width: 150,
+    render(item) {
+      return item.owner_username || "--";
+    },
+  },
+  {
+    title: "记录",
+    key: "record_count",
+    width: 130,
+    render(item) {
+      return formatCompact(item.record_count ?? null, 2);
+    },
+  },
+  {
+    title: "开始时间",
+    key: "started_at",
+    width: 210,
+    render(item) {
+      return formatDateTime(item.started_at);
+    },
+  },
+  {
+    title: "操作",
+    key: "actions",
+    width: 170,
+    render(item) {
+      return h("div", { class: "toolbar-row datasets-table__actions" }, [
+        h(
+          NButton,
+          {
+            text: true,
+            type: "primary",
+            onClick: () => loadDatasets(item.id, { notify: true, action: "switch" }),
+          },
+          {
+            icon: () => h(NIcon, null, { default: () => h(SwapHorizontalOutline) }),
+            default: () => "切换",
+          }
+        ),
+        h(
+          NButton,
+          {
+            text: true,
+            type: "error",
+            loading: deletingRunId.value === item.id,
+            onClick: () => removeRun(item),
+          },
+          {
+            icon: () => h(NIcon, null, { default: () => h(TrashOutline) }),
+            default: () => "删除",
+          }
+        ),
+      ]);
+    },
+  },
+];
+
+const importRunsTablePagination = computed(() => ({
+  page: importRunsPager.page.value,
+  pageSize: importRunsPager.pageSize.value,
+  itemCount: importRunsPager.total.value,
+  pageSizes: importRunsPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: importRunsPager.setPage,
+  onUpdatePageSize: importRunsPager.setPageSize,
+}));
+
+const importRunsRowClassName: DataTableCreateRowClassName<ImportRunRead> = (item) =>
+  item.id === workspaceForm.importRunId ? "data-table__row--active" : "";
+
+const recordsTableColumns: DataTableColumns<TradingRecordRead> = [
+  {
+    title: "股票",
+    key: "stock_code",
+    width: 210,
+    render(item) {
+      return `${item.stock_code}${item.stock_name ? ` · ${item.stock_name}` : ""}`;
+    },
+  },
+  {
+    title: "日期",
+    key: "trade_date",
+    width: 140,
+    render(item) {
+      return formatDate(item.trade_date);
+    },
+  },
+  {
+    title: "开",
+    key: "open",
+    width: 110,
+    render(item) {
+      return formatNumberish(item.open, 2);
+    },
+  },
+  {
+    title: "最高",
+    key: "high",
+    width: 110,
+    render(item) {
+      return formatNumberish(item.high, 2);
+    },
+  },
+  {
+    title: "最低",
+    key: "low",
+    width: 110,
+    render(item) {
+      return formatNumberish(item.low, 2);
+    },
+  },
+  {
+    title: "收盘",
+    key: "close",
+    width: 120,
+    render(item) {
+      return formatNumberish(item.close, 2);
+    },
+  },
+  {
+    title: "成交量",
+    key: "volume",
+    width: 160,
+    render(item) {
+      return formatShareVolume(item.volume, 2);
+    },
+  },
+  {
+    title: "成交额",
+    key: "amount",
+    width: 160,
+    render(item) {
+      return formatRmbAmount(item.amount, 2);
+    },
+  },
+];
+
+const recordsTablePagination = computed(() => ({
+  page: recordsPager.page.value,
+  pageSize: recordsPager.pageSize.value,
+  itemCount: recordsPager.total.value,
+  pageSizes: recordsPager.pageSizes,
+  showSizePicker: true,
+  onUpdatePage: recordsPager.setPage,
+  onUpdatePageSize: recordsPager.setPageSize,
+}));
+
+function getMappingRowKey(field: MappingField) {
+  return field.canonical_column;
+}
+
+function getImportRunRowKey(item: ImportRunRead) {
+  return item.id;
+}
+
+function getRecordRowKey(item: TradingRecordRead) {
+  return item.id;
+}
 
 type FeedbackOptions = {
   notify?: boolean;
@@ -777,74 +1080,36 @@ watch(
               <n-button size="small" secondary @click="setAllRequiredColumns(true)">全开</n-button>
               <n-button size="small" secondary @click="setAllRequiredColumns(false)">全关</n-button>
             </div>
-            <div class="mapping-table-scroll">
-              <n-table striped size="small">
-                <thead>
-                  <tr>
-                    <th>目标列</th>
-                    <th>建议置信度</th>
-                    <th>映射源列</th>
-                    <th>确认导入</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="field in requiredMappingFields" :key="field.canonical_column">
-                    <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
-                    <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
-                    <td style="min-width: 280px;">
-                      <n-select
-                        v-model:value="mappingSelections[field.canonical_column]"
-                        :options="importMappingOptions"
-                        placeholder="选择源列"
-                        clearable
-                        @update:value="(value) => onRequiredMappingChange(field.canonical_column, value)"
-                      />
-                    </td>
-                    <td>
-                      <n-switch
-                        v-model:value="requiredColumnEnabled[field.canonical_column]"
-                        :disabled="!mappingSelections[field.canonical_column]"
-                      />
-                    </td>
-                  </tr>
-                </tbody>
-              </n-table>
-            </div>
+            <n-data-table
+              class="mapping-data-table"
+              :columns="requiredMappingColumns"
+              :data="requiredMappingFields"
+              :row-key="getMappingRowKey"
+              :max-height="mappingTableMaxHeight"
+              :scroll-x="mappingTableScrollX"
+              :scrollbar-props="{ trigger: 'none' }"
+              :single-line="false"
+              striped
+              size="small"
+            />
           </n-tab-pane>
           <n-tab-pane name="optional" tab="可选列映射">
             <div class="toolbar-row" style="margin-bottom: 12px;">
               <n-button size="small" secondary @click="setAllOptionalColumns(true)">全开</n-button>
               <n-button size="small" secondary @click="setAllOptionalColumns(false)">全关</n-button>
             </div>
-            <div class="mapping-table-scroll">
-              <n-table striped size="small">
-                <thead>
-                  <tr>
-                    <th>目标列</th>
-                    <th>建议置信度</th>
-                    <th>映射源列</th>
-                    <th>确认导入</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="field in optionalMappingFields" :key="field.canonical_column">
-                    <td>{{ resolveCanonicalLabel(field.canonical_column) }}</td>
-                    <td>{{ field.selected_confidence }}{{ field.selected_score !== null ? ` (${field.selected_score.toFixed(3)})` : "" }}</td>
-                    <td style="min-width: 260px;">
-                      <n-select
-                        v-model:value="mappingSelections[field.canonical_column]"
-                        :options="importMappingOptions"
-                        placeholder="选择源列"
-                        clearable
-                      />
-                    </td>
-                    <td>
-                      <n-switch v-model:value="optionalColumnEnabled[field.canonical_column]" />
-                    </td>
-                  </tr>
-                </tbody>
-              </n-table>
-            </div>
+            <n-data-table
+              class="mapping-data-table"
+              :columns="optionalMappingColumns"
+              :data="optionalMappingFields"
+              :row-key="getMappingRowKey"
+              :max-height="mappingTableMaxHeight"
+              :scroll-x="mappingTableScrollX"
+              :scrollbar-props="{ trigger: 'none' }"
+              :single-line="false"
+              striped
+              size="small"
+            />
           </n-tab-pane>
         </n-tabs>
         <div class="mapping-modal-actions">
@@ -919,71 +1184,19 @@ watch(
           </span>
         </span>
       </template>
-      <div v-if="importRunsPager.total.value" class="data-table-wrap">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead>
-            <tr>
-              <th>批次</th>
-              <th>数据</th>
-              <th>状态</th>
-              <th>所属用户</th>
-              <th>记录</th>
-              <th>开始时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="item in importRunsPager.pagedRows.value"
-              :key="item.id"
-              :class="{ 'data-table__row--active': item.id === workspaceForm.importRunId }"
-            >
-              <td>#{{ item.display_id }}</td>
-              <td>{{ item.dataset_name }}</td>
-              <td>
-                <n-tag :type="toStatusTagType(item.status)" round size="small">
-                  {{ formatStatusText(item.status) }}
-                </n-tag>
-              </td>
-              <td>{{ item.owner_username || "--" }}</td>
-              <td>{{ formatCompact(item.record_count ?? null, 2) }}</td>
-              <td>{{ formatDateTime(item.started_at) }}</td>
-              <td>
-                <div class="toolbar-row">
-                  <n-button text type="primary" style="margin-right: 12px;" @click="loadDatasets(item.id, { notify: true, action: 'switch' })">
-                    <template #icon>
-                      <n-icon><SwapHorizontalOutline /></n-icon>
-                    </template>
-                    切换
-                  </n-button>
-                  <n-button
-                    text
-                    type="error"
-                    :loading="deletingRunId === item.id"
-                    @click="removeRun(item)"
-                  >
-                    <template #icon>
-                      <n-icon><TrashOutline /></n-icon>
-                    </template>
-                    删除
-                  </n-button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </n-table>
-        <div class="table-pagination">
-          <n-pagination
-            :page="importRunsPager.page.value"
-            :page-size="importRunsPager.pageSize.value"
-            :item-count="importRunsPager.total.value"
-            :page-sizes="importRunsPager.pageSizes"
-            show-size-picker
-            @update:page="importRunsPager.setPage"
-            @update:page-size="importRunsPager.setPageSize"
-          />
-        </div>
-      </div>
+      <n-data-table
+        v-if="importRunsPager.total.value"
+        class="datasets-data-table"
+        :columns="importRunsTableColumns"
+        :data="importRuns"
+        :pagination="importRunsTablePagination"
+        :row-class-name="importRunsRowClassName"
+        :row-key="getImportRunRowKey"
+        :max-height="importRunsTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
       <EmptyState
         v-else
         title="暂无导入历史"
@@ -1002,45 +1215,18 @@ watch(
           </span>
         </span>
       </template>
-      <div v-if="recordsPager.total.value" class="data-table-wrap">
-        <n-table class="data-table" striped size="small" :single-line="false">
-          <thead>
-            <tr>
-              <th>股票</th>
-              <th>日期</th>
-              <th>开</th>
-              <th>最高</th>
-              <th>最低</th>
-              <th>收盘</th>
-              <th>成交量</th>
-              <th>成交额</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in recordsPager.pagedRows.value" :key="item.id">
-              <td>{{ item.stock_code }}{{ item.stock_name ? ` · ${item.stock_name}` : "" }}</td>
-              <td>{{ formatDate(item.trade_date) }}</td>
-              <td>{{ formatNumberish(item.open, 2) }}</td>
-              <td>{{ formatNumberish(item.high, 2) }}</td>
-              <td>{{ formatNumberish(item.low, 2) }}</td>
-              <td>{{ formatNumberish(item.close, 2) }}</td>
-              <td>{{ formatCompact(item.volume, 2) }}</td>
-              <td>{{ formatCompact(item.amount, 2) }}</td>
-            </tr>
-          </tbody>
-        </n-table>
-        <div class="table-pagination">
-          <n-pagination
-            :page="recordsPager.page.value"
-            :page-size="recordsPager.pageSize.value"
-            :item-count="recordsPager.total.value"
-            :page-sizes="recordsPager.pageSizes"
-            show-size-picker
-            @update:page="recordsPager.setPage"
-            @update:page-size="recordsPager.setPageSize"
-          />
-        </div>
-      </div>
+      <n-data-table
+        v-if="recordsPager.total.value"
+        class="datasets-data-table"
+        :columns="recordsTableColumns"
+        :data="records"
+        :pagination="recordsTablePagination"
+        :row-key="getRecordRowKey"
+        :max-height="recordsTableMaxHeight"
+        :single-line="false"
+        striped
+        size="small"
+      />
       <EmptyState
         v-else
         title="暂无样本记录"
@@ -1103,11 +1289,6 @@ watch(
   row-gap: 10px;
 }
 
-.mapping-table-scroll {
-  max-height: min(45vh, 440px);
-  overflow-y: auto;
-}
-
 .mapping-modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1115,6 +1296,37 @@ watch(
   padding-top: 16px;
   margin-top: 16px;
   border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.mapping-data-table,
+.datasets-data-table {
+  border-radius: 18px;
+  overflow: visible;
+}
+
+:deep(.mapping-data-table .n-data-table-th),
+:deep(.datasets-data-table .n-data-table-th) {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+:deep(.mapping-data-table .n-data-table-td),
+:deep(.datasets-data-table .n-data-table-td) {
+  vertical-align: top;
+}
+
+:deep(.datasets-data-table .n-data-table__pagination) {
+  padding: 0 12px 10px;
+  border-top: 1px solid var(--panel-border);
+  background: #fff;
+}
+
+.datasets-table__actions {
+  flex-wrap: nowrap;
 }
 
 @media (max-width: 760px) {
